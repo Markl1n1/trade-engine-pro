@@ -168,10 +168,13 @@ export type Database = {
           created_at: string
           id: string
           indicator_type: Database["public"]["Enums"]["indicator_type"]
+          indicator_type_2: Database["public"]["Enums"]["indicator_type"] | null
           logical_operator: string | null
           operator: Database["public"]["Enums"]["condition_operator"]
           order_index: number
           order_type: Database["public"]["Enums"]["order_type"]
+          period_1: number | null
+          period_2: number | null
           strategy_id: string
           value: number
           value2: number | null
@@ -180,10 +183,15 @@ export type Database = {
           created_at?: string
           id?: string
           indicator_type: Database["public"]["Enums"]["indicator_type"]
+          indicator_type_2?:
+            | Database["public"]["Enums"]["indicator_type"]
+            | null
           logical_operator?: string | null
           operator: Database["public"]["Enums"]["condition_operator"]
           order_index?: number
           order_type: Database["public"]["Enums"]["order_type"]
+          period_1?: number | null
+          period_2?: number | null
           strategy_id: string
           value: number
           value2?: number | null
@@ -192,10 +200,15 @@ export type Database = {
           created_at?: string
           id?: string
           indicator_type?: Database["public"]["Enums"]["indicator_type"]
+          indicator_type_2?:
+            | Database["public"]["Enums"]["indicator_type"]
+            | null
           logical_operator?: string | null
           operator?: Database["public"]["Enums"]["condition_operator"]
           order_index?: number
           order_type?: Database["public"]["Enums"]["order_type"]
+          period_1?: number | null
+          period_2?: number | null
           strategy_id?: string
           value?: number
           value2?: number | null
@@ -264,6 +277,7 @@ export type Database = {
         | "crosses_above"
         | "crosses_below"
         | "between"
+        | "indicator_comparison"
       indicator_type:
         | "rsi"
         | "macd"
@@ -409,6 +423,7 @@ export const Constants = {
         "crosses_above",
         "crosses_below",
         "between",
+        "indicator_comparison",
       ],
       indicator_type: [
         "rsi",

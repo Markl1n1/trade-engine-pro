@@ -26,6 +26,12 @@ interface Trade {
   profit?: number;
 }
 
+interface IndicatorCache {
+  rsi: { [period: number]: number[] };
+  ema: { [period: number]: number[] };
+  sma: { [period: number]: number[] };
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -81,8 +87,38 @@ serve(async (req) => {
       close_time: d.close_time,
     }));
 
-    // Pre-calculate RSI for all candles
-    const rsiValues = calculateRSI(candles.map(c => c.close), 14);
+    // Pre-calculate all needed indicators
+    const closePrices = candles.map(c => c.close);
+    const indicatorCache: IndicatorCache = {
+      rsi: {},
+      ema: {},
+      sma: {},
+    };
+
+    // Determine which indicators and periods are needed
+    const neededIndicators = new Set<string>();
+    strategy.strategy_conditions.forEach((condition: any) => {
+      if (condition.period_1) {
+        neededIndicators.add(`${condition.indicator_type}_${condition.period_1}`);
+      }
+      if (condition.indicator_type_2 && condition.period_2) {
+        neededIndicators.add(`${condition.indicator_type_2}_${condition.period_2}`);
+      }
+    });
+
+    // Pre-calculate needed indicators
+    neededIndicators.forEach((key) => {
+      const [type, periodStr] = key.split('_');
+      const period = parseInt(periodStr);
+      
+      if (type === 'rsi') {
+        indicatorCache.rsi[period] = calculateRSI(closePrices, period);
+      } else if (type === 'ema') {
+        indicatorCache.ema[period] = calculateEMA(closePrices, period);
+      } else if (type === 'sma') {
+        indicatorCache.sma[period] = calculateSMA(closePrices, period);
+      }
+    });
 
     // Run backtest simulation
     let balance = initialBalance || strategy.initial_capital || 1000;
@@ -97,7 +133,13 @@ serve(async (req) => {
 
       // Check entry conditions
       if (!position) {
-        const shouldEnter = checkConditions(strategy.strategy_conditions, previousCandles, rsiValues, i, 'buy');
+        const shouldEnter = checkConditions(
+          strategy.strategy_conditions, 
+          previousCandles, 
+          indicatorCache, 
+          i, 
+          'buy'
+        );
         
         if (shouldEnter) {
           const positionSize = (balance * (strategy.position_size_percent || 100)) / 100;
@@ -111,11 +153,17 @@ serve(async (req) => {
           };
           
           balance -= positionSize;
-          console.log(`[${i}] Opened BUY at ${currentCandle.close}, RSI: ${rsiValues[i]?.toFixed(2)}`);
+          console.log(`[${i}] Opened BUY at ${currentCandle.close}`);
         }
       } else {
         // Check exit conditions
-        const shouldExit = checkConditions(strategy.strategy_conditions, previousCandles, rsiValues, i, 'sell');
+        const shouldExit = checkConditions(
+          strategy.strategy_conditions, 
+          previousCandles, 
+          indicatorCache, 
+          i, 
+          'sell'
+        );
         
         // Use provided SL/TP or fall back to strategy settings
         const stopLoss = stopLossPercent ?? strategy.stop_loss_percent;
@@ -138,7 +186,7 @@ serve(async (req) => {
           trades.push(position);
           
           const exitReason = shouldExit ? 'SELL_SIGNAL' : (stopLossHit ? 'STOP_LOSS' : 'TAKE_PROFIT');
-          console.log(`[${i}] Closed ${exitReason} at ${currentCandle.close}, profit: ${profit.toFixed(2)}, RSI: ${rsiValues[i]?.toFixed(2)}`);
+          console.log(`[${i}] Closed ${exitReason} at ${currentCandle.close}, profit: ${profit.toFixed(2)}`);
           
           position = null;
         }
@@ -268,10 +316,88 @@ function calculateRSI(prices: number[], period: number = 14): number[] {
   return rsi;
 }
 
+function calculateEMA(prices: number[], period: number): number[] {
+  const ema: number[] = [];
+  
+  if (prices.length < period) {
+    return new Array(prices.length).fill(0);
+  }
+
+  // Calculate initial SMA as first EMA value
+  let sum = 0;
+  for (let i = 0; i < period; i++) {
+    ema.push(0);
+    sum += prices[i];
+  }
+  
+  const initialEMA = sum / period;
+  ema[period - 1] = initialEMA;
+  
+  // Calculate multiplier
+  const multiplier = 2 / (period + 1);
+  
+  // Calculate EMA for remaining values
+  for (let i = period; i < prices.length; i++) {
+    const currentEMA = (prices[i] - ema[i - 1]) * multiplier + ema[i - 1];
+    ema.push(currentEMA);
+  }
+  
+  return ema;
+}
+
+function calculateSMA(prices: number[], period: number): number[] {
+  const sma: number[] = [];
+  
+  if (prices.length < period) {
+    return new Array(prices.length).fill(0);
+  }
+
+  // Fill initial values with 0
+  for (let i = 0; i < period - 1; i++) {
+    sma.push(0);
+  }
+
+  // Calculate SMA for each window
+  for (let i = period - 1; i < prices.length; i++) {
+    let sum = 0;
+    for (let j = 0; j < period; j++) {
+      sum += prices[i - j];
+    }
+    sma.push(sum / period);
+  }
+
+  return sma;
+}
+
+function getIndicatorValue(
+  indicatorType: string,
+  period: number,
+  indicatorCache: IndicatorCache,
+  currentIndex: number,
+  candles: Candle[]
+): number | null {
+  const currentCandle = candles[candles.length - 1];
+  
+  switch (indicatorType) {
+    case 'price':
+      return currentCandle.close;
+    case 'volume':
+      return currentCandle.volume;
+    case 'rsi':
+      return indicatorCache.rsi[period]?.[currentIndex] ?? null;
+    case 'ema':
+      return indicatorCache.ema[period]?.[currentIndex] ?? null;
+    case 'sma':
+      return indicatorCache.sma[period]?.[currentIndex] ?? null;
+    default:
+      return null;
+  }
+}
+
 function checkConditions(
   conditions: any[], 
   candles: Candle[], 
-  rsiValues: number[], 
+  indicatorCache: IndicatorCache,
   currentIndex: number,
   orderType: string
 ): boolean {
@@ -284,31 +410,27 @@ function checkConditions(
   const previousCandle = candles.length > 1 ? candles[candles.length - 2] : null;
 
   for (const condition of relevantConditions) {
-    const { indicator_type, operator, value } = condition;
-    let indicatorValue: number | null = null;
+    const { indicator_type, operator, value, period_1, indicator_type_2, period_2 } = condition;
+    
+    // Handle indicator comparison (e.g., EMA 9 > EMA 21)
+    if (operator === 'indicator_comparison' && indicator_type_2 && period_1 && period_2) {
+      const indicator1Value = getIndicatorValue(indicator_type, period_1, indicatorCache, currentIndex, candles);
+      const indicator2Value = getIndicatorValue(indicator_type_2, period_2, indicatorCache, currentIndex, candles);
+      
+      if (indicator1Value === null || indicator2Value === null) continue;
+      
+      // For indicator comparison, we check if indicator1 > indicator2
+      if (indicator1Value <= indicator2Value) return false;
+      continue;
+    }
+    
+    // Handle regular value-based conditions
+    const period = period_1 || 14; // Default to 14 if not specified
+    let indicatorValue = getIndicatorValue(indicator_type, period, indicatorCache, currentIndex, candles);
     let previousIndicatorValue: number | null = null;
-
-    // Get indicator value
-    switch (indicator_type) {
-      case 'price':
-        indicatorValue = currentCandle.close;
-        previousIndicatorValue = previousCandle?.close ?? null;
-        break;
-      case 'volume':
-        indicatorValue = currentCandle.volume;
-        previousIndicatorValue = previousCandle?.volume ?? null;
-        break;
-      case 'rsi':
-        indicatorValue = rsiValues[currentIndex] ?? null;
-        previousIndicatorValue = currentIndex > 0 ? rsiValues[currentIndex - 1] ?? null : null;
-        break;
-      case 'sma':
-      case 'ema':
-      case 'macd':
-        // TODO: Implement these indicators
-        indicatorValue = currentCandle.close;
-        previousIndicatorValue = previousCandle?.close ?? null;
-        break;
+    
+    if (currentIndex > 0) {
+      previousIndicatorValue = getIndicatorValue(indicator_type, period, indicatorCache, currentIndex - 1, candles.slice(0, -1));
     }
 
     if (indicatorValue === null) continue;

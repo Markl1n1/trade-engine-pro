@@ -11,7 +11,7 @@ import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
 type IndicatorType = "rsi" | "macd" | "sma" | "ema" | "bollinger_bands" | "stochastic" | "atr" | "adx";
-type ConditionOperator = "greater_than" | "less_than" | "equals" | "crosses_above" | "crosses_below" | "between";
+type ConditionOperator = "greater_than" | "less_than" | "equals" | "crosses_above" | "crosses_below" | "between" | "indicator_comparison";
 type OrderType = "buy" | "sell";
 
 interface Condition {
@@ -20,6 +20,9 @@ interface Condition {
   operator: ConditionOperator;
   value: number;
   value2?: number;
+  period_1?: number;
+  period_2?: number;
+  indicator_type_2?: IndicatorType;
 }
 
 interface StrategyBuilderProps {
@@ -56,6 +59,7 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
     { value: "equals", label: "Equals" },
     { value: "crosses_above", label: "Crosses Above" },
     { value: "crosses_below", label: "Crosses Below" },
+    { value: "indicator_comparison", label: "Compare Indicators" },
   ];
 
   const timeframes = [
@@ -73,6 +77,7 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
       indicator_type: "rsi" as IndicatorType,
       operator: "greater_than" as ConditionOperator,
       value: 0,
+      period_1: 14,
     };
     
     if (type === "buy") {
@@ -283,52 +288,91 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
               </Button>
             </div>
             {buyConditions.map((condition, idx) => (
-              <div key={idx} className="grid grid-cols-4 gap-2 mb-2">
-                <Select
-                  value={condition.indicator_type}
-                  onValueChange={(val) => updateCondition("buy", idx, "indicator_type", val)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {indicators.map((ind) => (
-                      <SelectItem key={ind.value} value={ind.value}>
-                        {ind.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div key={idx} className="space-y-2 mb-4 p-3 border rounded">
+                <div className="grid grid-cols-5 gap-2">
+                  <Select
+                    value={condition.indicator_type}
+                    onValueChange={(val) => updateCondition("buy", idx, "indicator_type", val)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {indicators.map((ind) => (
+                        <SelectItem key={ind.value} value={ind.value}>
+                          {ind.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
 
-                <Select
-                  value={condition.operator}
-                  onValueChange={(val) => updateCondition("buy", idx, "operator", val)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {operators.map((op) => (
-                      <SelectItem key={op.value} value={op.value}>
-                        {op.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  <Input
+                    type="number"
+                    value={condition.period_1 || ""}
+                    onChange={(e) => updateCondition("buy", idx, "period_1", Number(e.target.value))}
+                    placeholder="Period"
+                  />
 
-                <Input
-                  type="number"
-                  value={condition.value}
-                  onChange={(e) => updateCondition("buy", idx, "value", Number(e.target.value))}
-                  placeholder="Value"
-                />
+                  <Select
+                    value={condition.operator}
+                    onValueChange={(val) => updateCondition("buy", idx, "operator", val)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {operators.map((op) => (
+                        <SelectItem key={op.value} value={op.value}>
+                          {op.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
 
+                  {condition.operator === "indicator_comparison" ? (
+                    <>
+                      <Select
+                        value={condition.indicator_type_2 || "ema"}
+                        onValueChange={(val) => updateCondition("buy", idx, "indicator_type_2", val)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Indicator 2" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {indicators.map((ind) => (
+                            <SelectItem key={ind.value} value={ind.value}>
+                              {ind.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      <Input
+                        type="number"
+                        value={condition.period_2 || ""}
+                        onChange={(e) => updateCondition("buy", idx, "period_2", Number(e.target.value))}
+                        placeholder="Period 2"
+                      />
+                    </>
+                  ) : (
+                    <Input
+                      type="number"
+                      value={condition.value}
+                      onChange={(e) => updateCondition("buy", idx, "value", Number(e.target.value))}
+                      placeholder="Value"
+                      className="col-span-2"
+                    />
+                  )}
+                </div>
+                
                 <Button
                   size="sm"
                   variant="destructive"
                   onClick={() => removeCondition("buy", idx)}
+                  className="w-full"
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <Trash2 className="h-4 w-4 mr-1" />
+                  Remove
                 </Button>
               </div>
             ))}
@@ -343,52 +387,91 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
               </Button>
             </div>
             {sellConditions.map((condition, idx) => (
-              <div key={idx} className="grid grid-cols-4 gap-2 mb-2">
-                <Select
-                  value={condition.indicator_type}
-                  onValueChange={(val) => updateCondition("sell", idx, "indicator_type", val)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {indicators.map((ind) => (
-                      <SelectItem key={ind.value} value={ind.value}>
-                        {ind.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div key={idx} className="space-y-2 mb-4 p-3 border rounded">
+                <div className="grid grid-cols-5 gap-2">
+                  <Select
+                    value={condition.indicator_type}
+                    onValueChange={(val) => updateCondition("sell", idx, "indicator_type", val)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {indicators.map((ind) => (
+                        <SelectItem key={ind.value} value={ind.value}>
+                          {ind.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
 
-                <Select
-                  value={condition.operator}
-                  onValueChange={(val) => updateCondition("sell", idx, "operator", val)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {operators.map((op) => (
-                      <SelectItem key={op.value} value={op.value}>
-                        {op.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  <Input
+                    type="number"
+                    value={condition.period_1 || ""}
+                    onChange={(e) => updateCondition("sell", idx, "period_1", Number(e.target.value))}
+                    placeholder="Period"
+                  />
 
-                <Input
-                  type="number"
-                  value={condition.value}
-                  onChange={(e) => updateCondition("sell", idx, "value", Number(e.target.value))}
-                  placeholder="Value"
-                />
+                  <Select
+                    value={condition.operator}
+                    onValueChange={(val) => updateCondition("sell", idx, "operator", val)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {operators.map((op) => (
+                        <SelectItem key={op.value} value={op.value}>
+                          {op.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
 
+                  {condition.operator === "indicator_comparison" ? (
+                    <>
+                      <Select
+                        value={condition.indicator_type_2 || "ema"}
+                        onValueChange={(val) => updateCondition("sell", idx, "indicator_type_2", val)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Indicator 2" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {indicators.map((ind) => (
+                            <SelectItem key={ind.value} value={ind.value}>
+                              {ind.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      <Input
+                        type="number"
+                        value={condition.period_2 || ""}
+                        onChange={(e) => updateCondition("sell", idx, "period_2", Number(e.target.value))}
+                        placeholder="Period 2"
+                      />
+                    </>
+                  ) : (
+                    <Input
+                      type="number"
+                      value={condition.value}
+                      onChange={(e) => updateCondition("sell", idx, "value", Number(e.target.value))}
+                      placeholder="Value"
+                      className="col-span-2"
+                    />
+                  )}
+                </div>
+                
                 <Button
                   size="sm"
                   variant="destructive"
                   onClick={() => removeCondition("sell", idx)}
+                  className="w-full"
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <Trash2 className="h-4 w-4 mr-1" />
+                  Remove
                 </Button>
               </div>
             ))}
