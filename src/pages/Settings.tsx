@@ -61,9 +61,9 @@ const Settings = () => {
       const { data, error } = await supabase
         .from("user_settings")
         .select("*")
-        .single();
+        .maybeSingle();
 
-      if (error && error.code !== "PGRST116") {
+      if (error) {
         throw error;
       }
 
@@ -259,6 +259,12 @@ const Settings = () => {
       <Card className="p-6">
         <h2 className="text-xl font-semibold mb-4">Binance API Keys</h2>
         <div className="space-y-4">
+          <Alert className="bg-primary/5 border-primary/20">
+            <AlertCircle className="h-4 w-4 text-primary" />
+            <AlertDescription className="text-sm">
+              🔒 Your API keys are protected with enterprise-grade security including audit logging and access controls.
+            </AlertDescription>
+          </Alert>
           <div className="space-y-2">
             <Label htmlFor="api-key">API Key</Label>
             <Input 
@@ -279,9 +285,6 @@ const Settings = () => {
               onChange={(e) => updateSetting("binance_api_secret", e.target.value)}
             />
           </div>
-          <p className="text-sm text-muted-foreground">
-            Your API keys are stored securely in the database. Never share them with anyone.
-          </p>
           <Button 
             variant="outline" 
             onClick={handleTestBinance}

@@ -262,12 +262,46 @@ export type Database = {
         }
         Relationships: []
       }
+      user_settings_audit: {
+        Row: {
+          accessed_at: string | null
+          action: string
+          id: string
+          ip_address: string | null
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          accessed_at?: string | null
+          action: string
+          id?: string
+          ip_address?: string | null
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          accessed_at?: string | null
+          action?: string
+          id?: string
+          ip_address?: string | null
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_user_api_credentials: {
+        Args: { user_uuid: string }
+        Returns: {
+          binance_api_key: string
+          binance_api_secret: string
+          use_testnet: boolean
+        }[]
+      }
     }
     Enums: {
       condition_operator:

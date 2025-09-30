@@ -30,13 +30,13 @@ Deno.serve(async (req) => {
       .from('user_settings')
       .select('telegram_bot_token, telegram_chat_id')
       .eq('user_id', user.id)
-      .single();
+      .maybeSingle();
 
-    if (settingsError || !settings) {
-      throw new Error('Settings not found');
+    if (settingsError) {
+      throw new Error('Failed to fetch settings');
     }
 
-    if (!settings.telegram_bot_token || !settings.telegram_chat_id) {
+    if (!settings || !settings.telegram_bot_token || !settings.telegram_chat_id) {
       throw new Error('Telegram credentials not configured');
     }
 

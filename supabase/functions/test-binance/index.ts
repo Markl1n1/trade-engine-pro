@@ -25,16 +25,15 @@ Deno.serve(async (req) => {
       throw new Error('Unauthorized');
     }
 
-    // Get user settings to retrieve Binance credentials
-    const { data: settings, error: settingsError } = await supabase
-      .from('user_settings')
-      .select('binance_api_key, binance_api_secret, use_testnet')
-      .eq('user_id', user.id)
-      .single();
+    // Get user settings using the secure function
+    const { data: credentials, error: credentialsError } = await supabase
+      .rpc('get_user_api_credentials', { user_uuid: user.id });
 
-    if (settingsError || !settings) {
-      throw new Error('Settings not found');
+    if (credentialsError || !credentials || credentials.length === 0) {
+      throw new Error('API credentials not found');
     }
+
+    const settings = credentials[0];
 
     if (!settings.binance_api_key || !settings.binance_api_secret) {
       throw new Error('Binance API credentials not configured');
