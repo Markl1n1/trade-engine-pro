@@ -5,7 +5,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-Deno.serve(async (req) => {
+serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -16,7 +16,6 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // Get the user from the authorization header
     const authHeader = req.headers.get('Authorization')!;
     const token = authHeader.replace('Bearer ', '');
     const { data: { user }, error: userError } = await supabase.auth.getUser(token);
@@ -25,7 +24,7 @@ Deno.serve(async (req) => {
       throw new Error('Unauthorized');
     }
 
-    // Get encrypted credentials from database
+    // Get user settings to determine which API keys to use
     const { data: settings, error: settingsError } = await supabase
       .from('user_settings')
       .select('binance_mainnet_api_key, binance_mainnet_api_secret, binance_testnet_api_key, binance_testnet_api_secret, use_testnet')
@@ -53,7 +52,6 @@ Deno.serve(async (req) => {
       throw new Error(`Binance API credentials not configured for ${settings.use_testnet ? 'testnet' : 'mainnet'}`);
     }
 
-    // Determine base URL based on testnet setting
     const baseUrl = settings.use_testnet 
       ? 'https://testnet.binancefuture.com'
       : 'https://fapi.binance.com';
@@ -62,7 +60,6 @@ Deno.serve(async (req) => {
     const timestamp = Date.now();
     const queryString = `timestamp=${timestamp}`;
     
-    // Create HMAC signature
     const encoder = new TextEncoder();
     const key = await crypto.subtle.importKey(
       'raw',
@@ -82,25 +79,68 @@ Deno.serve(async (req) => {
       .map(b => b.toString(16).padStart(2, '0'))
       .join('');
 
-    // Make request to Binance API
-    const binanceUrl = `${baseUrl}/fapi/v2/account?${queryString}&signature=${signatureHex}`;
-    
-    const binanceResponse = await fetch(binanceUrl, {
-      method: 'GET',
-      headers: {
-        'X-MBX-APIKEY': apiKey,
-      },
+    // Fetch account data
+    const accountUrl = `${baseUrl}/fapi/v2/account?${queryString}&signature=${signatureHex}`;
+    const accountResponse = await fetch(accountUrl, {
+      headers: { 'X-MBX-APIKEY': apiKey },
     });
 
-    if (!binanceResponse.ok) {
-      const errorData = await binanceResponse.text();
-      console.error('Binance API error:', errorData);
+    if (!accountResponse.ok) {
+      const errorData = await accountResponse.text();
+      console.error('Binance account API error:', errorData);
       throw new Error(`Binance API error: ${errorData}`);
     }
 
-    const accountData = await binanceResponse.json();
+    const accountData = await accountResponse.json();
 
-    // Extract relevant account information
+    // Fetch user's trade history for win rate calculation
+    const tradesQueryString = `timestamp=${Date.now()}`;
+    const tradesKey = await crypto.subtle.importKey(
+      'raw',
+      encoder.encode(apiSecret),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign']
+    );
+    
+    const tradesSignature = await crypto.subtle.sign(
+      'HMAC',
+      tradesKey,
+      encoder.encode(tradesQueryString)
+    );
+    
+    const tradesSignatureHex = Array.from(new Uint8Array(tradesSignature))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+
+    const tradesUrl = `${baseUrl}/fapi/v1/userTrades?${tradesQueryString}&signature=${tradesSignatureHex}`;
+    const tradesResponse = await fetch(tradesUrl, {
+      headers: { 'X-MBX-APIKEY': apiKey },
+    });
+
+    let winRate = 0;
+    let totalTrades = 0;
+    let winningTrades = 0;
+
+    if (tradesResponse.ok) {
+      const trades = await tradesResponse.json();
+      totalTrades = trades.length;
+      winningTrades = trades.filter((trade: any) => parseFloat(trade.realizedPnl) > 0).length;
+      winRate = totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0;
+    }
+
+    // Extract positions and balances
+    const positions = accountData.positions
+      ?.filter((pos: any) => parseFloat(pos.positionAmt) !== 0)
+      .map((pos: any) => ({
+        symbol: pos.symbol,
+        positionAmt: parseFloat(pos.positionAmt),
+        entryPrice: parseFloat(pos.entryPrice),
+        unrealizedProfit: parseFloat(pos.unrealizedProfit),
+        leverage: parseFloat(pos.leverage),
+        side: parseFloat(pos.positionAmt) > 0 ? 'LONG' : 'SHORT',
+      })) || [];
+
     const balances = accountData.assets
       ?.filter((asset: any) => parseFloat(asset.walletBalance) > 0)
       .map((asset: any) => ({
@@ -112,14 +152,16 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        message: 'Connected to Binance successfully',
         data: {
-          canTrade: accountData.canTrade,
-          canDeposit: accountData.canDeposit,
-          canWithdraw: accountData.canWithdraw,
-          totalWalletBalance: accountData.totalWalletBalance,
-          totalUnrealizedProfit: accountData.totalUnrealizedProfit,
+          totalWalletBalance: parseFloat(accountData.totalWalletBalance),
+          totalUnrealizedProfit: parseFloat(accountData.totalUnrealizedProfit),
+          totalMarginBalance: parseFloat(accountData.totalMarginBalance),
+          availableBalance: parseFloat(accountData.availableBalance),
+          positions: positions,
           balances: balances,
+          openPositionsCount: positions.length,
+          winRate: winRate,
+          totalTrades: totalTrades,
           environment: settings.use_testnet ? 'testnet' : 'mainnet',
         },
       }),
@@ -128,7 +170,7 @@ Deno.serve(async (req) => {
       }
     );
   } catch (error: any) {
-    console.error('Error testing Binance connection:', error);
+    console.error('Error fetching account data:', error);
     return new Response(
       JSON.stringify({
         success: false,
@@ -141,3 +183,5 @@ Deno.serve(async (req) => {
     );
   }
 });
+
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";

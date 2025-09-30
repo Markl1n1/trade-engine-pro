@@ -344,6 +344,10 @@ export type Database = {
         Row: {
           binance_api_key: string | null
           binance_api_secret: string | null
+          binance_mainnet_api_key: string | null
+          binance_mainnet_api_secret: string | null
+          binance_testnet_api_key: string | null
+          binance_testnet_api_secret: string | null
           created_at: string
           id: string
           telegram_bot_token: string | null
@@ -356,6 +360,10 @@ export type Database = {
         Insert: {
           binance_api_key?: string | null
           binance_api_secret?: string | null
+          binance_mainnet_api_key?: string | null
+          binance_mainnet_api_secret?: string | null
+          binance_testnet_api_key?: string | null
+          binance_testnet_api_secret?: string | null
           created_at?: string
           id?: string
           telegram_bot_token?: string | null
@@ -368,6 +376,10 @@ export type Database = {
         Update: {
           binance_api_key?: string | null
           binance_api_secret?: string | null
+          binance_mainnet_api_key?: string | null
+          binance_mainnet_api_secret?: string | null
+          binance_testnet_api_key?: string | null
+          binance_testnet_api_secret?: string | null
           created_at?: string
           id?: string
           telegram_bot_token?: string | null
@@ -402,6 +414,33 @@ export type Database = {
           id?: string
           ip_address?: string | null
           user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_trading_pairs: {
+        Row: {
+          base_asset: string
+          created_at: string | null
+          id: string
+          quote_asset: string
+          symbol: string
+          user_id: string
+        }
+        Insert: {
+          base_asset: string
+          created_at?: string | null
+          id?: string
+          quote_asset: string
+          symbol: string
+          user_id: string
+        }
+        Update: {
+          base_asset?: string
+          created_at?: string | null
+          id?: string
+          quote_asset?: string
+          symbol?: string
           user_id?: string
         }
         Relationships: []

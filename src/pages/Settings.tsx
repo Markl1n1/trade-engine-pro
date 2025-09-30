@@ -9,10 +9,14 @@ import { useEffect, useState } from "react";
 import { Loader2, Save, AlertCircle, Send, CheckCircle, Shield } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { encryptData, decryptData, isEncrypted } from "@/lib/encryption";
+import { TradingPairsManager } from "@/components/TradingPairsManager";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface UserSettings {
-  binance_api_key: string;
-  binance_api_secret: string;
+  binance_mainnet_api_key: string;
+  binance_mainnet_api_secret: string;
+  binance_testnet_api_key: string;
+  binance_testnet_api_secret: string;
   use_testnet: boolean;
   telegram_bot_token: string;
   telegram_chat_id: string;
@@ -27,8 +31,10 @@ const Settings = () => {
   const [testingTelegram, setTestingTelegram] = useState(false);
   const [testingBinance, setTestingBinance] = useState(false);
   const [settings, setSettings] = useState<UserSettings>({
-    binance_api_key: "",
-    binance_api_secret: "",
+    binance_mainnet_api_key: "",
+    binance_mainnet_api_secret: "",
+    binance_testnet_api_key: "",
+    binance_testnet_api_secret: "",
     use_testnet: true,
     telegram_bot_token: "",
     telegram_chat_id: "",
@@ -73,20 +79,29 @@ const Settings = () => {
 
       if (data) {
         // Decrypt API credentials if they are encrypted
-        let apiKey = data.binance_api_key || "";
-        let apiSecret = data.binance_api_secret || "";
+        let mainnetApiKey = data.binance_mainnet_api_key || "";
+        let mainnetApiSecret = data.binance_mainnet_api_secret || "";
+        let testnetApiKey = data.binance_testnet_api_key || "";
+        let testnetApiSecret = data.binance_testnet_api_secret || "";
         
-        if (apiKey && isEncrypted(apiKey)) {
-          apiKey = decryptData(apiKey, user.id);
+        if (mainnetApiKey && isEncrypted(mainnetApiKey)) {
+          mainnetApiKey = decryptData(mainnetApiKey, user.id);
         }
-        
-        if (apiSecret && isEncrypted(apiSecret)) {
-          apiSecret = decryptData(apiSecret, user.id);
+        if (mainnetApiSecret && isEncrypted(mainnetApiSecret)) {
+          mainnetApiSecret = decryptData(mainnetApiSecret, user.id);
+        }
+        if (testnetApiKey && isEncrypted(testnetApiKey)) {
+          testnetApiKey = decryptData(testnetApiKey, user.id);
+        }
+        if (testnetApiSecret && isEncrypted(testnetApiSecret)) {
+          testnetApiSecret = decryptData(testnetApiSecret, user.id);
         }
 
         setSettings({
-          binance_api_key: apiKey,
-          binance_api_secret: apiSecret,
+          binance_mainnet_api_key: mainnetApiKey,
+          binance_mainnet_api_secret: mainnetApiSecret,
+          binance_testnet_api_key: testnetApiKey,
+          binance_testnet_api_secret: testnetApiSecret,
           use_testnet: data.use_testnet,
           telegram_bot_token: data.telegram_bot_token || "",
           telegram_chat_id: data.telegram_chat_id || "",
@@ -124,20 +139,27 @@ const Settings = () => {
       }
 
       // Encrypt API credentials before saving
-      const encryptedApiKey = settings.binance_api_key 
-        ? encryptData(settings.binance_api_key, user.id)
+      const encryptedMainnetApiKey = settings.binance_mainnet_api_key 
+        ? encryptData(settings.binance_mainnet_api_key, user.id)
         : null;
-      
-      const encryptedApiSecret = settings.binance_api_secret
-        ? encryptData(settings.binance_api_secret, user.id)
+      const encryptedMainnetApiSecret = settings.binance_mainnet_api_secret
+        ? encryptData(settings.binance_mainnet_api_secret, user.id)
+        : null;
+      const encryptedTestnetApiKey = settings.binance_testnet_api_key 
+        ? encryptData(settings.binance_testnet_api_key, user.id)
+        : null;
+      const encryptedTestnetApiSecret = settings.binance_testnet_api_secret
+        ? encryptData(settings.binance_testnet_api_secret, user.id)
         : null;
 
       const { error } = await supabase
         .from("user_settings")
         .upsert({
           user_id: user.id,
-          binance_api_key: encryptedApiKey,
-          binance_api_secret: encryptedApiSecret,
+          binance_mainnet_api_key: encryptedMainnetApiKey,
+          binance_mainnet_api_secret: encryptedMainnetApiSecret,
+          binance_testnet_api_key: encryptedTestnetApiKey,
+          binance_testnet_api_secret: encryptedTestnetApiSecret,
           use_testnet: settings.use_testnet,
           telegram_bot_token: settings.telegram_bot_token,
           telegram_chat_id: settings.telegram_chat_id,
@@ -265,7 +287,7 @@ const Settings = () => {
             <div>
               <Label htmlFor="testnet" className="text-base">Testnet Mode</Label>
               <p className="text-sm text-muted-foreground">
-                Use Binance Testnet for safe testing
+                Switches between Binance mainnet and testnet API endpoints
               </p>
             </div>
             <Switch 
@@ -274,14 +296,22 @@ const Settings = () => {
               onCheckedChange={(checked) => updateSetting("use_testnet", checked)}
             />
           </div>
-          {settings.use_testnet && (
-            <div className="p-3 bg-warning/10 border border-warning/30 rounded flex gap-2">
-              <AlertCircle className="h-4 w-4 text-warning mt-0.5 flex-shrink-0" />
-              <p className="text-xs text-warning">
-                Currently in TESTNET mode. Switch to mainnet to trade with real funds.
-              </p>
-            </div>
-          )}
+          <Alert className={settings.use_testnet ? "bg-warning/10 border-warning/30" : "bg-primary/10 border-primary/30"}>
+            <AlertCircle className={`h-4 w-4 ${settings.use_testnet ? "text-warning" : "text-primary"}`} />
+            <AlertDescription className="text-xs">
+              {settings.use_testnet ? (
+                <>
+                  <strong>TESTNET MODE:</strong> Using https://testnet.binancefuture.com
+                  <br />No real funds at risk. Perfect for testing strategies.
+                </>
+              ) : (
+                <>
+                  <strong>MAINNET MODE:</strong> Using https://fapi.binance.com
+                  <br />⚠️ Real funds trading enabled. Be cautious!
+                </>
+              )}
+            </AlertDescription>
+          </Alert>
         </div>
       </Card>
 
@@ -291,52 +321,92 @@ const Settings = () => {
           <h2 className="text-xl font-semibold">Binance API Keys</h2>
           <Shield className="h-5 w-5 text-green-500" />
         </div>
-        <div className="space-y-4">
-          <Alert className="bg-green-500/5 border-green-500/20">
-            <Shield className="h-4 w-4 text-green-500" />
-            <AlertDescription className="text-sm">
-              🔒 <strong>Military-Grade Encryption Active:</strong> Your API keys are encrypted using AES-256 before storage. They're decrypted only on your device, ensuring maximum security.
-            </AlertDescription>
-          </Alert>
-          <div className="space-y-2">
-            <Label htmlFor="api-key">API Key</Label>
-            <Input 
-              id="api-key" 
-              type="password" 
-              placeholder="Enter your Binance API key"
-              value={settings.binance_api_key}
-              onChange={(e) => updateSetting("binance_api_key", e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="api-secret">API Secret</Label>
-            <Input 
-              id="api-secret" 
-              type="password" 
-              placeholder="Enter your Binance API secret"
-              value={settings.binance_api_secret}
-              onChange={(e) => updateSetting("binance_api_secret", e.target.value)}
-            />
-          </div>
-          <Button 
-            variant="outline" 
-            onClick={handleTestBinance}
-            disabled={testingBinance || !settings.binance_api_key || !settings.binance_api_secret}
-          >
-            {testingBinance ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Testing...
-              </>
-            ) : (
-              <>
-                <CheckCircle className="mr-2 h-4 w-4" />
-                Test Connection
-              </>
-            )}
-          </Button>
-        </div>
+        <Alert className="bg-green-500/5 border-green-500/20 mb-4">
+          <Shield className="h-4 w-4 text-green-500" />
+          <AlertDescription className="text-sm">
+            🔒 <strong>Military-Grade Encryption:</strong> Your API keys are encrypted using AES-256 before storage. Separate credentials for testnet and mainnet.
+          </AlertDescription>
+        </Alert>
+
+        <Tabs defaultValue="mainnet" className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="mainnet">Mainnet API Keys</TabsTrigger>
+            <TabsTrigger value="testnet">Testnet API Keys</TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="mainnet" className="space-y-4 mt-4">
+            <div className="space-y-2">
+              <Label htmlFor="mainnet-api-key">Mainnet API Key</Label>
+              <Input 
+                id="mainnet-api-key" 
+                type="password" 
+                placeholder="Enter your Binance mainnet API key"
+                value={settings.binance_mainnet_api_key}
+                onChange={(e) => updateSetting("binance_mainnet_api_key", e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="mainnet-api-secret">Mainnet API Secret</Label>
+              <Input 
+                id="mainnet-api-secret" 
+                type="password" 
+                placeholder="Enter your Binance mainnet API secret"
+                value={settings.binance_mainnet_api_secret}
+                onChange={(e) => updateSetting("binance_mainnet_api_secret", e.target.value)}
+              />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="testnet" className="space-y-4 mt-4">
+            <div className="space-y-2">
+              <Label htmlFor="testnet-api-key">Testnet API Key</Label>
+              <Input 
+                id="testnet-api-key" 
+                type="password" 
+                placeholder="Enter your Binance testnet API key"
+                value={settings.binance_testnet_api_key}
+                onChange={(e) => updateSetting("binance_testnet_api_key", e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="testnet-api-secret">Testnet API Secret</Label>
+              <Input 
+                id="testnet-api-secret" 
+                type="password" 
+                placeholder="Enter your Binance testnet API secret"
+                value={settings.binance_testnet_api_secret}
+                onChange={(e) => updateSetting("binance_testnet_api_secret", e.target.value)}
+              />
+            </div>
+          </TabsContent>
+        </Tabs>
+
+        <Button 
+          variant="outline" 
+          onClick={handleTestBinance}
+          disabled={testingBinance || (
+            settings.use_testnet 
+              ? !settings.binance_testnet_api_key || !settings.binance_testnet_api_secret
+              : !settings.binance_mainnet_api_key || !settings.binance_mainnet_api_secret
+          )}
+          className="mt-4"
+        >
+          {testingBinance ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Testing...
+            </>
+          ) : (
+            <>
+              <CheckCircle className="mr-2 h-4 w-4" />
+              Test {settings.use_testnet ? 'Testnet' : 'Mainnet'} Connection
+            </>
+          )}
+        </Button>
       </Card>
+
+      {/* Trading Pairs Section */}
+      <TradingPairsManager />
 
       {/* Telegram Section */}
       <Card className="p-6">
