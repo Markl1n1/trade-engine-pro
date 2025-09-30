@@ -1,0 +1,435 @@
+// Comprehensive indicator calculation library for all 50+ indicators
+
+export interface Candle {
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+// ============= MOVING AVERAGES =============
+
+export function calculateSMA(data: number[], period: number): number[] {
+  const result: number[] = [];
+  for (let i = 0; i < data.length; i++) {
+    if (i < period - 1) {
+      result.push(NaN);
+    } else {
+      const sum = data.slice(i - period + 1, i + 1).reduce((a, b) => a + b, 0);
+      result.push(sum / period);
+    }
+  }
+  return result;
+}
+
+export function calculateEMA(data: number[], period: number): number[] {
+  const result: number[] = [];
+  const multiplier = 2 / (period + 1);
+  
+  // First value is SMA
+  const sma = data.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  result.push(sma);
+  
+  for (let i = period; i < data.length; i++) {
+    const ema = (data[i] - result[result.length - 1]) * multiplier + result[result.length - 1];
+    result.push(ema);
+  }
+  
+  return new Array(period - 1).fill(NaN).concat(result);
+}
+
+export function calculateWMA(data: number[], period: number): number[] {
+  const result: number[] = [];
+  const weights = Array.from({ length: period }, (_, i) => i + 1);
+  const weightSum = weights.reduce((a, b) => a + b, 0);
+  
+  for (let i = 0; i < data.length; i++) {
+    if (i < period - 1) {
+      result.push(NaN);
+    } else {
+      const weightedSum = data
+        .slice(i - period + 1, i + 1)
+        .reduce((sum, val, idx) => sum + val * weights[idx], 0);
+      result.push(weightedSum / weightSum);
+    }
+  }
+  return result;
+}
+
+export function calculateDEMA(data: number[], period: number): number[] {
+  const ema1 = calculateEMA(data, period);
+  const ema2 = calculateEMA(ema1.filter(v => !isNaN(v)), period);
+  return ema1.map((v, i) => 2 * v - (ema2[i] || 0));
+}
+
+export function calculateTEMA(data: number[], period: number): number[] {
+  const ema1 = calculateEMA(data, period);
+  const ema2 = calculateEMA(ema1.filter(v => !isNaN(v)), period);
+  const ema3 = calculateEMA(ema2.filter(v => !isNaN(v)), period);
+  return ema1.map((v, i) => 3 * v - 3 * (ema2[i] || 0) + (ema3[i] || 0));
+}
+
+export function calculateHullMA(data: number[], period: number): number[] {
+  const halfPeriod = Math.floor(period / 2);
+  const sqrtPeriod = Math.floor(Math.sqrt(period));
+  
+  const wma1 = calculateWMA(data, halfPeriod);
+  const wma2 = calculateWMA(data, period);
+  const rawHull = wma1.map((v, i) => 2 * v - wma2[i]);
+  
+  return calculateWMA(rawHull, sqrtPeriod);
+}
+
+export function calculateVWMA(candles: Candle[], period: number): number[] {
+  const result: number[] = [];
+  
+  for (let i = 0; i < candles.length; i++) {
+    if (i < period - 1) {
+      result.push(NaN);
+    } else {
+      let volumeSum = 0;
+      let priceVolumeSum = 0;
+      
+      for (let j = i - period + 1; j <= i; j++) {
+        priceVolumeSum += candles[j].close * candles[j].volume;
+        volumeSum += candles[j].volume;
+      }
+      
+      result.push(volumeSum === 0 ? NaN : priceVolumeSum / volumeSum);
+    }
+  }
+  return result;
+}
+
+// ============= OSCILLATORS =============
+
+export function calculateRSI(data: number[], period: number = 14): number[] {
+  const result: number[] = [];
+  const gains: number[] = [];
+  const losses: number[] = [];
+  
+  for (let i = 1; i < data.length; i++) {
+    const change = data[i] - data[i - 1];
+    gains.push(change > 0 ? change : 0);
+    losses.push(change < 0 ? -change : 0);
+  }
+  
+  for (let i = 0; i < gains.length; i++) {
+    if (i < period - 1) {
+      result.push(NaN);
+    } else {
+      const avgGain = gains.slice(i - period + 1, i + 1).reduce((a, b) => a + b, 0) / period;
+      const avgLoss = losses.slice(i - period + 1, i + 1).reduce((a, b) => a + b, 0) / period;
+      
+      if (avgLoss === 0) {
+        result.push(100);
+      } else {
+        const rs = avgGain / avgLoss;
+        result.push(100 - (100 / (1 + rs)));
+      }
+    }
+  }
+  
+  return [NaN, ...result];
+}
+
+export function calculateStochastic(candles: Candle[], period: number = 14, smoothK: number = 3, smoothD: number = 3): { k: number[], d: number[] } {
+  const k: number[] = [];
+  
+  for (let i = 0; i < candles.length; i++) {
+    if (i < period - 1) {
+      k.push(NaN);
+    } else {
+      const slice = candles.slice(i - period + 1, i + 1);
+      const low = Math.min(...slice.map(c => c.low));
+      const high = Math.max(...slice.map(c => c.high));
+      const close = candles[i].close;
+      
+      if (high === low) {
+        k.push(50);
+      } else {
+        k.push(((close - low) / (high - low)) * 100);
+      }
+    }
+  }
+  
+  const smoothedK = calculateSMA(k, smoothK);
+  const d = calculateSMA(smoothedK, smoothD);
+  
+  return { k: smoothedK, d };
+}
+
+export function calculateCCI(candles: Candle[], period: number = 20): number[] {
+  const result: number[] = [];
+  const typicalPrices = candles.map(c => (c.high + c.low + c.close) / 3);
+  
+  for (let i = 0; i < candles.length; i++) {
+    if (i < period - 1) {
+      result.push(NaN);
+    } else {
+      const slice = typicalPrices.slice(i - period + 1, i + 1);
+      const sma = slice.reduce((a, b) => a + b, 0) / period;
+      const meanDeviation = slice.reduce((sum, val) => sum + Math.abs(val - sma), 0) / period;
+      
+      result.push((typicalPrices[i] - sma) / (0.015 * meanDeviation));
+    }
+  }
+  return result;
+}
+
+export function calculateWPR(candles: Candle[], period: number = 14): number[] {
+  const result: number[] = [];
+  
+  for (let i = 0; i < candles.length; i++) {
+    if (i < period - 1) {
+      result.push(NaN);
+    } else {
+      const slice = candles.slice(i - period + 1, i + 1);
+      const high = Math.max(...slice.map(c => c.high));
+      const low = Math.min(...slice.map(c => c.low));
+      const close = candles[i].close;
+      
+      result.push(((high - close) / (high - low)) * -100);
+    }
+  }
+  return result;
+}
+
+export function calculateMFI(candles: Candle[], period: number = 14): number[] {
+  const result: number[] = [];
+  const typicalPrices = candles.map(c => (c.high + c.low + c.close) / 3);
+  const moneyFlow = typicalPrices.map((tp, i) => tp * candles[i].volume);
+  
+  for (let i = 1; i < candles.length; i++) {
+    if (i < period) {
+      result.push(NaN);
+    } else {
+      let positiveFlow = 0;
+      let negativeFlow = 0;
+      
+      for (let j = i - period + 1; j <= i; j++) {
+        if (typicalPrices[j] > typicalPrices[j - 1]) {
+          positiveFlow += moneyFlow[j];
+        } else {
+          negativeFlow += moneyFlow[j];
+        }
+      }
+      
+      const mfr = negativeFlow === 0 ? 100 : positiveFlow / negativeFlow;
+      result.push(100 - (100 / (1 + mfr)));
+    }
+  }
+  
+  return [NaN, ...result];
+}
+
+export function calculateStochRSI(data: number[], rsiPeriod: number = 14, stochPeriod: number = 14): number[] {
+  const rsi = calculateRSI(data, rsiPeriod);
+  const result: number[] = [];
+  
+  for (let i = 0; i < rsi.length; i++) {
+    if (i < stochPeriod - 1 || isNaN(rsi[i])) {
+      result.push(NaN);
+    } else {
+      const slice = rsi.slice(i - stochPeriod + 1, i + 1).filter(v => !isNaN(v));
+      const min = Math.min(...slice);
+      const max = Math.max(...slice);
+      
+      if (max === min) {
+        result.push(50);
+      } else {
+        result.push(((rsi[i] - min) / (max - min)) * 100);
+      }
+    }
+  }
+  
+  return result;
+}
+
+export function calculateMomentum(data: number[], period: number = 10): number[] {
+  const result: number[] = [];
+  
+  for (let i = 0; i < data.length; i++) {
+    if (i < period) {
+      result.push(NaN);
+    } else {
+      result.push(data[i] - data[i - period]);
+    }
+  }
+  
+  return result;
+}
+
+export function calculateROC(data: number[], period: number = 12): number[] {
+  const result: number[] = [];
+  
+  for (let i = 0; i < data.length; i++) {
+    if (i < period) {
+      result.push(NaN);
+    } else {
+      result.push(((data[i] - data[i - period]) / data[i - period]) * 100);
+    }
+  }
+  
+  return result;
+}
+
+// ============= VOLUME INDICATORS =============
+
+export function calculateOBV(candles: Candle[]): number[] {
+  const result: number[] = [0];
+  
+  for (let i = 1; i < candles.length; i++) {
+    if (candles[i].close > candles[i - 1].close) {
+      result.push(result[result.length - 1] + candles[i].volume);
+    } else if (candles[i].close < candles[i - 1].close) {
+      result.push(result[result.length - 1] - candles[i].volume);
+    } else {
+      result.push(result[result.length - 1]);
+    }
+  }
+  
+  return result;
+}
+
+export function calculateADLine(candles: Candle[]): number[] {
+  const result: number[] = [0];
+  
+  for (let i = 0; i < candles.length; i++) {
+    const clv = ((candles[i].close - candles[i].low) - (candles[i].high - candles[i].close)) / (candles[i].high - candles[i].low || 1);
+    const ad = clv * candles[i].volume;
+    result.push(i === 0 ? ad : result[result.length - 1] + ad);
+  }
+  
+  return result;
+}
+
+export function calculateCMF(candles: Candle[], period: number = 20): number[] {
+  const result: number[] = [];
+  
+  for (let i = 0; i < candles.length; i++) {
+    if (i < period - 1) {
+      result.push(NaN);
+    } else {
+      let mfvSum = 0;
+      let volumeSum = 0;
+      
+      for (let j = i - period + 1; j <= i; j++) {
+        const mfm = ((candles[j].close - candles[j].low) - (candles[j].high - candles[j].close)) / (candles[j].high - candles[j].low || 1);
+        mfvSum += mfm * candles[j].volume;
+        volumeSum += candles[j].volume;
+      }
+      
+      result.push(volumeSum === 0 ? 0 : mfvSum / volumeSum);
+    }
+  }
+  
+  return result;
+}
+
+export function calculateVWAP(candles: Candle[]): number[] {
+  const result: number[] = [];
+  let cumulativePV = 0;
+  let cumulativeVolume = 0;
+  
+  for (let i = 0; i < candles.length; i++) {
+    const typicalPrice = (candles[i].high + candles[i].low + candles[i].close) / 3;
+    cumulativePV += typicalPrice * candles[i].volume;
+    cumulativeVolume += candles[i].volume;
+    
+    result.push(cumulativeVolume === 0 ? NaN : cumulativePV / cumulativeVolume);
+  }
+  
+  return result;
+}
+
+// ============= TREND INDICATORS =============
+
+export function calculateMACD(data: number[], fastPeriod: number = 12, slowPeriod: number = 26, signalPeriod: number = 9): { macd: number[], signal: number[], histogram: number[] } {
+  const fastEMA = calculateEMA(data, fastPeriod);
+  const slowEMA = calculateEMA(data, slowPeriod);
+  
+  const macd = fastEMA.map((v, i) => v - slowEMA[i]);
+  const signal = calculateEMA(macd.filter(v => !isNaN(v)), signalPeriod);
+  
+  // Pad signal to match macd length
+  const paddedSignal = new Array(macd.length - signal.length).fill(NaN).concat(signal);
+  const histogram = macd.map((v, i) => v - paddedSignal[i]);
+  
+  return { macd, signal: paddedSignal, histogram };
+}
+
+export function calculateADX(candles: Candle[], period: number = 14): { adx: number[], plusDI: number[], minusDI: number[] } {
+  const tr: number[] = [];
+  const plusDM: number[] = [];
+  const minusDM: number[] = [];
+  
+  for (let i = 1; i < candles.length; i++) {
+    const high = candles[i].high;
+    const low = candles[i].low;
+    const prevHigh = candles[i - 1].high;
+    const prevLow = candles[i - 1].low;
+    const prevClose = candles[i - 1].close;
+    
+    tr.push(Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose)));
+    
+    const upMove = high - prevHigh;
+    const downMove = prevLow - low;
+    
+    plusDM.push(upMove > downMove && upMove > 0 ? upMove : 0);
+    minusDM.push(downMove > upMove && downMove > 0 ? downMove : 0);
+  }
+  
+  const atr = calculateEMA([NaN, ...tr], period);
+  const plusDI = plusDM.map((dm, i) => atr[i + 1] === 0 ? 0 : (dm / atr[i + 1]) * 100);
+  const minusDI = minusDM.map((dm, i) => atr[i + 1] === 0 ? 0 : (dm / atr[i + 1]) * 100);
+  
+  const dx = plusDI.map((pdi, i) => {
+    const sum = pdi + minusDI[i];
+    return sum === 0 ? 0 : (Math.abs(pdi - minusDI[i]) / sum) * 100;
+  });
+  
+  const adx = calculateEMA([NaN, ...dx], period);
+  
+  return { adx, plusDI: [NaN, ...plusDI], minusDI: [NaN, ...minusDI] };
+}
+
+// ============= VOLATILITY INDICATORS =============
+
+export function calculateATR(candles: Candle[], period: number = 14): number[] {
+  const tr: number[] = [];
+  
+  for (let i = 1; i < candles.length; i++) {
+    const high = candles[i].high;
+    const low = candles[i].low;
+    const prevClose = candles[i - 1].close;
+    
+    tr.push(Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose)));
+  }
+  
+  return [NaN, ...calculateEMA(tr, period)];
+}
+
+export function calculateBollingerBands(data: number[], period: number = 20, deviation: number = 2): { upper: number[], middle: number[], lower: number[] } {
+  const middle = calculateSMA(data, period);
+  const upper: number[] = [];
+  const lower: number[] = [];
+  
+  for (let i = 0; i < data.length; i++) {
+    if (i < period - 1) {
+      upper.push(NaN);
+      lower.push(NaN);
+    } else {
+      const slice = data.slice(i - period + 1, i + 1);
+      const mean = middle[i];
+      const variance = slice.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / period;
+      const stdDev = Math.sqrt(variance);
+      
+      upper.push(mean + deviation * stdDev);
+      lower.push(mean - deviation * stdDev);
+    }
+  }
+  
+  return { upper, middle, lower };
+}

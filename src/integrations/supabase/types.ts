@@ -14,6 +14,41 @@ export type Database = {
   }
   public: {
     Tables: {
+      condition_groups: {
+        Row: {
+          created_at: string | null
+          group_name: string
+          group_operator: string | null
+          id: string
+          order_index: number
+          strategy_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          group_name: string
+          group_operator?: string | null
+          id?: string
+          order_index?: number
+          strategy_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          group_name?: string
+          group_operator?: string | null
+          id?: string
+          order_index?: number
+          strategy_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "condition_groups_strategy_id_fkey"
+            columns: ["strategy_id"]
+            isOneToOne: false
+            referencedRelation: "strategies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       market_data: {
         Row: {
           close: number
@@ -165,55 +200,83 @@ export type Database = {
       }
       strategy_conditions: {
         Row: {
+          acceleration: number | null
+          confirmation_bars: number | null
           created_at: string
+          deviation: number | null
+          group_id: string | null
           id: string
           indicator_type: Database["public"]["Enums"]["indicator_type"]
           indicator_type_2: Database["public"]["Enums"]["indicator_type"] | null
           logical_operator: string | null
+          lookback_bars: number | null
+          multiplier: number | null
           operator: Database["public"]["Enums"]["condition_operator"]
           order_index: number
           order_type: Database["public"]["Enums"]["order_type"]
           period_1: number | null
           period_2: number | null
+          smoothing: number | null
           strategy_id: string
           value: number
           value2: number | null
         }
         Insert: {
+          acceleration?: number | null
+          confirmation_bars?: number | null
           created_at?: string
+          deviation?: number | null
+          group_id?: string | null
           id?: string
           indicator_type: Database["public"]["Enums"]["indicator_type"]
           indicator_type_2?:
             | Database["public"]["Enums"]["indicator_type"]
             | null
           logical_operator?: string | null
+          lookback_bars?: number | null
+          multiplier?: number | null
           operator: Database["public"]["Enums"]["condition_operator"]
           order_index?: number
           order_type: Database["public"]["Enums"]["order_type"]
           period_1?: number | null
           period_2?: number | null
+          smoothing?: number | null
           strategy_id: string
           value: number
           value2?: number | null
         }
         Update: {
+          acceleration?: number | null
+          confirmation_bars?: number | null
           created_at?: string
+          deviation?: number | null
+          group_id?: string | null
           id?: string
           indicator_type?: Database["public"]["Enums"]["indicator_type"]
           indicator_type_2?:
             | Database["public"]["Enums"]["indicator_type"]
             | null
           logical_operator?: string | null
+          lookback_bars?: number | null
+          multiplier?: number | null
           operator?: Database["public"]["Enums"]["condition_operator"]
           order_index?: number
           order_type?: Database["public"]["Enums"]["order_type"]
           period_1?: number | null
           period_2?: number | null
+          smoothing?: number | null
           strategy_id?: string
           value?: number
           value2?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "strategy_conditions_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "condition_groups"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "strategy_conditions_strategy_id_fkey"
             columns: ["strategy_id"]
@@ -222,6 +285,60 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      strategy_templates: {
+        Row: {
+          category: string
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          id: string
+          initial_capital: number | null
+          is_public: boolean | null
+          name: string
+          position_size_percent: number | null
+          stop_loss_percent: number | null
+          symbol: string | null
+          take_profit_percent: number | null
+          template_data: Json
+          timeframe: string | null
+          usage_count: number | null
+        }
+        Insert: {
+          category: string
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          initial_capital?: number | null
+          is_public?: boolean | null
+          name: string
+          position_size_percent?: number | null
+          stop_loss_percent?: number | null
+          symbol?: string | null
+          take_profit_percent?: number | null
+          template_data: Json
+          timeframe?: string | null
+          usage_count?: number | null
+        }
+        Update: {
+          category?: string
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          initial_capital?: number | null
+          is_public?: boolean | null
+          name?: string
+          position_size_percent?: number | null
+          stop_loss_percent?: number | null
+          symbol?: string | null
+          take_profit_percent?: number | null
+          template_data?: Json
+          timeframe?: string | null
+          usage_count?: number | null
+        }
+        Relationships: []
       }
       user_settings: {
         Row: {
@@ -312,6 +429,14 @@ export type Database = {
         | "crosses_below"
         | "between"
         | "indicator_comparison"
+        | "CROSSES_ABOVE"
+        | "CROSSES_BELOW"
+        | "BULLISH_DIVERGENCE"
+        | "BEARISH_DIVERGENCE"
+        | "BREAKOUT_ABOVE"
+        | "BREAKOUT_BELOW"
+        | "BOUNCE_OFF"
+        | "IN_RANGE"
       indicator_type:
         | "rsi"
         | "macd"
@@ -321,6 +446,63 @@ export type Database = {
         | "stochastic"
         | "atr"
         | "adx"
+        | "WMA"
+        | "KAMA"
+        | "MAMA"
+        | "DEMA"
+        | "TEMA"
+        | "WILDER_MA"
+        | "VWMA"
+        | "HULL_MA"
+        | "STOCHASTIC"
+        | "MOMENTUM"
+        | "CCI"
+        | "CHAIKIN_OSC"
+        | "AROON"
+        | "WPR"
+        | "MFI"
+        | "CMF"
+        | "CRSI"
+        | "TMF"
+        | "TRIX"
+        | "TSI"
+        | "ULTIMATE_OSC"
+        | "ROC"
+        | "BOP"
+        | "AWESOME_OSC"
+        | "ACCELERATOR_OSC"
+        | "STOCH_RSI"
+        | "STC"
+        | "RMI"
+        | "RCI"
+        | "SMA_RSI"
+        | "EMA_RSI"
+        | "SMI"
+        | "SMIE"
+        | "CHMO"
+        | "KDJ"
+        | "VOLATILITY_STOP"
+        | "TII"
+        | "MCGINLEY"
+        | "DEMAND_INDEX"
+        | "BB_UPPER"
+        | "BB_LOWER"
+        | "BB_MIDDLE"
+        | "ADX"
+        | "PLUS_DI"
+        | "MINUS_DI"
+        | "OBV"
+        | "AD_LINE"
+        | "PSAR"
+        | "FIBONACCI"
+        | "VWAP"
+        | "ICHIMOKU_TENKAN"
+        | "ICHIMOKU_KIJUN"
+        | "ICHIMOKU_SENKOU_A"
+        | "ICHIMOKU_SENKOU_B"
+        | "KELTNER_UPPER"
+        | "KELTNER_LOWER"
+        | "VOLUME"
       order_type: "buy" | "sell"
       strategy_status: "draft" | "active" | "paused" | "archived"
     }
@@ -458,6 +640,14 @@ export const Constants = {
         "crosses_below",
         "between",
         "indicator_comparison",
+        "CROSSES_ABOVE",
+        "CROSSES_BELOW",
+        "BULLISH_DIVERGENCE",
+        "BEARISH_DIVERGENCE",
+        "BREAKOUT_ABOVE",
+        "BREAKOUT_BELOW",
+        "BOUNCE_OFF",
+        "IN_RANGE",
       ],
       indicator_type: [
         "rsi",
@@ -468,6 +658,63 @@ export const Constants = {
         "stochastic",
         "atr",
         "adx",
+        "WMA",
+        "KAMA",
+        "MAMA",
+        "DEMA",
+        "TEMA",
+        "WILDER_MA",
+        "VWMA",
+        "HULL_MA",
+        "STOCHASTIC",
+        "MOMENTUM",
+        "CCI",
+        "CHAIKIN_OSC",
+        "AROON",
+        "WPR",
+        "MFI",
+        "CMF",
+        "CRSI",
+        "TMF",
+        "TRIX",
+        "TSI",
+        "ULTIMATE_OSC",
+        "ROC",
+        "BOP",
+        "AWESOME_OSC",
+        "ACCELERATOR_OSC",
+        "STOCH_RSI",
+        "STC",
+        "RMI",
+        "RCI",
+        "SMA_RSI",
+        "EMA_RSI",
+        "SMI",
+        "SMIE",
+        "CHMO",
+        "KDJ",
+        "VOLATILITY_STOP",
+        "TII",
+        "MCGINLEY",
+        "DEMAND_INDEX",
+        "BB_UPPER",
+        "BB_LOWER",
+        "BB_MIDDLE",
+        "ADX",
+        "PLUS_DI",
+        "MINUS_DI",
+        "OBV",
+        "AD_LINE",
+        "PSAR",
+        "FIBONACCI",
+        "VWAP",
+        "ICHIMOKU_TENKAN",
+        "ICHIMOKU_KIJUN",
+        "ICHIMOKU_SENKOU_A",
+        "ICHIMOKU_SENKOU_B",
+        "KELTNER_UPPER",
+        "KELTNER_LOWER",
+        "VOLUME",
       ],
       order_type: ["buy", "sell"],
       strategy_status: ["draft", "active", "paused", "archived"],
