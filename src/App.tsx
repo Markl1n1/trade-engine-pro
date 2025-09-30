@@ -13,9 +13,9 @@ const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <Toaster />
-    <Sonner />
     <BrowserRouter>
+      <Toaster />
+      <Sonner />
       <Layout>
         <Routes>
           <Route path="/" element={<Dashboard />} />
