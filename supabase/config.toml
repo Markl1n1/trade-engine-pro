@@ -1,5 +1,1 @@
-[functions.binance-market-data]
-verify_jwt = false
-
-[functions.binance-ticker]
-verify_jwt = false
+project_id = "wnkjtkigpyfnthnfmdlk"
