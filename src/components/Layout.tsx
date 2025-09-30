@@ -1,9 +1,29 @@
 import { Link, useLocation } from "react-router-dom";
-import { Activity, BarChart3, Settings, Zap } from "lucide-react";
+import { Activity, BarChart3, Settings, Zap, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/useAuth";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
 
 const Layout = ({ children }: { children: React.ReactNode }) => {
   const location = useLocation();
+  const { user, signOut } = useAuth();
+  const { toast } = useToast();
+
+  const handleSignOut = async () => {
+    const { error } = await signOut();
+    if (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Error signing out',
+        description: error.message
+      });
+    } else {
+      toast({
+        title: 'Signed out successfully'
+      });
+    }
+  };
 
   const navItems = [
     { path: "/", label: "Dashboard", icon: Activity },
@@ -20,8 +40,16 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
             <Zap className="h-6 w-6 text-primary" />
             <h1 className="text-xl font-bold">Binance Futures Trader</h1>
           </div>
-          <div className="flex items-center gap-1 text-xs">
-            <span className="px-2 py-1 bg-warning/20 text-warning rounded">TESTNET</span>
+          <div className="flex items-center gap-3">
+            <span className="px-2 py-1 bg-warning/20 text-warning rounded text-xs">TESTNET</span>
+            {user && (
+              <>
+                <span className="text-sm text-muted-foreground">{user.email}</span>
+                <Button variant="ghost" size="sm" onClick={handleSignOut}>
+                  <LogOut className="h-4 w-4" />
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </header>
