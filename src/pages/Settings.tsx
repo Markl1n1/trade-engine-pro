@@ -6,7 +6,7 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useEffect, useState } from "react";
-import { Loader2, Save, AlertCircle } from "lucide-react";
+import { Loader2, Save, AlertCircle, Send, CheckCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface UserSettings {
@@ -23,6 +23,8 @@ const Settings = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [testingTelegram, setTestingTelegram] = useState(false);
+  const [testingBinance, setTestingBinance] = useState(false);
   const [settings, setSettings] = useState<UserSettings>({
     binance_api_key: "",
     binance_api_secret: "",
@@ -137,6 +139,64 @@ const Settings = () => {
     setSettings((prev) => ({ ...prev, [key]: value }));
   };
 
+  const handleTestTelegram = async () => {
+    setTestingTelegram(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('test-telegram', {
+        body: {},
+      });
+
+      if (error) throw error;
+
+      if (data.success) {
+        toast({
+          title: "Success",
+          description: "Test message sent to Telegram successfully!",
+        });
+      } else {
+        throw new Error(data.error || 'Failed to send test message');
+      }
+    } catch (error: any) {
+      console.error("Error testing Telegram:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to send test message",
+        variant: "destructive",
+      });
+    } finally {
+      setTestingTelegram(false);
+    }
+  };
+
+  const handleTestBinance = async () => {
+    setTestingBinance(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('test-binance', {
+        body: {},
+      });
+
+      if (error) throw error;
+
+      if (data.success) {
+        toast({
+          title: "Success",
+          description: `Connected to Binance ${data.data.environment}! Balance: $${data.data.totalWalletBalance}`,
+        });
+      } else {
+        throw new Error(data.error || 'Failed to connect to Binance');
+      }
+    } catch (error: any) {
+      console.error("Error testing Binance:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to connect to Binance",
+        variant: "destructive",
+      });
+    } finally {
+      setTestingBinance(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -222,6 +282,23 @@ const Settings = () => {
           <p className="text-sm text-muted-foreground">
             Your API keys are stored securely in the database. Never share them with anyone.
           </p>
+          <Button 
+            variant="outline" 
+            onClick={handleTestBinance}
+            disabled={testingBinance || !settings.binance_api_key || !settings.binance_api_secret}
+          >
+            {testingBinance ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Testing...
+              </>
+            ) : (
+              <>
+                <CheckCircle className="mr-2 h-4 w-4" />
+                Test Connection
+              </>
+            )}
+          </Button>
         </div>
       </Card>
 
@@ -263,6 +340,23 @@ const Settings = () => {
               disabled={!settings.telegram_enabled}
             />
           </div>
+          <Button 
+            variant="outline" 
+            onClick={handleTestTelegram}
+            disabled={testingTelegram || !settings.telegram_enabled || !settings.telegram_bot_token || !settings.telegram_chat_id}
+          >
+            {testingTelegram ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Sending...
+              </>
+            ) : (
+              <>
+                <Send className="mr-2 h-4 w-4" />
+                Send Test Message
+              </>
+            )}
+          </Button>
         </div>
       </Card>
 

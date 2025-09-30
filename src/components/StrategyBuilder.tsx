@@ -261,6 +261,19 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
             </div>
           </div>
 
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="takeProfit">Take Profit (%)</Label>
+              <Input
+                id="takeProfit"
+                type="number"
+                value={takeProfit}
+                onChange={(e) => setTakeProfit(e.target.value)}
+                placeholder="Optional"
+              />
+            </div>
+          </div>
+
           <Card className="p-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-green-600">Buy Conditions</h3>
