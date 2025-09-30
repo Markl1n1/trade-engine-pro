@@ -32,7 +32,7 @@ serve(async (req) => {
   }
 
   try {
-    const { strategyId, startDate, endDate, initialBalance } = await req.json();
+    const { strategyId, startDate, endDate, initialBalance, stopLossPercent, takeProfitPercent } = await req.json();
 
     console.log(`Running backtest for strategy ${strategyId}`);
 
@@ -81,6 +81,9 @@ serve(async (req) => {
       close_time: d.close_time,
     }));
 
+    // Pre-calculate RSI for all candles
+    const rsiValues = calculateRSI(candles.map(c => c.close), 14);
+
     // Run backtest simulation
     let balance = initialBalance || strategy.initial_capital || 1000;
     let position: Trade | null = null;
@@ -94,7 +97,7 @@ serve(async (req) => {
 
       // Check entry conditions
       if (!position) {
-        const shouldEnter = checkConditions(strategy.strategy_conditions, previousCandles, 'buy');
+        const shouldEnter = checkConditions(strategy.strategy_conditions, previousCandles, rsiValues, i, 'buy');
         
         if (shouldEnter) {
           const positionSize = (balance * (strategy.position_size_percent || 100)) / 100;
@@ -108,15 +111,20 @@ serve(async (req) => {
           };
           
           balance -= positionSize;
-          console.log(`Opened position at ${currentCandle.close}`);
+          console.log(`[${i}] Opened BUY at ${currentCandle.close}, RSI: ${rsiValues[i]?.toFixed(2)}`);
         }
       } else {
         // Check exit conditions
-        const shouldExit = checkConditions(strategy.strategy_conditions, previousCandles, 'sell');
-        const stopLossHit = strategy.stop_loss_percent && 
-          ((position.entry_price - currentCandle.close) / position.entry_price * 100) >= strategy.stop_loss_percent;
-        const takeProfitHit = strategy.take_profit_percent && 
-          ((currentCandle.close - position.entry_price) / position.entry_price * 100) >= strategy.take_profit_percent;
+        const shouldExit = checkConditions(strategy.strategy_conditions, previousCandles, rsiValues, i, 'sell');
+        
+        // Use provided SL/TP or fall back to strategy settings
+        const stopLoss = stopLossPercent ?? strategy.stop_loss_percent;
+        const takeProfit = takeProfitPercent ?? strategy.take_profit_percent;
+        
+        const stopLossHit = stopLoss && 
+          ((position.entry_price - currentCandle.close) / position.entry_price * 100) >= stopLoss;
+        const takeProfitHit = takeProfit && 
+          ((currentCandle.close - position.entry_price) / position.entry_price * 100) >= takeProfit;
 
         if (shouldExit || stopLossHit || takeProfitHit) {
           const exitValue = position.quantity * currentCandle.close;
@@ -128,9 +136,11 @@ serve(async (req) => {
           
           balance += exitValue;
           trades.push(position);
-          position = null;
           
-          console.log(`Closed position at ${currentCandle.close}, profit: ${profit}`);
+          const exitReason = shouldExit ? 'SELL_SIGNAL' : (stopLossHit ? 'STOP_LOSS' : 'TAKE_PROFIT');
+          console.log(`[${i}] Closed ${exitReason} at ${currentCandle.close}, profit: ${profit.toFixed(2)}, RSI: ${rsiValues[i]?.toFixed(2)}`);
+          
+          position = null;
         }
       }
 
@@ -212,35 +222,92 @@ serve(async (req) => {
   }
 });
 
-function checkConditions(conditions: any[], candles: Candle[], orderType: string): boolean {
+function calculateRSI(prices: number[], period: number = 14): number[] {
+  const rsi: number[] = [];
+  
+  if (prices.length < period + 1) {
+    return new Array(prices.length).fill(0);
+  }
+
+  let gains = 0;
+  let losses = 0;
+
+  // Calculate initial average gain and loss
+  for (let i = 1; i <= period; i++) {
+    const change = prices[i] - prices[i - 1];
+    if (change > 0) {
+      gains += change;
+    } else {
+      losses += Math.abs(change);
+    }
+  }
+
+  let avgGain = gains / period;
+  let avgLoss = losses / period;
+
+  // Fill initial values with 0
+  for (let i = 0; i < period; i++) {
+    rsi.push(0);
+  }
+
+  // Calculate RSI for remaining values
+  for (let i = period; i < prices.length; i++) {
+    const change = prices[i] - prices[i - 1];
+    const gain = change > 0 ? change : 0;
+    const loss = change < 0 ? Math.abs(change) : 0;
+
+    avgGain = (avgGain * (period - 1) + gain) / period;
+    avgLoss = (avgLoss * (period - 1) + loss) / period;
+
+    const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+    const rsiValue = 100 - (100 / (1 + rs));
+    
+    rsi.push(rsiValue);
+  }
+
+  return rsi;
+}
+
+function checkConditions(
+  conditions: any[], 
+  candles: Candle[], 
+  rsiValues: number[], 
+  currentIndex: number,
+  orderType: string
+): boolean {
   if (!conditions || conditions.length === 0) return false;
 
   const relevantConditions = conditions.filter(c => c.order_type === orderType);
   if (relevantConditions.length === 0) return false;
 
-  // Simple condition checking - can be enhanced
   const currentCandle = candles[candles.length - 1];
   const previousCandle = candles.length > 1 ? candles[candles.length - 2] : null;
 
   for (const condition of relevantConditions) {
     const { indicator_type, operator, value } = condition;
     let indicatorValue: number | null = null;
+    let previousIndicatorValue: number | null = null;
 
     // Get indicator value
     switch (indicator_type) {
       case 'price':
         indicatorValue = currentCandle.close;
+        previousIndicatorValue = previousCandle?.close ?? null;
         break;
       case 'volume':
         indicatorValue = currentCandle.volume;
+        previousIndicatorValue = previousCandle?.volume ?? null;
+        break;
+      case 'rsi':
+        indicatorValue = rsiValues[currentIndex] ?? null;
+        previousIndicatorValue = currentIndex > 0 ? rsiValues[currentIndex - 1] ?? null : null;
         break;
       case 'sma':
       case 'ema':
-      case 'rsi':
       case 'macd':
-        // For now, use simple price-based logic
-        // In production, calculate actual indicators
+        // TODO: Implement these indicators
         indicatorValue = currentCandle.close;
+        previousIndicatorValue = previousCandle?.close ?? null;
         break;
     }
 
@@ -259,13 +326,13 @@ function checkConditions(conditions: any[], candles: Candle[], orderType: string
         conditionMet = Math.abs(indicatorValue - value) < 0.01;
         break;
       case 'crosses_above':
-        if (previousCandle) {
-          conditionMet = previousCandle.close < value && currentCandle.close > value;
+        if (previousIndicatorValue !== null) {
+          conditionMet = previousIndicatorValue <= value && indicatorValue > value;
         }
         break;
       case 'crosses_below':
-        if (previousCandle) {
-          conditionMet = previousCandle.close > value && currentCandle.close < value;
+        if (previousIndicatorValue !== null) {
+          conditionMet = previousIndicatorValue >= value && indicatorValue < value;
         }
         break;
     }

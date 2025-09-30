@@ -15,6 +15,8 @@ const Backtest = () => {
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
   const [initialBalance, setInitialBalance] = useState<string>("1000");
+  const [stopLossPercent, setStopLossPercent] = useState<string>("3");
+  const [takeProfitPercent, setTakeProfitPercent] = useState<string>("6");
   const [isRunning, setIsRunning] = useState(false);
   const [results, setResults] = useState<any>(null);
   const [isLoadingData, setIsLoadingData] = useState(false);
@@ -166,6 +168,8 @@ const Backtest = () => {
           startDate,
           endDate,
           initialBalance: parseFloat(initialBalance),
+          stopLossPercent: parseFloat(stopLossPercent),
+          takeProfitPercent: parseFloat(takeProfitPercent),
         },
       });
 
@@ -285,6 +289,33 @@ const Backtest = () => {
                 min="0"
                 step="100"
               />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs text-muted-foreground">Stop Loss (%)</Label>
+                <Input
+                  type="number"
+                  value={stopLossPercent}
+                  onChange={(e) => setStopLossPercent(e.target.value)}
+                  className="mt-1"
+                  min="0.1"
+                  max="100"
+                  step="0.1"
+                />
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Take Profit (%)</Label>
+                <Input
+                  type="number"
+                  value={takeProfitPercent}
+                  onChange={(e) => setTakeProfitPercent(e.target.value)}
+                  className="mt-1"
+                  min="0.1"
+                  max="1000"
+                  step="0.1"
+                />
+              </div>
             </div>
 
             <div className="space-y-2">
