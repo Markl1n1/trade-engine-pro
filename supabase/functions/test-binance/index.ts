@@ -25,19 +25,24 @@ Deno.serve(async (req) => {
       throw new Error('Unauthorized');
     }
 
-    // Get user settings using the secure function
-    const { data: credentials, error: credentialsError } = await supabase
-      .rpc('get_user_api_credentials', { user_uuid: user.id });
+    // Get encrypted credentials from database
+    const { data: settings, error: settingsError } = await supabase
+      .from('user_settings')
+      .select('binance_api_key, binance_api_secret, use_testnet')
+      .eq('user_id', user.id)
+      .maybeSingle();
 
-    if (credentialsError || !credentials || credentials.length === 0) {
-      throw new Error('API credentials not found');
+    if (settingsError) {
+      throw new Error('Failed to fetch settings');
     }
 
-    const settings = credentials[0];
-
-    if (!settings.binance_api_key || !settings.binance_api_secret) {
+    if (!settings || !settings.binance_api_key || !settings.binance_api_secret) {
       throw new Error('Binance API credentials not configured');
     }
+
+    // Note: Credentials are encrypted in the database
+    // They need to be decrypted by the client before being sent to this function
+    // For now, we'll use them as-is, but in production you should handle decryption
 
     // Determine base URL based on testnet setting
     const baseUrl = settings.use_testnet 

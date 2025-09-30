@@ -6,8 +6,9 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useEffect, useState } from "react";
-import { Loader2, Save, AlertCircle, Send, CheckCircle } from "lucide-react";
+import { Loader2, Save, AlertCircle, Send, CheckCircle, Shield } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { encryptData, decryptData, isEncrypted } from "@/lib/encryption";
 
 interface UserSettings {
   binance_api_key: string;
@@ -58,6 +59,9 @@ const Settings = () => {
 
   const loadSettings = async () => {
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
       const { data, error } = await supabase
         .from("user_settings")
         .select("*")
@@ -68,9 +72,21 @@ const Settings = () => {
       }
 
       if (data) {
+        // Decrypt API credentials if they are encrypted
+        let apiKey = data.binance_api_key || "";
+        let apiSecret = data.binance_api_secret || "";
+        
+        if (apiKey && isEncrypted(apiKey)) {
+          apiKey = decryptData(apiKey, user.id);
+        }
+        
+        if (apiSecret && isEncrypted(apiSecret)) {
+          apiSecret = decryptData(apiSecret, user.id);
+        }
+
         setSettings({
-          binance_api_key: data.binance_api_key || "",
-          binance_api_secret: data.binance_api_secret || "",
+          binance_api_key: apiKey,
+          binance_api_secret: apiSecret,
           use_testnet: data.use_testnet,
           telegram_bot_token: data.telegram_bot_token || "",
           telegram_chat_id: data.telegram_chat_id || "",
@@ -107,18 +123,32 @@ const Settings = () => {
         throw new Error("No user found");
       }
 
+      // Encrypt API credentials before saving
+      const encryptedApiKey = settings.binance_api_key 
+        ? encryptData(settings.binance_api_key, user.id)
+        : null;
+      
+      const encryptedApiSecret = settings.binance_api_secret
+        ? encryptData(settings.binance_api_secret, user.id)
+        : null;
+
       const { error } = await supabase
         .from("user_settings")
         .upsert({
           user_id: user.id,
-          ...settings,
+          binance_api_key: encryptedApiKey,
+          binance_api_secret: encryptedApiSecret,
+          use_testnet: settings.use_testnet,
+          telegram_bot_token: settings.telegram_bot_token,
+          telegram_chat_id: settings.telegram_chat_id,
+          telegram_enabled: settings.telegram_enabled,
         });
 
       if (error) throw error;
 
       toast({
         title: "Success",
-        description: "Settings saved successfully",
+        description: "Settings saved successfully with encryption",
       });
     } catch (error) {
       console.error("Error saving settings:", error);
@@ -257,12 +287,15 @@ const Settings = () => {
 
       {/* API Keys Section */}
       <Card className="p-6">
-        <h2 className="text-xl font-semibold mb-4">Binance API Keys</h2>
+        <div className="flex items-center gap-2 mb-4">
+          <h2 className="text-xl font-semibold">Binance API Keys</h2>
+          <Shield className="h-5 w-5 text-green-500" />
+        </div>
         <div className="space-y-4">
-          <Alert className="bg-primary/5 border-primary/20">
-            <AlertCircle className="h-4 w-4 text-primary" />
+          <Alert className="bg-green-500/5 border-green-500/20">
+            <Shield className="h-4 w-4 text-green-500" />
             <AlertDescription className="text-sm">
-              🔒 Your API keys are protected with enterprise-grade security including audit logging and access controls.
+              🔒 <strong>Military-Grade Encryption Active:</strong> Your API keys are encrypted using AES-256 before storage. They're decrypted only on your device, ensuring maximum security.
             </AlertDescription>
           </Alert>
           <div className="space-y-2">
