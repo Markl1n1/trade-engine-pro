@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import * as indicators from "../indicators/all-indicators.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -27,9 +28,7 @@ interface Trade {
 }
 
 interface IndicatorCache {
-  rsi: { [period: number]: number[] };
-  ema: { [period: number]: number[] };
-  sma: { [period: number]: number[] };
+  [key: string]: number[] | { [subkey: string]: number[] };
 }
 
 serve(async (req) => {
@@ -47,10 +46,10 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // Fetch strategy details
+    // Fetch strategy details with all conditions
     const { data: strategy, error: strategyError } = await supabaseClient
       .from('strategies')
-      .select('*, strategy_conditions(*)')
+      .select('*, strategy_conditions(*), condition_groups(*)')
       .eq('id', strategyId)
       .single();
 
@@ -59,6 +58,12 @@ serve(async (req) => {
     }
 
     console.log(`Strategy: ${strategy.name}, Symbol: ${strategy.symbol}, Timeframe: ${strategy.timeframe}`);
+    console.log(`Conditions count: ${strategy.strategy_conditions?.length || 0}`);
+
+    // Validate strategy has conditions
+    if (!strategy.strategy_conditions || strategy.strategy_conditions.length === 0) {
+      throw new Error('Strategy has no conditions defined. Please add entry/exit conditions before running backtest.');
+    }
 
     // Fetch market data
     const { data: marketData, error: marketError } = await supabaseClient
@@ -76,7 +81,7 @@ serve(async (req) => {
 
     console.log(`Found ${marketData.length} candles for backtesting`);
 
-    // Calculate indicators if needed
+    // Convert to candles
     const candles: Candle[] = marketData.map(d => ({
       open: parseFloat(d.open),
       high: parseFloat(d.high),
@@ -89,36 +94,38 @@ serve(async (req) => {
 
     // Pre-calculate all needed indicators
     const closePrices = candles.map(c => c.close);
-    const indicatorCache: IndicatorCache = {
-      rsi: {},
-      ema: {},
-      sma: {},
-    };
+    const indicatorCache: IndicatorCache = {};
 
-    // Determine which indicators and periods are needed
-    const neededIndicators = new Set<string>();
+    // Analyze conditions to determine which indicators to calculate
+    const indicatorRequirements = new Set<string>();
     strategy.strategy_conditions.forEach((condition: any) => {
-      if (condition.period_1) {
-        neededIndicators.add(`${condition.indicator_type}_${condition.period_1}`);
-      }
-      if (condition.indicator_type_2 && condition.period_2) {
-        neededIndicators.add(`${condition.indicator_type_2}_${condition.period_2}`);
+      const key1 = buildIndicatorKey(condition.indicator_type, condition);
+      indicatorRequirements.add(key1);
+      
+      if (condition.indicator_type_2) {
+        const key2 = buildIndicatorKey(condition.indicator_type_2, { 
+          period_1: condition.period_2,
+          deviation: condition.deviation,
+          smoothing: condition.smoothing,
+          multiplier: condition.multiplier,
+          acceleration: condition.acceleration
+        });
+        indicatorRequirements.add(key2);
       }
     });
 
-    // Pre-calculate needed indicators
-    neededIndicators.forEach((key) => {
-      const [type, periodStr] = key.split('_');
-      const period = parseInt(periodStr);
-      
-      if (type === 'rsi') {
-        indicatorCache.rsi[period] = calculateRSI(closePrices, period);
-      } else if (type === 'ema') {
-        indicatorCache.ema[period] = calculateEMA(closePrices, period);
-      } else if (type === 'sma') {
-        indicatorCache.sma[period] = calculateSMA(closePrices, period);
+    console.log(`Pre-calculating ${indicatorRequirements.size} indicators...`);
+
+    // Pre-calculate all required indicators
+    indicatorRequirements.forEach((key) => {
+      try {
+        calculateAndCacheIndicator(key, candles, closePrices, indicatorCache);
+      } catch (error) {
+        console.warn(`Failed to calculate indicator ${key}:`, error);
       }
     });
+
+    console.log(`Indicators cached, starting simulation...`);
 
     // Run backtest simulation
     let balance = initialBalance || strategy.initial_capital || 1000;
@@ -135,6 +142,7 @@ serve(async (req) => {
       if (!position) {
         const shouldEnter = checkConditions(
           strategy.strategy_conditions, 
+          strategy.condition_groups || [],
           previousCandles, 
           indicatorCache, 
           i, 
@@ -159,6 +167,7 @@ serve(async (req) => {
         // Check exit conditions
         const shouldExit = checkConditions(
           strategy.strategy_conditions, 
+          strategy.condition_groups || [],
           previousCandles, 
           indicatorCache, 
           i, 
@@ -222,6 +231,8 @@ serve(async (req) => {
     const losingTrades = trades.filter(t => (t.profit || 0) <= 0).length;
     const winRate = trades.length > 0 ? (winningTrades / trades.length) * 100 : 0;
 
+    console.log(`Backtest complete: ${trades.length} trades, ${winRate.toFixed(1)}% win rate`);
+
     // Save backtest results
     const { error: insertError } = await supabaseClient
       .from('strategy_backtest_results')
@@ -270,133 +281,181 @@ serve(async (req) => {
   }
 });
 
-function calculateRSI(prices: number[], period: number = 14): number[] {
-  const rsi: number[] = [];
-  
-  if (prices.length < period + 1) {
-    return new Array(prices.length).fill(0);
-  }
-
-  let gains = 0;
-  let losses = 0;
-
-  // Calculate initial average gain and loss
-  for (let i = 1; i <= period; i++) {
-    const change = prices[i] - prices[i - 1];
-    if (change > 0) {
-      gains += change;
-    } else {
-      losses += Math.abs(change);
-    }
-  }
-
-  let avgGain = gains / period;
-  let avgLoss = losses / period;
-
-  // Fill initial values with 0
-  for (let i = 0; i < period; i++) {
-    rsi.push(0);
-  }
-
-  // Calculate RSI for remaining values
-  for (let i = period; i < prices.length; i++) {
-    const change = prices[i] - prices[i - 1];
-    const gain = change > 0 ? change : 0;
-    const loss = change < 0 ? Math.abs(change) : 0;
-
-    avgGain = (avgGain * (period - 1) + gain) / period;
-    avgLoss = (avgLoss * (period - 1) + loss) / period;
-
-    const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
-    const rsiValue = 100 - (100 / (1 + rs));
-    
-    rsi.push(rsiValue);
-  }
-
-  return rsi;
+function buildIndicatorKey(indicatorType: string, params: any): string {
+  const parts = [indicatorType];
+  if (params.period_1) parts.push(`p${params.period_1}`);
+  if (params.period_2) parts.push(`p2${params.period_2}`);
+  if (params.deviation) parts.push(`d${params.deviation}`);
+  if (params.smoothing) parts.push(`s${params.smoothing}`);
+  if (params.multiplier) parts.push(`m${params.multiplier}`);
+  if (params.acceleration) parts.push(`a${params.acceleration}`);
+  return parts.join('_');
 }
 
-function calculateEMA(prices: number[], period: number): number[] {
-  const ema: number[] = [];
-  
-  if (prices.length < period) {
-    return new Array(prices.length).fill(0);
-  }
+function calculateAndCacheIndicator(
+  key: string,
+  candles: Candle[],
+  closePrices: number[],
+  cache: IndicatorCache
+): void {
+  if (cache[key]) return; // Already calculated
 
-  // Calculate initial SMA as first EMA value
-  let sum = 0;
-  for (let i = 0; i < period; i++) {
-    ema.push(0);
-    sum += prices[i];
-  }
+  const parts = key.split('_');
+  const type = parts[0];
+  const params: any = {};
   
-  const initialEMA = sum / period;
-  ema[period - 1] = initialEMA;
-  
-  // Calculate multiplier
-  const multiplier = 2 / (period + 1);
-  
-  // Calculate EMA for remaining values
-  for (let i = period; i < prices.length; i++) {
-    const currentEMA = (prices[i] - ema[i - 1]) * multiplier + ema[i - 1];
-    ema.push(currentEMA);
-  }
-  
-  return ema;
-}
+  parts.slice(1).forEach(part => {
+    const prefix = part[0];
+    const value = parseFloat(part.slice(1));
+    if (prefix === 'p') params.period = value;
+    if (prefix === 'd') params.deviation = value;
+    if (prefix === 's') params.smoothing = value;
+    if (prefix === 'm') params.multiplier = value;
+    if (prefix === 'a') params.acceleration = value;
+  });
 
-function calculateSMA(prices: number[], period: number): number[] {
-  const sma: number[] = [];
-  
-  if (prices.length < period) {
-    return new Array(prices.length).fill(0);
-  }
+  const period = params.period || 14;
 
-  // Fill initial values with 0
-  for (let i = 0; i < period - 1; i++) {
-    sma.push(0);
-  }
+  try {
+    switch (type.toLowerCase()) {
+      // Moving Averages
+      case 'sma':
+        cache[key] = indicators.calculateSMA(closePrices, period);
+        break;
+      case 'ema':
+        cache[key] = indicators.calculateEMA(closePrices, period);
+        break;
+      case 'wma':
+        cache[key] = indicators.calculateWMA(closePrices, period);
+        break;
+      case 'dema':
+        cache[key] = indicators.calculateDEMA(closePrices, period);
+        break;
+      case 'tema':
+        cache[key] = indicators.calculateTEMA(closePrices, period);
+        break;
+      case 'hull_ma':
+        cache[key] = indicators.calculateHullMA(closePrices, period);
+        break;
+      case 'vwma':
+        cache[key] = indicators.calculateVWMA(candles, period);
+        break;
 
-  // Calculate SMA for each window
-  for (let i = period - 1; i < prices.length; i++) {
-    let sum = 0;
-    for (let j = 0; j < period; j++) {
-      sum += prices[i - j];
+      // Oscillators
+      case 'rsi':
+        cache[key] = indicators.calculateRSI(closePrices, period);
+        break;
+      case 'stochastic':
+        const stoch = indicators.calculateStochastic(candles, period, params.smoothing || 3, 3);
+        cache[key] = { k: stoch.k, d: stoch.d };
+        break;
+      case 'cci':
+        cache[key] = indicators.calculateCCI(candles, period);
+        break;
+      case 'wpr':
+        cache[key] = indicators.calculateWPR(candles, period);
+        break;
+      case 'mfi':
+        cache[key] = indicators.calculateMFI(candles, period);
+        break;
+      case 'stochrsi':
+        cache[key] = indicators.calculateStochRSI(closePrices, period, 14);
+        break;
+      case 'momentum':
+        cache[key] = indicators.calculateMomentum(closePrices, period);
+        break;
+      case 'roc':
+        cache[key] = indicators.calculateROC(closePrices, period);
+        break;
+
+      // Volume Indicators
+      case 'obv':
+        cache[key] = indicators.calculateOBV(candles);
+        break;
+      case 'ad_line':
+        cache[key] = indicators.calculateADLine(candles);
+        break;
+      case 'cmf':
+        cache[key] = indicators.calculateCMF(candles, period);
+        break;
+      case 'vwap':
+        cache[key] = indicators.calculateVWAP(candles);
+        break;
+
+      // Trend Indicators
+      case 'macd':
+        const macd = indicators.calculateMACD(closePrices, 12, 26, 9);
+        cache[key] = { macd: macd.macd, signal: macd.signal, histogram: macd.histogram };
+        break;
+      case 'adx':
+        const adx = indicators.calculateADX(candles, period);
+        cache[key] = { adx: adx.adx, plusDI: adx.plusDI, minusDI: adx.minusDI };
+        break;
+
+      // Volatility Indicators
+      case 'atr':
+        cache[key] = indicators.calculateATR(candles, period);
+        break;
+      case 'bollinger_bands':
+        const bb = indicators.calculateBollingerBands(closePrices, period, params.deviation || 2);
+        cache[key] = { upper: bb.upper, middle: bb.middle, lower: bb.lower };
+        break;
+
+      // Price/Volume (simple cases)
+      case 'price':
+        cache[key] = closePrices;
+        break;
+      case 'volume':
+        cache[key] = candles.map(c => c.volume);
+        break;
+
+      default:
+        console.warn(`Unsupported indicator type: ${type}`);
+        cache[key] = new Array(closePrices.length).fill(NaN);
     }
-    sma.push(sum / period);
+  } catch (error) {
+    console.error(`Error calculating ${key}:`, error);
+    cache[key] = new Array(closePrices.length).fill(NaN);
   }
-
-  return sma;
 }
 
 function getIndicatorValue(
   indicatorType: string,
-  period: number,
+  params: any,
   indicatorCache: IndicatorCache,
   currentIndex: number,
   candles: Candle[]
 ): number | null {
-  const currentCandle = candles[candles.length - 1];
-  
-  switch (indicatorType) {
-    case 'price':
-      return currentCandle.close;
-    case 'volume':
-      return currentCandle.volume;
-    case 'rsi':
-      return indicatorCache.rsi[period]?.[currentIndex] ?? null;
-    case 'ema':
-      return indicatorCache.ema[period]?.[currentIndex] ?? null;
-    case 'sma':
-      return indicatorCache.sma[period]?.[currentIndex] ?? null;
-    default:
-      return null;
+  const key = buildIndicatorKey(indicatorType, params);
+  const cached = indicatorCache[key];
+
+  if (!cached) {
+    console.warn(`Indicator ${key} not found in cache`);
+    return null;
   }
+
+  // Handle complex indicators that return objects
+  if (typeof cached === 'object' && !Array.isArray(cached)) {
+    // For MACD, Stochastic, ADX, Bollinger Bands
+    if ('macd' in cached) return (cached.macd as number[])[currentIndex] ?? null;
+    if ('k' in cached) return (cached.k as number[])[currentIndex] ?? null;
+    if ('adx' in cached) return (cached.adx as number[])[currentIndex] ?? null;
+    if ('upper' in cached) return (cached.middle as number[])[currentIndex] ?? null;
+  }
+
+  // Handle simple array indicators
+  if (Array.isArray(cached)) {
+    const value = cached[currentIndex];
+    return (value !== undefined && !isNaN(value)) ? value : null;
+  }
+
+  return null;
 }
 
 function checkConditions(
-  conditions: any[], 
-  candles: Candle[], 
+  conditions: any[],
+  conditionGroups: any[],
+  candles: Candle[],
   indicatorCache: IndicatorCache,
   currentIndex: number,
   orderType: string
@@ -406,61 +465,139 @@ function checkConditions(
   const relevantConditions = conditions.filter(c => c.order_type === orderType);
   if (relevantConditions.length === 0) return false;
 
-  const currentCandle = candles[candles.length - 1];
-  const previousCandle = candles.length > 1 ? candles[candles.length - 2] : null;
+  // Group conditions by group_id
+  const groupedConditions: { [groupId: string]: any[] } = {};
+  const ungroupedConditions: any[] = [];
 
-  for (const condition of relevantConditions) {
-    const { indicator_type, operator, value, period_1, indicator_type_2, period_2 } = condition;
-    
-    // Handle indicator comparison (e.g., EMA 9 > EMA 21)
-    if (operator === 'indicator_comparison' && indicator_type_2 && period_1 && period_2) {
-      const indicator1Value = getIndicatorValue(indicator_type, period_1, indicatorCache, currentIndex, candles);
-      const indicator2Value = getIndicatorValue(indicator_type_2, period_2, indicatorCache, currentIndex, candles);
-      
-      if (indicator1Value === null || indicator2Value === null) continue;
-      
-      // For indicator comparison, we check if indicator1 > indicator2
-      if (indicator1Value <= indicator2Value) return false;
-      continue;
+  relevantConditions.forEach(condition => {
+    if (condition.group_id) {
+      if (!groupedConditions[condition.group_id]) {
+        groupedConditions[condition.group_id] = [];
+      }
+      groupedConditions[condition.group_id].push(condition);
+    } else {
+      ungroupedConditions.push(condition);
     }
-    
-    // Handle regular value-based conditions
-    const period = period_1 || 14; // Default to 14 if not specified
-    let indicatorValue = getIndicatorValue(indicator_type, period, indicatorCache, currentIndex, candles);
-    let previousIndicatorValue: number | null = null;
-    
-    if (currentIndex > 0) {
-      previousIndicatorValue = getIndicatorValue(indicator_type, period, indicatorCache, currentIndex - 1, candles.slice(0, -1));
-    }
+  });
 
-    if (indicatorValue === null) continue;
+  // Evaluate each group
+  const groupResults: boolean[] = [];
 
-    // Check operator
-    let conditionMet = false;
-    switch (operator) {
-      case 'greater_than':
-        conditionMet = indicatorValue > value;
-        break;
-      case 'less_than':
-        conditionMet = indicatorValue < value;
-        break;
-      case 'equals':
-        conditionMet = Math.abs(indicatorValue - value) < 0.01;
-        break;
-      case 'crosses_above':
-        if (previousIndicatorValue !== null) {
-          conditionMet = previousIndicatorValue <= value && indicatorValue > value;
-        }
-        break;
-      case 'crosses_below':
-        if (previousIndicatorValue !== null) {
-          conditionMet = previousIndicatorValue >= value && indicatorValue < value;
-        }
-        break;
-    }
-
-    if (!conditionMet) return false;
+  // Evaluate ungrouped conditions (AND logic by default)
+  if (ungroupedConditions.length > 0) {
+    const result = ungroupedConditions.every(condition => 
+      evaluateCondition(condition, candles, indicatorCache, currentIndex)
+    );
+    groupResults.push(result);
   }
 
-  return true;
+  // Evaluate grouped conditions
+  Object.entries(groupedConditions).forEach(([groupId, groupConditions]) => {
+    const group = conditionGroups.find(g => g.id === groupId);
+    const groupOperator = group?.group_operator || 'AND';
+
+    let result: boolean;
+    if (groupOperator === 'OR') {
+      result = groupConditions.some(condition => 
+        evaluateCondition(condition, candles, indicatorCache, currentIndex)
+      );
+    } else {
+      result = groupConditions.every(condition => 
+        evaluateCondition(condition, candles, indicatorCache, currentIndex)
+      );
+    }
+
+    groupResults.push(result);
+  });
+
+  // All groups must be satisfied (AND logic between groups)
+  return groupResults.every(result => result);
+}
+
+function evaluateCondition(
+  condition: any,
+  candles: Candle[],
+  indicatorCache: IndicatorCache,
+  currentIndex: number
+): boolean {
+  const { indicator_type, operator, value, value2, period_1, period_2, indicator_type_2, 
+          deviation, smoothing, multiplier, acceleration, lookback_bars } = condition;
+
+  const params1 = { period_1, deviation, smoothing, multiplier, acceleration };
+  const params2 = { period_1: period_2, deviation, smoothing, multiplier, acceleration };
+
+  // Get current and previous indicator values
+  const currentValue = getIndicatorValue(indicator_type, params1, indicatorCache, currentIndex, candles);
+  const previousValue = currentIndex > 0 
+    ? getIndicatorValue(indicator_type, params1, indicatorCache, currentIndex - 1, candles)
+    : null;
+
+  if (currentValue === null) {
+    console.warn(`No value for ${indicator_type} at index ${currentIndex}`);
+    return false;
+  }
+
+  // Handle indicator comparison
+  if (operator === 'indicator_comparison' && indicator_type_2) {
+    const compareValue = getIndicatorValue(indicator_type_2, params2, indicatorCache, currentIndex, candles);
+    if (compareValue === null) return false;
+    return currentValue > compareValue;
+  }
+
+  // Handle value-based operators
+  switch (operator) {
+    case 'greater_than':
+      return currentValue > value;
+    
+    case 'less_than':
+      return currentValue < value;
+    
+    case 'equals':
+      return Math.abs(currentValue - value) < 0.01;
+    
+    case 'between':
+      return value2 !== null && currentValue >= value && currentValue <= value2;
+    
+    case 'crosses_above':
+      if (indicator_type_2) {
+        const prevCompare = currentIndex > 0 
+          ? getIndicatorValue(indicator_type_2, params2, indicatorCache, currentIndex - 1, candles)
+          : null;
+        const currCompare = getIndicatorValue(indicator_type_2, params2, indicatorCache, currentIndex, candles);
+        return previousValue !== null && prevCompare !== null && currCompare !== null &&
+               previousValue <= prevCompare && currentValue > currCompare;
+      } else {
+        return previousValue !== null && previousValue <= value && currentValue > value;
+      }
+    
+    case 'crosses_below':
+      if (indicator_type_2) {
+        const prevCompare = currentIndex > 0 
+          ? getIndicatorValue(indicator_type_2, params2, indicatorCache, currentIndex - 1, candles)
+          : null;
+        const currCompare = getIndicatorValue(indicator_type_2, params2, indicatorCache, currentIndex, candles);
+        return previousValue !== null && prevCompare !== null && currCompare !== null &&
+               previousValue >= prevCompare && currentValue < currCompare;
+      } else {
+        return previousValue !== null && previousValue >= value && currentValue < value;
+      }
+    
+    case 'breakout_above':
+      const lookback = lookback_bars || 10;
+      if (currentIndex < lookback) return false;
+      const recentHighs = candles.slice(currentIndex - lookback, currentIndex).map(c => c.high);
+      const maxHigh = Math.max(...recentHighs);
+      return currentValue > maxHigh;
+    
+    case 'breakout_below':
+      const lookbackLow = lookback_bars || 10;
+      if (currentIndex < lookbackLow) return false;
+      const recentLows = candles.slice(currentIndex - lookbackLow, currentIndex).map(c => c.low);
+      const minLow = Math.min(...recentLows);
+      return currentValue < minLow;
+    
+    default:
+      console.warn(`Unsupported operator: ${operator}`);
+      return false;
+  }
 }
