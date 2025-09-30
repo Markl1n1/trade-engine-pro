@@ -17,10 +17,13 @@ const Backtest = () => {
   const [initialBalance, setInitialBalance] = useState<string>("1000");
   const [isRunning, setIsRunning] = useState(false);
   const [results, setResults] = useState<any>(null);
+  const [isLoadingData, setIsLoadingData] = useState(false);
+  const [dataStats, setDataStats] = useState<any>(null);
   const { toast } = useToast();
 
   useEffect(() => {
     loadStrategies();
+    checkDataAvailability();
     
     // Set default dates (last 30 days)
     const end = new Date();
@@ -46,6 +49,86 @@ const Backtest = () => {
     }
 
     setStrategies(data || []);
+  };
+
+  const checkDataAvailability = async () => {
+    const { data, error } = await supabase
+      .from('market_data')
+      .select('symbol, timeframe, open_time')
+      .order('open_time', { ascending: false })
+      .limit(1);
+
+    if (error) {
+      console.error('Error checking data availability:', error);
+      return;
+    }
+
+    if (data && data.length > 0) {
+      const { count } = await supabase
+        .from('market_data')
+        .select('*', { count: 'exact', head: true });
+      
+      setDataStats({
+        available: true,
+        totalRecords: count || 0,
+        lastUpdate: new Date(data[0].open_time),
+      });
+    } else {
+      setDataStats({ available: false, totalRecords: 0 });
+    }
+  };
+
+  const loadHistoricalData = async () => {
+    if (!selectedStrategy) {
+      toast({
+        title: "Please select a strategy first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsLoadingData(true);
+
+    try {
+      const strategy = strategies.find(s => s.id === selectedStrategy);
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+
+      toast({
+        title: "Loading historical data...",
+        description: `Fetching ${strategy.symbol} data from Binance`,
+      });
+
+      const { data, error } = await supabase.functions.invoke('binance-market-data', {
+        body: {
+          symbol: strategy.symbol,
+          interval: strategy.timeframe,
+          limit: 1000,
+          startTime: start.getTime(),
+          endTime: end.getTime(),
+        },
+      });
+
+      if (error) throw error;
+
+      if (data.success) {
+        await checkDataAvailability();
+        toast({
+          title: "Data loaded successfully",
+          description: `Loaded ${data.data.length} candles for ${strategy.symbol}`,
+        });
+      } else {
+        throw new Error(data.error || 'Failed to load data');
+      }
+    } catch (error: any) {
+      toast({
+        title: "Failed to load data",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingData(false);
+    }
   };
 
   const runBacktest = async () => {
@@ -102,6 +185,32 @@ const Backtest = () => {
           Test your strategies against historical data
         </p>
       </div>
+
+      {dataStats && !dataStats.available && (
+        <Card className="p-4 bg-yellow-500/10 border-yellow-500/20">
+          <div className="flex items-start gap-3">
+            <div className="flex-1">
+              <h4 className="font-semibold text-sm mb-1">No Historical Data Available</h4>
+              <p className="text-xs text-muted-foreground mb-3">
+                Load historical market data before running backtests. Select a strategy and date range below, then click "Load Historical Data".
+              </p>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {dataStats && dataStats.available && (
+        <Card className="p-4 bg-green-500/10 border-green-500/20">
+          <div className="flex items-start gap-3">
+            <div className="flex-1">
+              <h4 className="font-semibold text-sm mb-1">Data Available</h4>
+              <p className="text-xs text-muted-foreground">
+                {dataStats.totalRecords.toLocaleString()} candles loaded. Last update: {dataStats.lastUpdate?.toLocaleString()}
+              </p>
+            </div>
+          </div>
+        </Card>
+      )}
 
       <div className="grid lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-1 p-6">
@@ -164,8 +273,27 @@ const Backtest = () => {
 
             <Button 
               className="w-full gap-2" 
+              onClick={loadHistoricalData}
+              disabled={isLoadingData || !selectedStrategy}
+              variant="secondary"
+            >
+              {isLoadingData ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading Data...
+                </>
+              ) : (
+                <>
+                  <BarChart3 className="h-4 w-4" />
+                  Load Historical Data
+                </>
+              )}
+            </Button>
+
+            <Button 
+              className="w-full gap-2" 
               onClick={runBacktest}
-              disabled={isRunning || !selectedStrategy}
+              disabled={isRunning || !selectedStrategy || !dataStats?.available}
             >
               {isRunning ? (
                 <>

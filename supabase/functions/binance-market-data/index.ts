@@ -12,12 +12,20 @@ serve(async (req) => {
   }
 
   try {
-    const { symbol = 'BTCUSDT', interval = '1h', limit = 100 } = await req.json();
+    const { symbol = 'BTCUSDT', interval = '1h', limit = 500, startTime, endTime } = await req.json();
 
-    console.log(`Fetching market data for ${symbol} with interval ${interval}`);
+    console.log(`Fetching market data for ${symbol} with interval ${interval}, limit ${limit}`);
 
-    // Fetch data from Binance public API
-    const binanceUrl = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
+    // Build Binance API URL with optional date range
+    let binanceUrl = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${Math.min(limit, 1000)}`;
+    
+    if (startTime) {
+      binanceUrl += `&startTime=${startTime}`;
+    }
+    if (endTime) {
+      binanceUrl += `&endTime=${endTime}`;
+    }
+
     const response = await fetch(binanceUrl);
 
     if (!response.ok) {
