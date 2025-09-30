@@ -14,6 +14,160 @@ export type Database = {
   }
   public: {
     Tables: {
+      strategies: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          initial_capital: number | null
+          name: string
+          position_size_percent: number | null
+          status: Database["public"]["Enums"]["strategy_status"]
+          stop_loss_percent: number | null
+          symbol: string
+          take_profit_percent: number | null
+          timeframe: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          initial_capital?: number | null
+          name: string
+          position_size_percent?: number | null
+          status?: Database["public"]["Enums"]["strategy_status"]
+          stop_loss_percent?: number | null
+          symbol?: string
+          take_profit_percent?: number | null
+          timeframe?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          initial_capital?: number | null
+          name?: string
+          position_size_percent?: number | null
+          status?: Database["public"]["Enums"]["strategy_status"]
+          stop_loss_percent?: number | null
+          symbol?: string
+          take_profit_percent?: number | null
+          timeframe?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      strategy_backtest_results: {
+        Row: {
+          created_at: string
+          end_date: string
+          final_balance: number
+          id: string
+          initial_balance: number
+          losing_trades: number
+          max_drawdown: number
+          sharpe_ratio: number | null
+          start_date: string
+          strategy_id: string
+          total_return: number
+          total_trades: number
+          win_rate: number
+          winning_trades: number
+        }
+        Insert: {
+          created_at?: string
+          end_date: string
+          final_balance: number
+          id?: string
+          initial_balance: number
+          losing_trades: number
+          max_drawdown: number
+          sharpe_ratio?: number | null
+          start_date: string
+          strategy_id: string
+          total_return: number
+          total_trades: number
+          win_rate: number
+          winning_trades: number
+        }
+        Update: {
+          created_at?: string
+          end_date?: string
+          final_balance?: number
+          id?: string
+          initial_balance?: number
+          losing_trades?: number
+          max_drawdown?: number
+          sharpe_ratio?: number | null
+          start_date?: string
+          strategy_id?: string
+          total_return?: number
+          total_trades?: number
+          win_rate?: number
+          winning_trades?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "strategy_backtest_results_strategy_id_fkey"
+            columns: ["strategy_id"]
+            isOneToOne: false
+            referencedRelation: "strategies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      strategy_conditions: {
+        Row: {
+          created_at: string
+          id: string
+          indicator_type: Database["public"]["Enums"]["indicator_type"]
+          logical_operator: string | null
+          operator: Database["public"]["Enums"]["condition_operator"]
+          order_index: number
+          order_type: Database["public"]["Enums"]["order_type"]
+          strategy_id: string
+          value: number
+          value2: number | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          indicator_type: Database["public"]["Enums"]["indicator_type"]
+          logical_operator?: string | null
+          operator: Database["public"]["Enums"]["condition_operator"]
+          order_index?: number
+          order_type: Database["public"]["Enums"]["order_type"]
+          strategy_id: string
+          value: number
+          value2?: number | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          indicator_type?: Database["public"]["Enums"]["indicator_type"]
+          logical_operator?: string | null
+          operator?: Database["public"]["Enums"]["condition_operator"]
+          order_index?: number
+          order_type?: Database["public"]["Enums"]["order_type"]
+          strategy_id?: string
+          value?: number
+          value2?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "strategy_conditions_strategy_id_fkey"
+            columns: ["strategy_id"]
+            isOneToOne: false
+            referencedRelation: "strategies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_settings: {
         Row: {
           binance_api_key: string | null
@@ -61,7 +215,24 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      condition_operator:
+        | "greater_than"
+        | "less_than"
+        | "equals"
+        | "crosses_above"
+        | "crosses_below"
+        | "between"
+      indicator_type:
+        | "rsi"
+        | "macd"
+        | "sma"
+        | "ema"
+        | "bollinger_bands"
+        | "stochastic"
+        | "atr"
+        | "adx"
+      order_type: "buy" | "sell"
+      strategy_status: "draft" | "active" | "paused" | "archived"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -188,6 +359,27 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      condition_operator: [
+        "greater_than",
+        "less_than",
+        "equals",
+        "crosses_above",
+        "crosses_below",
+        "between",
+      ],
+      indicator_type: [
+        "rsi",
+        "macd",
+        "sma",
+        "ema",
+        "bollinger_bands",
+        "stochastic",
+        "atr",
+        "adx",
+      ],
+      order_type: ["buy", "sell"],
+      strategy_status: ["draft", "active", "paused", "archived"],
+    },
   },
 } as const
