@@ -14,7 +14,45 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      user_settings: {
+        Row: {
+          binance_api_key: string | null
+          binance_api_secret: string | null
+          created_at: string
+          id: string
+          telegram_bot_token: string | null
+          telegram_chat_id: string | null
+          telegram_enabled: boolean
+          updated_at: string
+          use_testnet: boolean
+          user_id: string
+        }
+        Insert: {
+          binance_api_key?: string | null
+          binance_api_secret?: string | null
+          created_at?: string
+          id?: string
+          telegram_bot_token?: string | null
+          telegram_chat_id?: string | null
+          telegram_enabled?: boolean
+          updated_at?: string
+          use_testnet?: boolean
+          user_id: string
+        }
+        Update: {
+          binance_api_key?: string | null
+          binance_api_secret?: string | null
+          created_at?: string
+          id?: string
+          telegram_bot_token?: string | null
+          telegram_chat_id?: string | null
+          telegram_enabled?: boolean
+          updated_at?: string
+          use_testnet?: boolean
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

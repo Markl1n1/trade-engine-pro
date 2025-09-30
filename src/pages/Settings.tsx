@@ -1,95 +1,287 @@
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { AlertCircle } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { useEffect, useState } from "react";
+import { Loader2, Save, AlertCircle } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+
+interface UserSettings {
+  binance_api_key: string;
+  binance_api_secret: string;
+  use_testnet: boolean;
+  telegram_bot_token: string;
+  telegram_chat_id: string;
+  telegram_enabled: boolean;
+}
 
 const Settings = () => {
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [settings, setSettings] = useState<UserSettings>({
+    binance_api_key: "",
+    binance_api_secret: "",
+    use_testnet: true,
+    telegram_bot_token: "",
+    telegram_chat_id: "",
+    telegram_enabled: false,
+  });
+
+  useEffect(() => {
+    checkAuthAndLoadSettings();
+  }, []);
+
+  const checkAuthAndLoadSettings = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        setIsAuthenticated(false);
+        setLoading(false);
+        return;
+      }
+
+      setIsAuthenticated(true);
+      await loadSettings();
+    } catch (error) {
+      console.error("Error checking auth:", error);
+      setLoading(false);
+    }
+  };
+
+  const loadSettings = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("user_settings")
+        .select("*")
+        .single();
+
+      if (error && error.code !== "PGRST116") {
+        throw error;
+      }
+
+      if (data) {
+        setSettings({
+          binance_api_key: data.binance_api_key || "",
+          binance_api_secret: data.binance_api_secret || "",
+          use_testnet: data.use_testnet,
+          telegram_bot_token: data.telegram_bot_token || "",
+          telegram_chat_id: data.telegram_chat_id || "",
+          telegram_enabled: data.telegram_enabled,
+        });
+      }
+    } catch (error) {
+      console.error("Error loading settings:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load settings",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!isAuthenticated) {
+      toast({
+        title: "Authentication Required",
+        description: "Please log in to save settings",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error("No user found");
+      }
+
+      const { error } = await supabase
+        .from("user_settings")
+        .upsert({
+          user_id: user.id,
+          ...settings,
+        });
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Settings saved successfully",
+      });
+    } catch (error) {
+      console.error("Error saving settings:", error);
+      toast({
+        title: "Error",
+        description: "Failed to save settings",
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const updateSetting = <K extends keyof UserSettings>(
+    key: K,
+    value: UserSettings[K]
+  ) => {
+    setSettings((prev) => ({ ...prev, [key]: value }));
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="max-w-4xl mx-auto p-6">
+        <Alert>
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            You need to be logged in to manage settings. Authentication will be implemented in the next phase.
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6">
+    <div className="max-w-4xl mx-auto p-6 space-y-6">
       <div>
-        <h2 className="text-2xl font-bold mb-2">Settings</h2>
-        <p className="text-sm text-muted-foreground">
-          Configure API keys, environment, and notifications
+        <h1 className="text-3xl font-bold mb-2">Settings</h1>
+        <p className="text-muted-foreground">
+          Configure your trading bot settings and API keys
         </p>
       </div>
 
+      {/* Environment Section */}
       <Card className="p-6">
-        <h3 className="text-lg font-bold mb-4">Environment</h3>
+        <h2 className="text-xl font-semibold mb-4">Environment</h2>
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <Label htmlFor="testnet-mode">Testnet Mode</Label>
-              <p className="text-xs text-muted-foreground mt-1">
-                Trade with fake money on Binance testnet
+              <Label htmlFor="testnet" className="text-base">Testnet Mode</Label>
+              <p className="text-sm text-muted-foreground">
+                Use Binance Testnet for safe testing
               </p>
             </div>
-            <Switch id="testnet-mode" defaultChecked />
+            <Switch 
+              id="testnet" 
+              checked={settings.use_testnet}
+              onCheckedChange={(checked) => updateSetting("use_testnet", checked)}
+            />
           </div>
-          <div className="p-3 bg-warning/10 border border-warning/30 rounded flex gap-2">
-            <AlertCircle className="h-4 w-4 text-warning mt-0.5 flex-shrink-0" />
-            <p className="text-xs text-warning">
-              Currently in TESTNET mode. Switch to mainnet to trade with real funds.
-            </p>
-          </div>
+          {settings.use_testnet && (
+            <div className="p-3 bg-warning/10 border border-warning/30 rounded flex gap-2">
+              <AlertCircle className="h-4 w-4 text-warning mt-0.5 flex-shrink-0" />
+              <p className="text-xs text-warning">
+                Currently in TESTNET mode. Switch to mainnet to trade with real funds.
+              </p>
+            </div>
+          )}
         </div>
       </Card>
 
+      {/* API Keys Section */}
       <Card className="p-6">
-        <h3 className="text-lg font-bold mb-4">Binance API Keys</h3>
+        <h2 className="text-xl font-semibold mb-4">Binance API Keys</h2>
         <div className="space-y-4">
-          <div>
+          <div className="space-y-2">
             <Label htmlFor="api-key">API Key</Label>
-            <Input
-              id="api-key"
-              type="password"
+            <Input 
+              id="api-key" 
+              type="password" 
               placeholder="Enter your Binance API key"
-              className="mt-1"
+              value={settings.binance_api_key}
+              onChange={(e) => updateSetting("binance_api_key", e.target.value)}
             />
           </div>
-          <div>
+          <div className="space-y-2">
             <Label htmlFor="api-secret">API Secret</Label>
-            <Input
-              id="api-secret"
-              type="password"
+            <Input 
+              id="api-secret" 
+              type="password" 
               placeholder="Enter your Binance API secret"
-              className="mt-1"
+              value={settings.binance_api_secret}
+              onChange={(e) => updateSetting("binance_api_secret", e.target.value)}
             />
           </div>
-          <Button>Save API Keys</Button>
-          <p className="text-xs text-muted-foreground">
-            Keys are encrypted and stored securely. Never share your API keys.
+          <p className="text-sm text-muted-foreground">
+            Your API keys are stored securely in the database. Never share them with anyone.
           </p>
         </div>
       </Card>
 
+      {/* Telegram Section */}
       <Card className="p-6">
-        <h3 className="text-lg font-bold mb-4">Telegram Notifications</h3>
+        <h2 className="text-xl font-semibold mb-4">Telegram Notifications</h2>
         <div className="space-y-4">
-          <div>
-            <Label htmlFor="telegram-bot-token">Bot Token</Label>
-            <Input
-              id="telegram-bot-token"
-              type="password"
-              placeholder="Enter Telegram bot token"
-              className="mt-1"
+          <div className="flex items-center justify-between">
+            <div>
+              <Label htmlFor="telegram" className="text-base">Enable Telegram</Label>
+              <p className="text-sm text-muted-foreground">
+                Receive trading alerts via Telegram
+              </p>
+            </div>
+            <Switch 
+              id="telegram" 
+              checked={settings.telegram_enabled}
+              onCheckedChange={(checked) => updateSetting("telegram_enabled", checked)}
             />
           </div>
-          <div>
-            <Label htmlFor="telegram-chat-id">Chat ID</Label>
-            <Input
-              id="telegram-chat-id"
-              placeholder="Enter chat or group ID"
-              className="mt-1"
+          <div className="space-y-2">
+            <Label htmlFor="bot-token">Bot Token</Label>
+            <Input 
+              id="bot-token" 
+              type="password" 
+              placeholder="Enter your Telegram bot token"
+              value={settings.telegram_bot_token}
+              onChange={(e) => updateSetting("telegram_bot_token", e.target.value)}
+              disabled={!settings.telegram_enabled}
             />
           </div>
-          <Button>Save Telegram Settings</Button>
-          <p className="text-xs text-muted-foreground">
-            Get notified when signals are generated and trades are executed.
-          </p>
+          <div className="space-y-2">
+            <Label htmlFor="chat-id">Chat ID</Label>
+            <Input 
+              id="chat-id" 
+              placeholder="Enter your Telegram chat ID"
+              value={settings.telegram_chat_id}
+              onChange={(e) => updateSetting("telegram_chat_id", e.target.value)}
+              disabled={!settings.telegram_enabled}
+            />
+          </div>
         </div>
       </Card>
+
+      {/* Save Button */}
+      <div className="flex justify-end">
+        <Button size="lg" onClick={handleSave} disabled={saving}>
+          {saving ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Saving...
+            </>
+          ) : (
+            <>
+              <Save className="mr-2 h-4 w-4" />
+              Save Settings
+            </>
+          )}
+        </Button>
+      </div>
     </div>
   );
 };
