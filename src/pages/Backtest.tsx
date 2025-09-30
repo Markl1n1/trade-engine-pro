@@ -18,6 +18,11 @@ const Backtest = () => {
   const [isRunning, setIsRunning] = useState(false);
   const [results, setResults] = useState<any>(null);
   const [isLoadingData, setIsLoadingData] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState<{
+    current: number;
+    total: number;
+    percentage: number;
+  } | null>(null);
   const [dataStats, setDataStats] = useState<any>(null);
   const { toast } = useToast();
 
@@ -78,7 +83,7 @@ const Backtest = () => {
     }
   };
 
-  const loadHistoricalData = async () => {
+  const loadHistoricalData = async (months: number = 1) => {
     if (!selectedStrategy) {
       toast({
         title: "Please select a strategy first",
@@ -88,46 +93,57 @@ const Backtest = () => {
     }
 
     setIsLoadingData(true);
-
+    setLoadingProgress(null);
+    
     try {
       const strategy = strategies.find(s => s.id === selectedStrategy);
-      const start = new Date(startDate);
-      const end = new Date(endDate);
+      const endTimestamp = new Date().getTime();
+      const startTimestamp = endTimestamp - (months * 30 * 24 * 60 * 60 * 1000);
 
       toast({
-        title: "Loading historical data...",
-        description: `Fetching ${strategy.symbol} data from Binance`,
+        title: "Loading historical data",
+        description: `Fetching ${months} month(s) of ${strategy.symbol} data. This may take a moment...`,
       });
 
       const { data, error } = await supabase.functions.invoke('binance-market-data', {
         body: {
           symbol: strategy.symbol,
           interval: strategy.timeframe,
-          limit: 1000,
-          startTime: start.getTime(),
-          endTime: end.getTime(),
-        },
+          startTime: startTimestamp,
+          endTime: endTimestamp,
+          batchMode: true
+        }
       });
 
       if (error) throw error;
 
-      if (data.success) {
-        await checkDataAvailability();
+      const totalCandles = data.totalCandles || 0;
+      const batches = data.batches || { total: 0, successful: 0, failed: 0 };
+
+      if (batches.failed > 0) {
         toast({
-          title: "Data loaded successfully",
-          description: `Loaded ${data.data.length} candles for ${strategy.symbol}`,
+          title: "Partial data load",
+          description: `Loaded ${totalCandles.toLocaleString()} candles. ${batches.failed} batches failed.`,
+          variant: "default",
         });
       } else {
-        throw new Error(data.error || 'Failed to load data');
+        toast({
+          title: "Historical data loaded successfully",
+          description: `Loaded ${totalCandles.toLocaleString()} candles for ${strategy.symbol} (${batches.successful} batches)`,
+        });
       }
+
+      await checkDataAvailability();
     } catch (error: any) {
+      console.error('Error loading historical data:', error);
       toast({
-        title: "Failed to load data",
+        title: "Failed to load historical data",
         description: error.message,
         variant: "destructive",
       });
     } finally {
       setIsLoadingData(false);
+      setLoadingProgress(null);
     }
   };
 
@@ -271,24 +287,41 @@ const Backtest = () => {
               />
             </div>
 
-            <Button 
-              className="w-full gap-2" 
-              onClick={loadHistoricalData}
-              disabled={isLoadingData || !selectedStrategy}
-              variant="secondary"
-            >
-              {isLoadingData ? (
-                <>
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Load Historical Data</Label>
+              <div className="grid grid-cols-3 gap-2">
+                <Button
+                  onClick={() => loadHistoricalData(1)}
+                  disabled={!selectedStrategy || isLoadingData}
+                  variant="outline"
+                  size="sm"
+                >
+                  1 Month
+                </Button>
+                <Button
+                  onClick={() => loadHistoricalData(3)}
+                  disabled={!selectedStrategy || isLoadingData}
+                  variant="outline"
+                  size="sm"
+                >
+                  3 Months
+                </Button>
+                <Button
+                  onClick={() => loadHistoricalData(6)}
+                  disabled={!selectedStrategy || isLoadingData}
+                  variant="outline"
+                  size="sm"
+                >
+                  6 Months
+                </Button>
+              </div>
+              {isLoadingData && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Loading Data...
-                </>
-              ) : (
-                <>
-                  <BarChart3 className="h-4 w-4" />
-                  Load Historical Data
-                </>
+                  <span>Loading historical data... This may take a few moments.</span>
+                </div>
               )}
-            </Button>
+            </div>
 
             <Button 
               className="w-full gap-2" 
