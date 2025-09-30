@@ -1,14 +1,16 @@
 import { Link, useLocation } from "react-router-dom";
-import { Activity, BarChart3, Settings, Zap, LogOut } from "lucide-react";
+import { Activity, BarChart3, Settings, Zap, LogOut, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { useState } from "react";
 
 const Layout = ({ children }: { children: React.ReactNode }) => {
   const location = useLocation();
-  const { user, signOut } = useAuth();
+  const { user, signOut, refreshSession, error } = useAuth();
   const { toast } = useToast();
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const handleSignOut = async () => {
     const { error } = await signOut();
@@ -23,6 +25,12 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
         title: 'Signed out successfully'
       });
     }
+  };
+
+  const handleRefreshSession = async () => {
+    setIsRefreshing(true);
+    await refreshSession();
+    setIsRefreshing(false);
   };
 
   const navItems = [
@@ -45,6 +53,16 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
             {user && (
               <>
                 <span className="text-sm text-muted-foreground">{user.email}</span>
+                {error && (
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={handleRefreshSession}
+                    disabled={isRefreshing}
+                  >
+                    <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
+                  </Button>
+                )}
                 <Button variant="ghost" size="sm" onClick={handleSignOut}>
                   <LogOut className="h-4 w-4" />
                 </Button>
