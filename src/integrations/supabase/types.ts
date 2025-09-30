@@ -14,6 +14,48 @@ export type Database = {
   }
   public: {
     Tables: {
+      market_data: {
+        Row: {
+          close: number
+          close_time: number
+          created_at: string
+          high: number
+          id: string
+          low: number
+          open: number
+          open_time: number
+          symbol: string
+          timeframe: string
+          volume: number
+        }
+        Insert: {
+          close: number
+          close_time: number
+          created_at?: string
+          high: number
+          id?: string
+          low: number
+          open: number
+          open_time: number
+          symbol: string
+          timeframe: string
+          volume: number
+        }
+        Update: {
+          close?: number
+          close_time?: number
+          created_at?: string
+          high?: number
+          id?: string
+          low?: number
+          open?: number
+          open_time?: number
+          symbol?: string
+          timeframe?: string
+          volume?: number
+        }
+        Relationships: []
+      }
       strategies: {
         Row: {
           created_at: string
