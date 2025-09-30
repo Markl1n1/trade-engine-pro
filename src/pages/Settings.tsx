@@ -8,9 +8,19 @@ import { supabase } from "@/integrations/supabase/client";
 import { useEffect, useState } from "react";
 import { Loader2, Save, AlertCircle, Send, CheckCircle, Shield } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { encryptData, decryptData, isEncrypted } from "@/lib/encryption";
+import { z } from "zod";
 import { TradingPairsManager } from "@/components/TradingPairsManager";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+// Validation schema for security
+const settingsSchema = z.object({
+  binance_mainnet_api_key: z.string().trim().max(128, "API key too long").optional(),
+  binance_mainnet_api_secret: z.string().trim().max(128, "API secret too long").optional(),
+  binance_testnet_api_key: z.string().trim().max(128, "API key too long").optional(),
+  binance_testnet_api_secret: z.string().trim().max(128, "API secret too long").optional(),
+  telegram_bot_token: z.string().trim().max(256, "Token too long").optional(),
+  telegram_chat_id: z.string().trim().max(64, "Chat ID too long").optional(),
+});
 
 interface UserSettings {
   binance_mainnet_api_key: string;
@@ -78,30 +88,11 @@ const Settings = () => {
       }
 
       if (data) {
-        // Decrypt API credentials if they are encrypted
-        let mainnetApiKey = data.binance_mainnet_api_key || "";
-        let mainnetApiSecret = data.binance_mainnet_api_secret || "";
-        let testnetApiKey = data.binance_testnet_api_key || "";
-        let testnetApiSecret = data.binance_testnet_api_secret || "";
-        
-        if (mainnetApiKey && isEncrypted(mainnetApiKey)) {
-          mainnetApiKey = decryptData(mainnetApiKey, user.id);
-        }
-        if (mainnetApiSecret && isEncrypted(mainnetApiSecret)) {
-          mainnetApiSecret = decryptData(mainnetApiSecret, user.id);
-        }
-        if (testnetApiKey && isEncrypted(testnetApiKey)) {
-          testnetApiKey = decryptData(testnetApiKey, user.id);
-        }
-        if (testnetApiSecret && isEncrypted(testnetApiSecret)) {
-          testnetApiSecret = decryptData(testnetApiSecret, user.id);
-        }
-
         setSettings({
-          binance_mainnet_api_key: mainnetApiKey,
-          binance_mainnet_api_secret: mainnetApiSecret,
-          binance_testnet_api_key: testnetApiKey,
-          binance_testnet_api_secret: testnetApiSecret,
+          binance_mainnet_api_key: data.binance_mainnet_api_key || "",
+          binance_mainnet_api_secret: data.binance_mainnet_api_secret || "",
+          binance_testnet_api_key: data.binance_testnet_api_key || "",
+          binance_testnet_api_secret: data.binance_testnet_api_secret || "",
           use_testnet: data.use_testnet,
           telegram_bot_token: data.telegram_bot_token || "",
           telegram_chat_id: data.telegram_chat_id || "",
@@ -138,31 +129,39 @@ const Settings = () => {
         throw new Error("No user found");
       }
 
-      // Encrypt API credentials before saving
-      const encryptedMainnetApiKey = settings.binance_mainnet_api_key 
-        ? encryptData(settings.binance_mainnet_api_key, user.id)
-        : null;
-      const encryptedMainnetApiSecret = settings.binance_mainnet_api_secret
-        ? encryptData(settings.binance_mainnet_api_secret, user.id)
-        : null;
-      const encryptedTestnetApiKey = settings.binance_testnet_api_key 
-        ? encryptData(settings.binance_testnet_api_key, user.id)
-        : null;
-      const encryptedTestnetApiSecret = settings.binance_testnet_api_secret
-        ? encryptData(settings.binance_testnet_api_secret, user.id)
-        : null;
+      // Validate input
+      const validationResult = settingsSchema.safeParse({
+        binance_mainnet_api_key: settings.binance_mainnet_api_key || undefined,
+        binance_mainnet_api_secret: settings.binance_mainnet_api_secret || undefined,
+        binance_testnet_api_key: settings.binance_testnet_api_key || undefined,
+        binance_testnet_api_secret: settings.binance_testnet_api_secret || undefined,
+        telegram_bot_token: settings.telegram_bot_token || undefined,
+        telegram_chat_id: settings.telegram_chat_id || undefined,
+      });
 
+      if (!validationResult.success) {
+        const errorMessage = validationResult.error.errors[0]?.message || "Invalid input";
+        toast({
+          title: "Validation Error",
+          description: errorMessage,
+          variant: "destructive",
+        });
+        setSaving(false);
+        return;
+      }
+
+      // Store credentials securely (Lovable Cloud provides encryption at rest)
       const { error } = await supabase
         .from("user_settings")
         .upsert({
           user_id: user.id,
-          binance_mainnet_api_key: encryptedMainnetApiKey,
-          binance_mainnet_api_secret: encryptedMainnetApiSecret,
-          binance_testnet_api_key: encryptedTestnetApiKey,
-          binance_testnet_api_secret: encryptedTestnetApiSecret,
+          binance_mainnet_api_key: settings.binance_mainnet_api_key || null,
+          binance_mainnet_api_secret: settings.binance_mainnet_api_secret || null,
+          binance_testnet_api_key: settings.binance_testnet_api_key || null,
+          binance_testnet_api_secret: settings.binance_testnet_api_secret || null,
           use_testnet: settings.use_testnet,
-          telegram_bot_token: settings.telegram_bot_token,
-          telegram_chat_id: settings.telegram_chat_id,
+          telegram_bot_token: settings.telegram_bot_token || null,
+          telegram_chat_id: settings.telegram_chat_id || null,
           telegram_enabled: settings.telegram_enabled,
         });
 

@@ -1,5 +1,11 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.58.0';
 
+// Input validation
+const validateUserId = (userId: string): boolean => {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(userId);
+};
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -23,6 +29,11 @@ Deno.serve(async (req) => {
 
     if (userError || !user) {
       throw new Error('Unauthorized');
+    }
+
+    // Validate user ID
+    if (!validateUserId(user.id)) {
+      throw new Error('Invalid user ID format');
     }
 
     // Get encrypted credentials from database
