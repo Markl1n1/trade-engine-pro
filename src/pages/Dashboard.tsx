@@ -76,21 +76,6 @@ const Dashboard = () => {
     }
   }, [userPairs]);
 
-  // Auto-monitor strategies every 3 minutes
-  useEffect(() => {
-    const monitorInterval = setInterval(async () => {
-      try {
-        console.log('Auto-monitoring strategies...');
-        await supabase.functions.invoke('monitor-strategies', { body: {} });
-        await fetchStrategySignals();
-      } catch (error) {
-        console.error('Auto-monitor error:', error);
-      }
-    }, 180000); // 3 minutes
-
-    return () => clearInterval(monitorInterval);
-  }, []);
-
   const loadSignalsPerPage = () => {
     const saved = localStorage.getItem('signalsPerPage');
     if (saved) {

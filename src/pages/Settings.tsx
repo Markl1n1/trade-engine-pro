@@ -3,10 +3,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useEffect, useState } from "react";
-import { Loader2, Save, AlertCircle, Send, CheckCircle, Shield } from "lucide-react";
+import { Loader2, Save, AlertCircle, Send, CheckCircle, Shield, AlertTriangle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { z } from "zod";
 import { TradingPairsManager } from "@/components/TradingPairsManager";
@@ -37,6 +38,12 @@ interface AppSettings {
   signalsPerPage: number;
 }
 
+interface SystemSettings {
+  monitoringEnabled: boolean;
+  monitoringInterval: number;
+  lastRun: string | null;
+}
+
 const Settings = () => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
@@ -47,6 +54,11 @@ const Settings = () => {
   const [testingMonitor, setTestingMonitor] = useState(false);
   const [appSettings, setAppSettings] = useState<AppSettings>({
     signalsPerPage: 10,
+  });
+  const [systemSettings, setSystemSettings] = useState<SystemSettings>({
+    monitoringEnabled: true,
+    monitoringInterval: 15,
+    lastRun: null,
   });
   const [settings, setSettings] = useState<UserSettings>({
     binance_mainnet_api_key: "",
@@ -121,6 +133,23 @@ const Settings = () => {
           telegram_bot_token: data.telegram_bot_token || "",
           telegram_chat_id: data.telegram_chat_id || "",
           telegram_enabled: data.telegram_enabled,
+        });
+      }
+
+      // Load system settings
+      const { data: sysSettings } = await supabase
+        .from("system_settings")
+        .select("*");
+
+      if (sysSettings) {
+        const monitoringEnabled = sysSettings.find(s => s.setting_key === 'monitoring_enabled')?.setting_value === 'true';
+        const monitoringInterval = parseInt(sysSettings.find(s => s.setting_key === 'monitoring_interval_seconds')?.setting_value || '15');
+        const lastRun = sysSettings.find(s => s.setting_key === 'last_monitoring_run')?.setting_value || null;
+
+        setSystemSettings({
+          monitoringEnabled,
+          monitoringInterval,
+          lastRun,
         });
       }
     } catch (error) {
@@ -328,6 +357,55 @@ const Settings = () => {
       });
     } finally {
       setTestingMonitor(false);
+    }
+  };
+
+  const handleToggleMonitoring = async (enabled: boolean) => {
+    try {
+      const { error } = await supabase
+        .from("system_settings")
+        .update({ setting_value: enabled ? 'true' : 'false' })
+        .eq('setting_key', 'monitoring_enabled');
+
+      if (error) throw error;
+
+      setSystemSettings(prev => ({ ...prev, monitoringEnabled: enabled }));
+
+      toast({
+        title: "Success",
+        description: `System monitoring ${enabled ? 'enabled' : 'disabled'}`,
+      });
+    } catch (error: any) {
+      console.error("Error toggling monitoring:", error);
+      toast({
+        title: "Error",
+        description: "Failed to update monitoring status",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleEmergencyStop = async () => {
+    try {
+      await supabase
+        .from("system_settings")
+        .update({ setting_value: 'false' })
+        .eq('setting_key', 'monitoring_enabled');
+
+      setSystemSettings(prev => ({ ...prev, monitoringEnabled: false }));
+
+      toast({
+        title: "Emergency Stop Activated",
+        description: "All system monitoring has been stopped",
+        variant: "destructive",
+      });
+    } catch (error: any) {
+      console.error("Emergency stop error:", error);
+      toast({
+        title: "Error",
+        description: "Failed to execute emergency stop",
+        variant: "destructive",
+      });
     }
   };
 
@@ -612,6 +690,67 @@ const Settings = () => {
           <Button onClick={saveAppSettings}>
             <Save className="mr-2 h-4 w-4" />
             Save Application Settings
+          </Button>
+        </div>
+      </Card>
+
+      {/* System Monitoring (24/7) */}
+      <Card className="p-6">
+        <h2 className="text-xl font-semibold mb-4">System Monitoring (24/7)</h2>
+        <p className="text-sm text-muted-foreground mb-4">
+          Global monitoring control - runs automatically every {systemSettings.monitoringInterval} seconds on the server
+        </p>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <Label htmlFor="monitoring-toggle" className="text-base">Enable System Monitoring</Label>
+              <p className="text-sm text-muted-foreground">
+                Automatically monitor all active strategies for all users
+              </p>
+            </div>
+            <Switch
+              id="monitoring-toggle"
+              checked={systemSettings.monitoringEnabled}
+              onCheckedChange={handleToggleMonitoring}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label>System Status</Label>
+              <Badge variant={systemSettings.monitoringEnabled ? "default" : "secondary"}>
+                {systemSettings.monitoringEnabled ? "🟢 Active" : "⚫ Inactive"}
+              </Badge>
+            </div>
+            {systemSettings.lastRun && (
+              <p className="text-sm text-muted-foreground">
+                Last run: {new Date(systemSettings.lastRun).toLocaleString()}
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label>Monitoring Interval</Label>
+            <p className="text-sm text-muted-foreground">
+              Every {systemSettings.monitoringInterval} seconds (automated via cron)
+            </p>
+          </div>
+
+          <Alert className="bg-primary/10 border-primary/30">
+            <AlertCircle className="h-4 w-4 text-primary" />
+            <AlertDescription className="text-sm">
+              <strong>24/7 Autonomous Trading:</strong> The monitoring system runs independently on the server every {systemSettings.monitoringInterval} seconds. It processes ALL active strategies from ALL users automatically, regardless of browser activity.
+            </AlertDescription>
+          </Alert>
+
+          <Button
+            variant="destructive"
+            onClick={handleEmergencyStop}
+            className="w-full"
+            size="lg"
+          >
+            <AlertTriangle className="w-5 h-5 mr-2" />
+            Emergency Stop All Monitoring
           </Button>
         </div>
       </Card>
