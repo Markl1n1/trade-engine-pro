@@ -19,6 +19,12 @@ const Backtest = () => {
   const [stopLossPercent, setStopLossPercent] = useState<string>("3");
   const [takeProfitPercent, setTakeProfitPercent] = useState<string>("6");
   const [isStrategyDefaults, setIsStrategyDefaults] = useState(true);
+  const [productType, setProductType] = useState<string>("spot");
+  const [leverage, setLeverage] = useState<string>("1");
+  const [makerFee, setMakerFee] = useState<string>("0.02");
+  const [takerFee, setTakerFee] = useState<string>("0.04");
+  const [slippage, setSlippage] = useState<string>("0.01");
+  const [executionTiming, setExecutionTiming] = useState<string>("close");
   const [isRunning, setIsRunning] = useState(false);
   const [results, setResults] = useState<any>(null);
   const [isLoadingData, setIsLoadingData] = useState(false);
@@ -184,6 +190,12 @@ const Backtest = () => {
           initialBalance: parseFloat(initialBalance),
           stopLossPercent: parseFloat(stopLossPercent),
           takeProfitPercent: parseFloat(takeProfitPercent),
+          productType,
+          leverage: parseFloat(leverage),
+          makerFee: parseFloat(makerFee),
+          takerFee: parseFloat(takerFee),
+          slippage: parseFloat(slippage),
+          executionTiming,
         },
       });
 
@@ -291,6 +303,86 @@ const Backtest = () => {
                 onChange={(e) => setEndDate(e.target.value)}
                 className="mt-1"
               />
+            </div>
+
+            <div>
+              <Label className="text-xs text-muted-foreground">Product Type</Label>
+              <Select value={productType} onValueChange={setProductType}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="spot">Spot Trading</SelectItem>
+                  <SelectItem value="futures">Futures Trading</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {productType === 'futures' && (
+              <div>
+                <Label className="text-xs text-muted-foreground">Leverage</Label>
+                <Input
+                  type="number"
+                  value={leverage}
+                  onChange={(e) => setLeverage(e.target.value)}
+                  min="1"
+                  max="125"
+                  step="1"
+                  className="mt-1"
+                />
+              </div>
+            )}
+
+            <div>
+              <Label className="text-xs text-muted-foreground">Execution Timing</Label>
+              <Select value={executionTiming} onValueChange={setExecutionTiming}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="open">Candle Open</SelectItem>
+                  <SelectItem value="close">Candle Close</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="pt-2 border-t">
+              <Label className="text-xs text-muted-foreground">Fees & Slippage</Label>
+              <div className="grid grid-cols-3 gap-2 mt-1">
+                <div>
+                  <Input
+                    type="number"
+                    value={makerFee}
+                    onChange={(e) => setMakerFee(e.target.value)}
+                    step="0.01"
+                    placeholder="Maker %"
+                    className="text-xs"
+                  />
+                  <span className="text-[10px] text-muted-foreground">Maker</span>
+                </div>
+                <div>
+                  <Input
+                    type="number"
+                    value={takerFee}
+                    onChange={(e) => setTakerFee(e.target.value)}
+                    step="0.01"
+                    placeholder="Taker %"
+                    className="text-xs"
+                  />
+                  <span className="text-[10px] text-muted-foreground">Taker</span>
+                </div>
+                <div>
+                  <Input
+                    type="number"
+                    value={slippage}
+                    onChange={(e) => setSlippage(e.target.value)}
+                    step="0.01"
+                    placeholder="Slip %"
+                    className="text-xs"
+                  />
+                  <span className="text-[10px] text-muted-foreground">Slippage</span>
+                </div>
+              </div>
             </div>
 
             <div>
@@ -415,30 +507,131 @@ const Backtest = () => {
         <Card className="lg:col-span-2 p-6">
           <h3 className="text-lg font-bold mb-4">Results</h3>
           {results ? (
-            <div className="space-y-4">
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={results.trades.map((trade: any, idx: number) => ({
-                  trade: idx + 1,
-                  price: trade.exit_price || trade.entry_price,
-                  profit: trade.profit || 0,
-                }))}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="trade" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Line type="monotone" dataKey="price" stroke="hsl(var(--primary))" name="Price" />
-                </LineChart>
-              </ResponsiveContainer>
+            <div className="space-y-6">
+              {/* Equity Curve */}
+              <div>
+                <h4 className="text-sm font-semibold mb-2">Equity Curve</h4>
+                <ResponsiveContainer width="100%" height={250}>
+                  <LineChart data={results.balance_history?.map((point: any) => ({
+                    time: new Date(point.time).toLocaleDateString(),
+                    balance: point.balance.toFixed(2),
+                  })) || []}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="time" tick={{ fontSize: 10 }} />
+                    <YAxis tick={{ fontSize: 10 }} />
+                    <Tooltip />
+                    <Legend />
+                    <Line type="monotone" dataKey="balance" stroke="hsl(var(--primary))" name="Balance ($)" strokeWidth={2} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
 
-              <div className="grid grid-cols-2 gap-4 mt-4">
+              {/* Performance Metrics */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="p-3 bg-secondary/50 rounded">
-                  <p className="text-xs text-muted-foreground">Total Trades</p>
-                  <p className="text-xl font-bold mt-1">{results.total_trades}</p>
+                  <div className="text-xs text-muted-foreground">Total Return</div>
+                  <div className={`text-xl font-bold ${results.total_return >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                    {results.total_return >= 0 ? '+' : ''}{results.total_return.toFixed(2)}%
+                  </div>
                 </div>
                 <div className="p-3 bg-secondary/50 rounded">
-                  <p className="text-xs text-muted-foreground">Win Rate</p>
-                  <p className="text-xl font-bold mt-1">{results.win_rate.toFixed(1)}%</p>
+                  <div className="text-xs text-muted-foreground">Win Rate</div>
+                  <div className="text-xl font-bold">{results.win_rate.toFixed(1)}%</div>
+                </div>
+                <div className="p-3 bg-secondary/50 rounded">
+                  <div className="text-xs text-muted-foreground flex items-center gap-1">
+                    Max Drawdown
+                    <TooltipProvider>
+                      <UITooltip>
+                        <TooltipTrigger>
+                          <Info className="h-3 w-3" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p className="text-xs max-w-xs">
+                            Maximum percentage decline from the highest balance during the backtest.
+                          </p>
+                        </TooltipContent>
+                      </UITooltip>
+                    </TooltipProvider>
+                  </div>
+                  <div className="text-xl font-bold text-red-500">-{results.max_drawdown.toFixed(2)}%</div>
+                </div>
+                <div className="p-3 bg-secondary/50 rounded">
+                  <div className="text-xs text-muted-foreground">Profit Factor</div>
+                  <div className="text-xl font-bold">{results.profit_factor?.toFixed(2) || 'N/A'}</div>
+                </div>
+              </div>
+
+              {/* Detailed Stats */}
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                <div className="flex justify-between p-2 bg-secondary/30 rounded">
+                  <span className="text-muted-foreground">Total Trades:</span>
+                  <span className="font-semibold">{results.total_trades}</span>
+                </div>
+                <div className="flex justify-between p-2 bg-secondary/30 rounded">
+                  <span className="text-muted-foreground">Winning:</span>
+                  <span className="font-semibold text-green-500">{results.winning_trades}</span>
+                </div>
+                <div className="flex justify-between p-2 bg-secondary/30 rounded">
+                  <span className="text-muted-foreground">Losing:</span>
+                  <span className="font-semibold text-red-500">{results.losing_trades}</span>
+                </div>
+                <div className="flex justify-between p-2 bg-secondary/30 rounded">
+                  <span className="text-muted-foreground">Avg Win:</span>
+                  <span className="font-semibold text-green-500">${results.avg_win?.toFixed(2) || '0'}</span>
+                </div>
+                <div className="flex justify-between p-2 bg-secondary/30 rounded">
+                  <span className="text-muted-foreground">Avg Loss:</span>
+                  <span className="font-semibold text-red-500">-${results.avg_loss?.toFixed(2) || '0'}</span>
+                </div>
+                <div className="flex justify-between p-2 bg-secondary/30 rounded">
+                  <span className="text-muted-foreground">Final Balance:</span>
+                  <span className="font-semibold">${results.final_balance.toFixed(2)}</span>
+                </div>
+              </div>
+
+              {/* Configuration Used */}
+              {results.config && (
+                <div className="p-4 bg-secondary/20 rounded text-xs space-y-2">
+                  <h4 className="font-semibold text-sm mb-2">Configuration Used</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    <div>
+                      <span className="text-muted-foreground">Type:</span> {results.config.product_type.toUpperCase()}
+                    </div>
+                    {results.config.product_type === 'futures' && (
+                      <div>
+                        <span className="text-muted-foreground">Leverage:</span> {results.config.leverage}x
+                      </div>
+                    )}
+                    <div>
+                      <span className="text-muted-foreground">Execution:</span> {results.config.execution_timing}
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Fees:</span> {results.config.maker_fee}%/{results.config.taker_fee}%
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Slippage:</span> {results.config.slippage}%
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Backtest Logic Summary */}
+              <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded text-xs space-y-2">
+                <h4 className="font-semibold text-sm mb-2">Backtest Logic Summary</h4>
+                <div className="space-y-1 text-muted-foreground">
+                  <p><strong>Data Source:</strong> Historical market data from Binance ({selectedStrategyData?.symbol}, {selectedStrategyData?.timeframe} timeframe)</p>
+                  <p><strong>Look-ahead Prevention:</strong> Decisions made using indicators calculated through previous candle (i-1)</p>
+                  <p><strong>Execution:</strong> Trades executed at candle {executionTiming} with {slippage}% slippage</p>
+                  <p><strong>Entry Rules:</strong> BUY conditions must be met on candle close</p>
+                  <p><strong>Exit Rules:</strong> 
+                    {stopLossPercent && ` Stop Loss at -${stopLossPercent}%`}
+                    {takeProfitPercent && ` | Take Profit at +${takeProfitPercent}%`}
+                    {` | SELL signal conditions`}
+                  </p>
+                  <p><strong>Intrabar Execution:</strong> SL/TP checked using candle high/low for realistic fills</p>
+                  <p><strong>Position Sizing:</strong> {selectedStrategyData?.position_size_percent || 100}% of available balance per trade</p>
+                  <p><strong>Fees Applied:</strong> Maker {makerFee}% / Taker {takerFee}% on each trade</p>
                 </div>
               </div>
             </div>
