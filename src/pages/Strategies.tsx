@@ -6,6 +6,7 @@ import { Plus, Zap, Edit, Trash2, Play, Pause, TrendingUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { StrategyBuilder } from "@/components/StrategyBuilder";
+import { StrategyCloner } from "@/components/StrategyCloner";
 
 const Strategies = () => {
   const [strategies, setStrategies] = useState<any[]>([]);
@@ -178,6 +179,10 @@ const Strategies = () => {
                       <Play className="h-4 w-4" />
                     )}
                   </Button>
+                  <StrategyCloner 
+                    strategy={strategy} 
+                    onCloneComplete={loadStrategies}
+                  />
                   <Button
                     size="sm"
                     variant="outline"

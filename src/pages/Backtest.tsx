@@ -9,6 +9,8 @@ import { BarChart3, Play, Loader2, Info } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { BacktestTradeLog } from "@/components/BacktestTradeLog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const Backtest = () => {
   const [strategies, setStrategies] = useState<any[]>([]);
@@ -525,7 +527,13 @@ const Backtest = () => {
         <Card className="lg:col-span-2 p-6">
           <h3 className="text-lg font-bold mb-4">Results</h3>
           {results ? (
-            <div className="space-y-6">
+            <Tabs defaultValue="overview" className="w-full">
+              <TabsList>
+                <TabsTrigger value="overview">Overview</TabsTrigger>
+                <TabsTrigger value="trades">Trade Log</TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="overview" className="space-y-6">
               {/* Equity Curve */}
               <div>
                 <h4 className="text-sm font-semibold mb-2">Equity Curve</h4>
@@ -652,7 +660,12 @@ const Backtest = () => {
                   <p><strong>Fees Applied:</strong> Maker {makerFee}% / Taker {takerFee}% on each trade</p>
                 </div>
               </div>
-            </div>
+              </TabsContent>
+              
+              <TabsContent value="trades">
+                <BacktestTradeLog trades={results.trades || []} />
+              </TabsContent>
+            </Tabs>
           ) : (
             <div className="flex items-center justify-center py-16">
               <div className="text-center">

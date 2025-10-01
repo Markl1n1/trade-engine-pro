@@ -5,6 +5,35 @@ import { Label } from "@/components/ui/label";
 export type IndicatorCategory = 'moving_average' | 'oscillator' | 'volume' | 'trend' | 'volatility';
 
 // Only show indicators that are currently supported by the backtest function
+// Map display names to database enum values
+const INDICATOR_DB_MAP: Record<string, string> = {
+  'SMA': 'sma',
+  'EMA': 'ema',
+  'RSI': 'rsi',
+  'MACD': 'macd',
+  'ATR': 'atr',
+  'ADX': 'adx',
+  'STOCHASTIC': 'stochastic',
+  'BOLLINGER_BANDS': 'bollinger_bands',
+  // Uppercase ones stay as-is
+  'WMA': 'WMA',
+  'DEMA': 'DEMA',
+  'TEMA': 'TEMA',
+  'HULL_MA': 'HULL_MA',
+  'VWMA': 'VWMA',
+  'STOCH_RSI': 'STOCH_RSI',
+  'MOMENTUM': 'MOMENTUM',
+  'CCI': 'CCI',
+  'WPR': 'WPR',
+  'MFI': 'MFI',
+  'ROC': 'ROC',
+  'OBV': 'OBV',
+  'AD_LINE': 'AD_LINE',
+  'CMF': 'CMF',
+  'VWAP': 'VWAP',
+  'VOLUME': 'VOLUME'
+};
+
 export const INDICATOR_CATEGORIES: Record<IndicatorCategory, { label: string; indicators: string[] }> = {
   moving_average: {
     label: 'Moving Averages',
@@ -26,6 +55,11 @@ export const INDICATOR_CATEGORIES: Record<IndicatorCategory, { label: string; in
     label: 'Volatility Indicators',
     indicators: ['ATR', 'BOLLINGER_BANDS']
   }
+};
+
+// Helper to convert display name to DB value
+export const getDbIndicatorName = (displayName: string): string => {
+  return INDICATOR_DB_MAP[displayName] || displayName;
 };
 
 export const INDICATOR_PARAMS: Record<string, { periods?: boolean; deviation?: boolean; smoothing?: boolean; multiplier?: boolean; acceleration?: boolean }> = {
@@ -98,7 +132,7 @@ export function IndicatorSelector({
     <div className="space-y-3">
       <div>
         <Label>{label}</Label>
-        <Select value={value} onValueChange={onChange}>
+        <Select value={value} onValueChange={(val) => onChange(getDbIndicatorName(val))}>
           <SelectTrigger>
             <SelectValue placeholder="Select indicator" />
           </SelectTrigger>
