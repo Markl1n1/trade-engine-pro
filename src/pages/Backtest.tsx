@@ -36,6 +36,9 @@ const Backtest = () => {
     percentage: number;
   } | null>(null);
   const [dataStats, setDataStats] = useState<any>(null);
+  const [backtestEngine, setBacktestEngine] = useState<string>("advanced");
+  const [comparisonResults, setComparisonResults] = useState<any>(null);
+  const [isComparing, setIsComparing] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -177,7 +180,7 @@ const Backtest = () => {
     }
   };
 
-  const runBacktest = async () => {
+  const runBacktest = async (engineOverride?: string) => {
     if (!selectedStrategy) {
       toast({
         title: "Please select a strategy",
@@ -186,11 +189,14 @@ const Backtest = () => {
       return;
     }
 
+    const engine = engineOverride || backtestEngine;
     setIsRunning(true);
     setResults(null);
 
     try {
-      const { data, error } = await supabase.functions.invoke('run-backtest', {
+      const functionName = engine === 'simple' ? 'run-backtest-simple' : 'run-backtest';
+      
+      const { data, error } = await supabase.functions.invoke(functionName, {
         body: {
           strategyId: selectedStrategy,
           startDate,
@@ -203,7 +209,7 @@ const Backtest = () => {
           makerFee: parseFloat(makerFee),
           takerFee: parseFloat(takerFee),
           slippage: parseFloat(slippage),
-          executionTiming,
+          executionTiming: engine === 'advanced' ? executionTiming : undefined,
         },
       });
 
@@ -212,9 +218,10 @@ const Backtest = () => {
       if (data.success) {
         setResults(data.results);
         toast({
-          title: "Backtest completed",
+          title: `Backtest completed (${engine})`,
           description: `Processed ${data.results.total_trades} trades`,
         });
+        return data.results;
       } else {
         throw new Error(data.error);
       }
@@ -224,8 +231,44 @@ const Backtest = () => {
         description: error.message,
         variant: "destructive",
       });
+      throw error;
     } finally {
       setIsRunning(false);
+    }
+  };
+
+  const runComparison = async () => {
+    setIsComparing(true);
+    setComparisonResults(null);
+
+    try {
+      toast({
+        title: "Running comparison",
+        description: "Testing both backtest engines...",
+      });
+
+      const [advancedResults, simpleResults] = await Promise.all([
+        runBacktest('advanced'),
+        runBacktest('simple'),
+      ]);
+
+      setComparisonResults({
+        advanced: advancedResults,
+        simple: simpleResults,
+      });
+
+      toast({
+        title: "Comparison complete",
+        description: "Both engines have completed",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Comparison failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsComparing(false);
     }
   };
 
@@ -342,22 +385,42 @@ const Backtest = () => {
             )}
 
             <div>
-              <Label className="text-xs text-muted-foreground">Execution Timing</Label>
-              <Select value={executionTiming} onValueChange={setExecutionTiming}>
+              <Label className="text-xs text-muted-foreground">Backtest Engine</Label>
+              <Select value={backtestEngine} onValueChange={setBacktestEngine}>
                 <SelectTrigger className="mt-1">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="open">Candle Open</SelectItem>
-                  <SelectItem value="close">Candle Close</SelectItem>
+                  <SelectItem value="advanced">Advanced (Event-Based)</SelectItem>
+                  <SelectItem value="simple">Simple (Vectorized)</SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-[10px] text-muted-foreground mt-1">
-                <strong>Open:</strong> Uses previous candle's indicators, executes at current candle's open price (more realistic).
+                <strong>Advanced:</strong> Bar-by-bar simulation with full logic.
                 <br />
-                <strong>Close:</strong> Uses previous candle's indicators, executes at current candle's close price.
+                <strong>Simple:</strong> Fast vectorized calculations for comparison.
               </p>
             </div>
+
+            {backtestEngine === 'advanced' && (
+              <div>
+                <Label className="text-xs text-muted-foreground">Execution Timing</Label>
+                <Select value={executionTiming} onValueChange={setExecutionTiming}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="open">Candle Open</SelectItem>
+                    <SelectItem value="close">Candle Close</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  <strong>Open:</strong> Uses previous candle's indicators, executes at current candle's open price (more realistic).
+                  <br />
+                  <strong>Close:</strong> Uses previous candle's indicators, executes at current candle's close price.
+                </p>
+              </div>
+            )}
 
             <div className="pt-2 border-t">
               <Label className="text-xs text-muted-foreground">Fees & Slippage</Label>
@@ -506,7 +569,7 @@ const Backtest = () => {
 
             <Button 
               className="w-full gap-2" 
-              onClick={runBacktest}
+              onClick={() => runBacktest()}
               disabled={isRunning || !selectedStrategy || !dataStats?.available}
             >
               {isRunning ? (
