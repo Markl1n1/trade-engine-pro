@@ -10,7 +10,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { BacktestTradeLog } from "@/components/BacktestTradeLog";
-import { BacktestPDFExporter } from "@/components/BacktestPDFExporter";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const Backtest = () => {
@@ -526,30 +525,7 @@ const Backtest = () => {
         </Card>
 
         <Card className="lg:col-span-2 p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-bold">Results</h3>
-            {results && (
-              <BacktestPDFExporter
-                results={results}
-                strategyName={selectedStrategyData?.name || 'Strategy'}
-                symbol={selectedStrategyData?.symbol || ''}
-                timeframe={selectedStrategyData?.timeframe || ''}
-                startDate={startDate}
-                endDate={endDate}
-                config={{
-                  initialBalance,
-                  stopLossPercent,
-                  takeProfitPercent,
-                  productType,
-                  leverage,
-                  makerFee,
-                  takerFee,
-                  slippage,
-                  executionTiming,
-                }}
-              />
-            )}
-          </div>
+          <h3 className="text-lg font-bold mb-4">Results</h3>
           {results ? (
             <Tabs defaultValue="overview" className="w-full">
               <TabsList>
