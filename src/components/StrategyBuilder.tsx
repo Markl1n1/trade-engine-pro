@@ -228,6 +228,16 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
       return;
     }
 
+    // Validate that at least one condition exists
+    if (buyConditions.length === 0 && sellConditions.length === 0) {
+      toast({ 
+        title: "Conditions Required", 
+        description: "Please add at least one buy or sell condition before saving. Strategies need conditions to run backtests.", 
+        variant: "destructive" 
+      });
+      return;
+    }
+
     setSaving(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();

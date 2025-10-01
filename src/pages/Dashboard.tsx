@@ -1,10 +1,11 @@
 import { Card } from "@/components/ui/card";
-import { ArrowDown, ArrowUp, TrendingUp, RefreshCw } from "lucide-react";
+import { ArrowDown, ArrowUp, TrendingUp, RefreshCw, Info } from "lucide-react";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { AddMarketPairDialog } from "@/components/AddMarketPairDialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface TickerData {
   symbol: string;
@@ -39,6 +40,7 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [loadingAccount, setLoadingAccount] = useState(true);
   const [userPairs, setUserPairs] = useState<string[]>([]);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   useEffect(() => {
     loadUserPairs();
@@ -76,6 +78,7 @@ const Dashboard = () => {
       if (error) throw error;
       if (data?.success && data?.data) {
         setAccountData(data.data);
+        setLastUpdated(new Date());
       }
     } catch (error) {
       console.error('Error fetching account data:', error);
@@ -108,24 +111,32 @@ const Dashboard = () => {
       change: accountData?.totalUnrealizedProfit ? `${accountData.totalUnrealizedProfit >= 0 ? '+' : ''}$${accountData.totalUnrealizedProfit.toFixed(2)}` : "—",
       trend: accountData?.totalUnrealizedProfit ? (accountData.totalUnrealizedProfit >= 0 ? "up" : "down") : "neutral",
       environment: accountData?.environment,
+      tooltip: "Total wallet balance from Binance account (real-time, includes unrealized P&L)",
+      timeframe: "Real-time",
     },
     { 
       label: "Open Positions", 
       value: loadingAccount ? "..." : accountData?.openPositionsCount.toString() || "0",
       change: "—",
-      trend: "neutral"
+      trend: "neutral",
+      tooltip: "Number of active open positions from Binance account",
+      timeframe: "Real-time",
     },
     { 
       label: "Win Rate", 
       value: loadingAccount ? "..." : accountData ? `${accountData.winRate.toFixed(1)}%` : "—",
       change: "—",
-      trend: "neutral"
+      trend: "neutral",
+      tooltip: "Percentage of winning trades calculated from historical trade data",
+      timeframe: "All-time",
     },
     { 
       label: "Unrealized P&L", 
       value: loadingAccount ? "Loading..." : `$${accountData?.totalUnrealizedProfit.toFixed(2) || '0.00'}`,
       change: "—",
-      trend: accountData?.totalUnrealizedProfit ? (accountData.totalUnrealizedProfit >= 0 ? "up" : "down") : "neutral"
+      trend: accountData?.totalUnrealizedProfit ? (accountData.totalUnrealizedProfit >= 0 ? "up" : "down") : "neutral",
+      tooltip: "Floating profit/loss from open positions (not yet realized)",
+      timeframe: "Real-time",
     },
   ];
 
@@ -133,13 +144,23 @@ const Dashboard = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold mb-2">Dashboard</h2>
+          <div className="flex items-center gap-3 mb-2">
+            <h2 className="text-2xl font-bold">Dashboard</h2>
+            {accountData && (
+              <Badge 
+                variant={accountData.environment === 'testnet' ? 'secondary' : 'destructive'}
+                className="text-sm px-3 py-1"
+              >
+                {accountData.environment === 'testnet' ? '🧪 Testnet Mode' : '🔴 Live Trading'}
+              </Badge>
+            )}
+          </div>
           <p className="text-sm text-muted-foreground">
             Real-time overview of your trading activity
-            {accountData && (
-              <Badge variant="outline" className="ml-2">
-                {accountData.environment === 'testnet' ? '🧪 Testnet' : '🔴 Live'}
-              </Badge>
+            {lastUpdated && (
+              <span className="ml-2 text-xs">
+                • Last updated: {lastUpdated.toLocaleTimeString()}
+              </span>
             )}
           </p>
         </div>
@@ -157,29 +178,41 @@ const Dashboard = () => {
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {stats.map((stat) => (
-          <Card key={stat.label} className="p-4">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground mb-1">
-                  {stat.label}
-                  {stat.environment && (
-                    <Badge variant="secondary" className="ml-2 text-[10px] px-1 py-0">
-                      {stat.environment}
+      <TooltipProvider>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {stats.map((stat) => (
+            <Card key={stat.label} className="p-4">
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="text-xs text-muted-foreground">
+                      {stat.label}
+                    </p>
+                    <Tooltip>
+                      <TooltipTrigger>
+                        <Info className="h-3 w-3 text-muted-foreground" />
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-xs">
+                        <p className="text-xs">{stat.tooltip}</p>
+                        <p className="text-xs font-semibold mt-1">Source: Binance API</p>
+                        <p className="text-xs mt-1">Timeframe: {stat.timeframe}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                    <Badge variant="outline" className="text-[9px] px-1.5 py-0">
+                      {stat.timeframe}
                     </Badge>
-                  )}
-                </p>
-                <p className="text-2xl font-bold">{stat.value}</p>
+                  </div>
+                  <p className="text-2xl font-bold">{stat.value}</p>
+                </div>
+                {stat.trend === "up" && <ArrowUp className="h-4 w-4 text-success" />}
+                {stat.trend === "down" && <ArrowDown className="h-4 w-4 text-destructive" />}
+                {stat.trend === "neutral" && <TrendingUp className="h-4 w-4 text-muted-foreground" />}
               </div>
-              {stat.trend === "up" && <ArrowUp className="h-4 w-4 text-success" />}
-              {stat.trend === "down" && <ArrowDown className="h-4 w-4 text-destructive" />}
-              {stat.trend === "neutral" && <TrendingUp className="h-4 w-4 text-muted-foreground" />}
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">{stat.change}</p>
-          </Card>
-        ))}
-      </div>
+              <p className="text-xs text-muted-foreground mt-2">{stat.change}</p>
+            </Card>
+          ))}
+        </div>
+      </TooltipProvider>
 
       <Card className="p-6">
         <h3 className="text-lg font-bold mb-4">Open Positions</h3>
