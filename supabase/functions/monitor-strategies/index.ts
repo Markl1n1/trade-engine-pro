@@ -88,6 +88,9 @@ function calculateIndicator(
       case 'price':
         return closes[closes.length - 1];
       
+      case 'volume':
+        return candles[candles.length - 1].volume;
+      
       default:
         console.warn(`Unknown indicator type: ${type}`);
         return null;
@@ -400,6 +403,18 @@ serve(async (req) => {
               range_high: state.range_high,
               range_low: state.range_low,
               updated_at: new Date().toISOString(),
+            });
+
+          // Insert signal record for tracking
+          await supabase
+            .from('strategy_signals')
+            .insert({
+              user_id: user.id,
+              strategy_id: strategy.id,
+              symbol: strategy.symbol,
+              signal_type: signal.signal.toUpperCase(),
+              price: currentPrice,
+              reason: signal.reason,
             });
 
           // Send Telegram notification

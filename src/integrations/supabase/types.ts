@@ -339,6 +339,47 @@ export type Database = {
           },
         ]
       }
+      strategy_signals: {
+        Row: {
+          created_at: string
+          id: string
+          price: number
+          reason: string | null
+          signal_type: string
+          strategy_id: string
+          symbol: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          price: number
+          reason?: string | null
+          signal_type: string
+          strategy_id: string
+          symbol: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          price?: number
+          reason?: string | null
+          signal_type?: string
+          strategy_id?: string
+          symbol?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "strategy_signals_strategy_id_fkey"
+            columns: ["strategy_id"]
+            isOneToOne: false
+            referencedRelation: "strategies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       strategy_templates: {
         Row: {
           category: string
