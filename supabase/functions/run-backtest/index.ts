@@ -1006,10 +1006,33 @@ async function runMSTGBacktest(
   const minQty = 0.001;
   const minNotional = 10;
 
+  // Find first valid TS score index dynamically
+  let firstValidIndex = -1;
+  for (let i = 0; i < tsScore.length; i++) {
+    if (!isNaN(tsScore[i])) {
+      firstValidIndex = i;
+      break;
+    }
+  }
+  
+  if (firstValidIndex === -1) {
+    console.error(`[MSTG Debug] ERROR: No valid TS scores found in entire dataset!`);
+    throw new Error('No valid TS scores generated - check indicator calculations');
+  }
+  
+  console.log(`[MSTG Debug] First valid TS score at index ${firstValidIndex} (out of ${candles.length} candles)`);
+  console.log(`[MSTG Debug] Trading window: ${candles.length - firstValidIndex - 1} candles`);
+  console.log(`[MSTG Debug] Date range: ${new Date(candles[0].open_time).toISOString()} to ${new Date(candles[candles.length - 1].open_time).toISOString()}`);
+  
   let skippedNaN = 0;
   let entryChecks = 0;
+  let signalsDetected = 0;
   
-  for (let i = 1; i < candles.length; i++) {
+  // Start from first valid TS score + 1 (to allow for i-1 lookback)
+  const startIndex = Math.max(firstValidIndex + 1, 1);
+  console.log(`[MSTG Debug] Starting backtest from index ${startIndex}`);
+  
+  for (let i = startIndex; i < candles.length; i++) {
     const currentCandle = candles[i];
     const ts = tsScore[i - 1]; // Use previous candle to avoid look-ahead bias
     const prevTs = i > 1 ? tsScore[i - 2] : NaN;
@@ -1084,14 +1107,16 @@ async function runMSTGBacktest(
       if (ts > longThreshold) {
         shouldEnter = true;
         entryType = 'buy';
-        if (entryChecks <= 5) {
-          console.log(`[MSTG Debug] [${i}] Long signal detected: TS=${ts.toFixed(2)} > ${longThreshold}`);
+        signalsDetected++;
+        if (signalsDetected <= 5) {
+          console.log(`[MSTG Debug] [${i}] Long signal #${signalsDetected} detected: TS=${ts.toFixed(2)} > ${longThreshold}, Date=${new Date(currentCandle.open_time).toISOString()}`);
         }
       } else if (ts < shortThreshold) {
         shouldEnter = true;
         entryType = 'sell';
-        if (entryChecks <= 5) {
-          console.log(`[MSTG Debug] [${i}] Short signal detected: TS=${ts.toFixed(2)} < ${shortThreshold}`);
+        signalsDetected++;
+        if (signalsDetected <= 5) {
+          console.log(`[MSTG Debug] [${i}] Short signal #${signalsDetected} detected: TS=${ts.toFixed(2)} < ${shortThreshold}, Date=${new Date(currentCandle.open_time).toISOString()}`);
         }
       }
 
@@ -1184,9 +1209,14 @@ async function runMSTGBacktest(
   const losingTrades = trades.filter(t => (t.profit || 0) < 0).length;
   const winRate = trades.length > 0 ? (winningTrades / trades.length) * 100 : 0;
 
-  console.log(`[MSTG Debug] Skipped ${skippedNaN} candles due to NaN TS score`);
-  console.log(`[MSTG Debug] Checked ${entryChecks} candles for entry signals`);
-  console.log(`MSTG Backtest complete: ${trades.length} trades, ${winRate.toFixed(2)}% win rate`);
+  console.log(`[MSTG Debug] Backtest Summary:`);
+  console.log(`[MSTG Debug] - Total candles: ${candles.length}`);
+  console.log(`[MSTG Debug] - Trading window: ${candles.length - startIndex} candles`);
+  console.log(`[MSTG Debug] - Skipped NaN values: ${skippedNaN}`);
+  console.log(`[MSTG Debug] - Entry checks: ${entryChecks}`);
+  console.log(`[MSTG Debug] - Signals detected: ${signalsDetected}`);
+  console.log(`[MSTG Debug] - Trades executed: ${trades.length}`);
+  console.log(`[MSTG Debug] - Final balance: ${balance.toFixed(2)}, Win rate: ${winRate.toFixed(2)}%`);
 
   await supabaseClient
     .from('strategy_backtest_results')

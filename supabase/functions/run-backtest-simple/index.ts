@@ -258,16 +258,39 @@ serve(async (req) => {
       
       console.log(`[MSTG Debug] Using thresholds: Long=${longThreshold}, Short=${shortThreshold}, Exit=${exitThreshold}`);
       
+      // Find first valid TS score index dynamically
+      let firstValidIndex = -1;
+      for (let i = 0; i < tsScore.length; i++) {
+        if (!isNaN(tsScore[i])) {
+          firstValidIndex = i;
+          break;
+        }
+      }
+      
+      if (firstValidIndex === -1) {
+        console.error(`[MSTG Debug] ERROR: No valid TS scores found in entire dataset!`);
+      } else {
+        console.log(`[MSTG Debug] First valid TS score at index ${firstValidIndex} (out of ${candles.length} candles)`);
+        console.log(`[MSTG Debug] Trading window: ${candles.length - firstValidIndex - 1} candles`);
+      }
+      
       let signalCount = 0;
       let exitSignalCount = 0;
       
-      for (let i = 50; i < candles.length; i++) {
-        const ts = tsScore[i - 1];
+      // Start from first valid TS score + 1 (to allow for i-1 lookback)
+      const startIndex = Math.max(firstValidIndex + 1, 1);
+      console.log(`[MSTG Debug] Starting signal generation from index ${startIndex}`);
+      
+      for (let i = startIndex; i < candles.length; i++) {
+        const ts = tsScore[i - 1]; // Use previous to avoid look-ahead bias
         if (isNaN(ts)) continue;
         
         if (ts > longThreshold) {
           signals[i] = true;
           signalCount++;
+          if (signalCount <= 3) {
+            console.log(`[MSTG Debug] Entry signal #${signalCount} at index ${i}, TS=${ts.toFixed(2)}`);
+          }
         }
         if (ts < exitThreshold) {
           exitSignals[i] = true;
@@ -276,6 +299,7 @@ serve(async (req) => {
       }
       
       console.log(`[MSTG Debug] Generated ${signalCount} entry signals and ${exitSignalCount} exit signals`);
+      console.log(`[MSTG Debug] Candles analyzed for signals: ${candles.length - startIndex}`);
     } else {
       // Original simple signal logic for non-MSTG strategies
       if (!conditions) {
