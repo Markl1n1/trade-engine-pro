@@ -229,6 +229,7 @@ async function sendTelegramSignal(
     take_profit?: number;
   }
 ): Promise<void> {
+  const timestamp = new Date().toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, ' UTC');
   const message = `
 🚨 *Trading Signal Alert*
 
@@ -236,11 +237,10 @@ async function sendTelegramSignal(
 💹 Symbol: ${signal.symbol}
 🎯 Signal: *${signal.signal_type}*
 💰 Price: $${signal.price.toFixed(2)}
-${signal.reason ? `📝 Reason: ${signal.reason}` : ''}
 ${signal.stop_loss ? `🛑 Stop Loss: $${signal.stop_loss.toFixed(2)}` : ''}
 ${signal.take_profit ? `✅ Take Profit: $${signal.take_profit.toFixed(2)}` : ''}
 
-_Timestamp: ${new Date().toISOString()}_
+_Timestamp: ${timestamp}_
   `.trim();
 
   const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
@@ -430,10 +430,10 @@ serve(async (req) => {
                   price: currentPrice,
                   reason: signal.reason,
                   stop_loss: strategy.stop_loss_percent 
-                    ? currentPrice * (1 - strategy.stop_loss_percent / 100)
+                    ? currentPrice * (1 - Math.abs(strategy.stop_loss_percent) / 100)
                     : undefined,
                   take_profit: strategy.take_profit_percent
-                    ? currentPrice * (1 + strategy.take_profit_percent / 100)
+                    ? currentPrice * (1 + Math.abs(strategy.take_profit_percent) / 100)
                     : undefined,
                 }
               );
