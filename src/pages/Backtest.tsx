@@ -56,6 +56,12 @@ const Backtest = () => {
         setInitialBalance(String(strategy.initial_capital || 1000));
         setStopLossPercent(String(strategy.stop_loss_percent || 3));
         setTakeProfitPercent(String(strategy.take_profit_percent || 6));
+        
+        // Auto-set product type and leverage for 4h_reentry strategy
+        if (strategy.strategy_type === '4h_reentry') {
+          setProductType('futures');
+          setLeverage('20');
+        }
       }
     }
   }, [selectedStrategy, strategies, isStrategyDefaults]);

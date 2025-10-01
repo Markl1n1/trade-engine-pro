@@ -60,8 +60,8 @@ function convertToNYTime(timestamp: number): Date {
 
 function isInNYSession(timestamp: number, sessionStart: string, sessionEnd: string): boolean {
   const nyTime = convertToNYTime(timestamp);
-  const hours = nyTime.getHours();
-  const minutes = nyTime.getMinutes();
+  const hours = nyTime.getUTCHours();
+  const minutes = nyTime.getUTCMinutes();
   const currentMinutes = hours * 60 + minutes;
   
   const [startHours, startMins] = sessionStart.split(':').map(Number);
@@ -305,8 +305,22 @@ serve(async (req) => {
           quantity = Math.floor(quantity / stepSize) * stepSize;
           const actualNotional = quantity * priceWithSlippage;
           
-          // Validate constraints
-          if (quantity >= minQty && actualNotional >= minNotional && margin <= availableBalance) {
+          // Validate constraints with verbose logging
+          const canEnter = quantity >= minQty && actualNotional >= minNotional && margin <= availableBalance;
+          
+          if (!canEnter) {
+            console.log(`[${i}] ❌ ENTRY REJECTED:`);
+            console.log(`  - positionSizeUSD: ${positionSizeUSD.toFixed(2)}`);
+            console.log(`  - executionPrice: ${priceWithSlippage.toFixed(2)}`);
+            console.log(`  - quantity: ${quantity.toFixed(5)} (minQty: ${minQty})`);
+            console.log(`  - actualNotional: ${actualNotional.toFixed(2)} (minNotional: ${minNotional})`);
+            console.log(`  - margin: ${margin.toFixed(2)}`);
+            console.log(`  - availableBalance: ${availableBalance.toFixed(2)}`);
+            console.log(`  - leverage: ${leverage}x`);
+            console.log(`  - Reason: ${quantity < minQty ? 'quantity < minQty' : actualNotional < minNotional ? 'actualNotional < minNotional' : 'margin > availableBalance'}`);
+          }
+          
+          if (canEnter) {
             // Calculate entry fee
             const entryFee = actualNotional * (takerFee / 100);
             
@@ -325,7 +339,7 @@ serve(async (req) => {
               availableBalance -= (actualNotional + entryFee);
             }
             
-            console.log(`[${i}] Opened BUY at ${priceWithSlippage.toFixed(2)} (qty: ${quantity.toFixed(5)}, fee: ${entryFee.toFixed(2)})`);
+            console.log(`[${i}] ✅ Opened BUY at ${priceWithSlippage.toFixed(2)} (qty: ${quantity.toFixed(5)}, notional: ${actualNotional.toFixed(2)}, fee: ${entryFee.toFixed(2)})`);
           }
         }
       } else {
@@ -983,8 +997,22 @@ async function run4hReentryBacktest(
         quantity = Math.floor(quantity / stepSize) * stepSize;
         const actualNotional = quantity * priceWithSlippage;
         
-        // Validate constraints
-        if (quantity >= minQty && actualNotional >= minNotional && margin <= availableBalance) {
+        // Validate constraints with verbose logging
+        const canEnter = quantity >= minQty && actualNotional >= minNotional && margin <= availableBalance;
+        
+        if (!canEnter) {
+          console.log(`[${i}] ${nyTimeStr} ❌ ENTRY REJECTED (${shouldEnterLong ? 'LONG' : 'SHORT'}):`);
+          console.log(`  - positionSizeUSD: ${positionSizeUSD.toFixed(2)}`);
+          console.log(`  - executionPrice: ${priceWithSlippage.toFixed(2)}`);
+          console.log(`  - quantity: ${quantity.toFixed(5)} (minQty: ${minQty})`);
+          console.log(`  - actualNotional: ${actualNotional.toFixed(2)} (minNotional: ${minNotional})`);
+          console.log(`  - margin: ${margin.toFixed(2)}`);
+          console.log(`  - availableBalance: ${availableBalance.toFixed(2)}`);
+          console.log(`  - leverage: ${leverage}x`);
+          console.log(`  - Reason: ${quantity < minQty ? 'quantity < minQty' : actualNotional < minNotional ? 'actualNotional < minNotional' : 'margin > availableBalance'}`);
+        }
+        
+        if (canEnter) {
           const entryFee = actualNotional * (takerFee / 100);
           
           position = {
@@ -1006,7 +1034,7 @@ async function run4hReentryBacktest(
             availableBalance -= (actualNotional + entryFee);
           }
           
-          console.log(`[${i}] Opened ${position.type.toUpperCase()} at ${priceWithSlippage.toFixed(2)}, SL=${stopLossPrice.toFixed(2)}, TP=${takeProfitPrice.toFixed(2)}`);
+          console.log(`[${i}] ${nyTimeStr} ✅ Opened ${shouldEnterLong ? 'LONG' : 'SHORT'} at ${priceWithSlippage.toFixed(2)} (qty: ${quantity.toFixed(5)}, notional: ${actualNotional.toFixed(2)}, fee: ${entryFee.toFixed(2)}, SL: ${stopLossPrice.toFixed(2)}, TP: ${takeProfitPrice.toFixed(2)})`);
         }
       }
     } else {

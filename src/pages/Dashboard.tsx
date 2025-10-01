@@ -59,6 +59,7 @@ const Dashboard = () => {
   const [clearingSignals, setClearingSignals] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [signalsPerPage, setSignalsPerPage] = useState(10);
+  const [tickerErrors, setTickerErrors] = useState<Array<{ symbol: string; error: string }>>([]);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -122,11 +123,20 @@ const Dashboard = () => {
       });
 
       if (error) throw error;
-      if (data?.success && data?.data) {
-        setMarketData(data.data);
+      if (data?.success) {
+        // Accept partial data
+        setMarketData(data.data || []);
+        
+        // Handle errors for invalid symbols
+        if (data.errors && data.errors.length > 0) {
+          setTickerErrors(data.errors);
+        } else {
+          setTickerErrors([]);
+        }
       }
     } catch (error) {
       console.error('Error fetching market data:', error);
+      setMarketData([]);
     } finally {
       setLoading(false);
     }
@@ -586,7 +596,17 @@ const Dashboard = () => {
 
       <Card className="p-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold">Market Data (Live)</h3>
+          <div className="flex-1">
+            <h3 className="text-lg font-bold">Market Data (Live)</h3>
+            {tickerErrors.length > 0 && (
+              <div className="mt-2 p-3 bg-destructive/10 border border-destructive/30 rounded-lg">
+                <p className="text-sm font-semibold text-destructive mb-1">⚠️ Invalid symbols detected:</p>
+                <p className="text-xs text-muted-foreground">
+                  {tickerErrors.map(e => e.symbol).join(', ')} failed to load. Please remove these from Trading Pairs.
+                </p>
+              </div>
+            )}
+          </div>
           <AddMarketPairDialog onPairAdded={loadUserPairs} />
         </div>
         {loading ? (
