@@ -18,6 +18,7 @@ const Auth = () => {
 
   useEffect(() => {
     if (user) {
+      console.log('[Auth] User detected, navigating to dashboard');
       navigate('/');
     }
   }, [user, navigate]);
@@ -39,7 +40,8 @@ const Auth = () => {
         title: 'Success',
         description: 'Signed in successfully'
       });
-      navigate('/');
+      // Navigation is handled by useEffect watching user state
+      console.log('[Auth] Sign in successful, waiting for user state update');
     }
     
     setIsLoading(false);

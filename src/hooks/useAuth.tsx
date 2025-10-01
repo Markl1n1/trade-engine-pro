@@ -50,7 +50,7 @@ export const useAuth = () => {
     });
 
     return () => subscription.unsubscribe();
-  }, [toast]);
+  }, []); // Removed toast from dependencies to prevent unnecessary re-renders
 
   const signUp = async (email: string, password: string) => {
     const redirectUrl = `${window.location.origin}/`;
