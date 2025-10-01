@@ -124,10 +124,13 @@ serve(async (req) => {
 
     console.log(`Loaded ${groups?.length || 0} condition groups from database`);
 
-    // Validate strategy has conditions
-    if (!conditions || conditions.length === 0) {
+    // Validate strategy has conditions (skip for custom strategy types like 4h_reentry)
+    const isCustomStrategy = strategy.strategy_type && strategy.strategy_type !== 'standard';
+    if (!isCustomStrategy && (!conditions || conditions.length === 0)) {
       throw new Error('Strategy has no conditions defined. Please add entry/exit conditions before running backtest.');
     }
+    
+    console.log(`Strategy type: ${strategy.strategy_type || 'standard'}, Custom logic: ${isCustomStrategy}`);
 
     // Normalize indicator types and operators to lowercase for compatibility
     const normalizedConditions = conditions.map(c => ({

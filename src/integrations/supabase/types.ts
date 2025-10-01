@@ -289,6 +289,56 @@ export type Database = {
           },
         ]
       }
+      strategy_live_states: {
+        Row: {
+          created_at: string
+          entry_price: number | null
+          entry_time: string | null
+          id: string
+          last_signal_time: string | null
+          position_open: boolean
+          range_high: number | null
+          range_low: number | null
+          strategy_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          entry_price?: number | null
+          entry_time?: string | null
+          id?: string
+          last_signal_time?: string | null
+          position_open?: boolean
+          range_high?: number | null
+          range_low?: number | null
+          strategy_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          entry_price?: number | null
+          entry_time?: string | null
+          id?: string
+          last_signal_time?: string | null
+          position_open?: boolean
+          range_high?: number | null
+          range_low?: number | null
+          strategy_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "strategy_live_states_strategy_id_fkey"
+            columns: ["strategy_id"]
+            isOneToOne: true
+            referencedRelation: "strategies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       strategy_templates: {
         Row: {
           category: string

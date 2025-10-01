@@ -44,12 +44,22 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (settingsError) {
+      console.error('Settings fetch error:', settingsError);
       throw new Error('Failed to fetch settings');
     }
 
     if (!settings) {
+      console.error('No settings found for user:', user.id);
       throw new Error('No settings found');
     }
+
+    console.log('Settings found:', {
+      use_testnet: settings.use_testnet,
+      has_testnet_key: !!settings.binance_testnet_api_key,
+      has_testnet_secret: !!settings.binance_testnet_api_secret,
+      has_mainnet_key: !!settings.binance_mainnet_api_key,
+      has_mainnet_secret: !!settings.binance_mainnet_api_secret,
+    });
 
     // Select correct credentials based on testnet mode
     const apiKey = settings.use_testnet 
@@ -61,8 +71,15 @@ Deno.serve(async (req) => {
       : settings.binance_mainnet_api_secret;
 
     if (!apiKey || !apiSecret) {
+      console.error('Missing credentials:', {
+        mode: settings.use_testnet ? 'testnet' : 'mainnet',
+        has_key: !!apiKey,
+        has_secret: !!apiSecret,
+      });
       throw new Error(`Binance API credentials not configured for ${settings.use_testnet ? 'testnet' : 'mainnet'}`);
     }
+
+    console.log(`Using ${settings.use_testnet ? 'testnet' : 'mainnet'} credentials`);
 
     // Determine base URL based on testnet setting
     const baseUrl = settings.use_testnet 
