@@ -233,12 +233,12 @@ async function sendTelegramSignal(
   const message = `
 🚨 *Trading Signal Alert*
 
-📊 Strategy: ${signal.strategy_name}
-💹 Symbol: ${signal.symbol}
-🎯 Signal: *${signal.signal_type}*
-💰 Price: $${signal.price.toFixed(2)}
-${signal.stop_loss ? `🛑 Stop Loss: $${signal.stop_loss.toFixed(2)}` : ''}
-${signal.take_profit ? `✅ Take Profit: $${signal.take_profit.toFixed(2)}` : ''}
+📊 ${signal.strategy_name}
+💹 ${signal.symbol}
+🎯 *${signal.signal_type}*
+💰 $${signal.price.toFixed(2)}
+${signal.stop_loss ? `🛑 SL: $${signal.stop_loss.toFixed(2)}` : ''}
+${signal.take_profit ? `✅ TP: $${signal.take_profit.toFixed(2)}` : ''}
 
 _Timestamp: ${timestamp}_
   `.trim();
