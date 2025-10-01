@@ -101,6 +101,7 @@ export type Database = {
           position_size_percent: number | null
           status: Database["public"]["Enums"]["strategy_status"]
           stop_loss_percent: number | null
+          strategy_type: string | null
           symbol: string
           take_profit_percent: number | null
           timeframe: string
@@ -116,6 +117,7 @@ export type Database = {
           position_size_percent?: number | null
           status?: Database["public"]["Enums"]["strategy_status"]
           stop_loss_percent?: number | null
+          strategy_type?: string | null
           symbol?: string
           take_profit_percent?: number | null
           timeframe?: string
@@ -131,6 +133,7 @@ export type Database = {
           position_size_percent?: number | null
           status?: Database["public"]["Enums"]["strategy_status"]
           stop_loss_percent?: number | null
+          strategy_type?: string | null
           symbol?: string
           take_profit_percent?: number | null
           timeframe?: string
@@ -298,6 +301,7 @@ export type Database = {
           name: string
           position_size_percent: number | null
           stop_loss_percent: number | null
+          strategy_type: string | null
           symbol: string | null
           take_profit_percent: number | null
           template_data: Json
@@ -315,6 +319,7 @@ export type Database = {
           name: string
           position_size_percent?: number | null
           stop_loss_percent?: number | null
+          strategy_type?: string | null
           symbol?: string | null
           take_profit_percent?: number | null
           template_data: Json
@@ -332,6 +337,7 @@ export type Database = {
           name?: string
           position_size_percent?: number | null
           stop_loss_percent?: number | null
+          strategy_type?: string | null
           symbol?: string | null
           take_profit_percent?: number | null
           template_data?: Json

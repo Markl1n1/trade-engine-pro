@@ -344,6 +344,11 @@ const Backtest = () => {
                   <SelectItem value="close">Candle Close</SelectItem>
                 </SelectContent>
               </Select>
+              <p className="text-[10px] text-muted-foreground mt-1">
+                <strong>Open:</strong> Uses previous candle's indicators, executes at current candle's open price (more realistic).
+                <br />
+                <strong>Close:</strong> Uses previous candle's indicators, executes at current candle's close price.
+              </p>
             </div>
 
             <div className="pt-2 border-t">
@@ -383,6 +388,13 @@ const Backtest = () => {
                   <span className="text-[10px] text-muted-foreground">Slippage</span>
                 </div>
               </div>
+              <p className="text-[10px] text-muted-foreground mt-2">
+                <strong>Maker:</strong> Fee for limit orders adding liquidity (default 0.02%).
+                <br />
+                <strong>Taker:</strong> Fee for market orders removing liquidity (default 0.04%).
+                <br />
+                <strong>Slippage:</strong> Price difference between expected and actual execution (default 0.01%).
+              </p>
             </div>
 
             <div>

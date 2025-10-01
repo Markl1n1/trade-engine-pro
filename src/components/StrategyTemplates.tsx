@@ -25,6 +25,7 @@ const categoryIcons: Record<string, any> = {
   'Momentum': Zap,
   'Volatility': BarChart3,
   'Trend': TrendingUp,
+  'Breakout': Zap,
 };
 
 export function StrategyTemplates({ onSelectTemplate }: StrategyTemplatesProps) {
