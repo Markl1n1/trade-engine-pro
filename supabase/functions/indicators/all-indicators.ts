@@ -433,3 +433,147 @@ export function calculateBollingerBands(data: number[], period: number = 20, dev
   
   return { upper, middle, lower };
 }
+
+// ============================================================================
+// MSTG (Market Sentiment Trend Gauge) Indicators
+// ============================================================================
+
+/**
+ * Normalize values to a specified range
+ */
+export function normalizeToRange(values: number[], min: number, max: number): number[] {
+  const result: number[] = [];
+  const validValues = values.filter(v => !isNaN(v) && isFinite(v));
+  
+  if (validValues.length === 0) {
+    return values.map(() => NaN);
+  }
+  
+  const dataMin = Math.min(...validValues);
+  const dataMax = Math.max(...validValues);
+  const range = dataMax - dataMin;
+  
+  for (const value of values) {
+    if (isNaN(value) || !isFinite(value)) {
+      result.push(NaN);
+    } else if (range === 0) {
+      result.push(0);
+    } else {
+      const normalized = ((value - dataMin) / range) * (max - min) + min;
+      result.push(normalized);
+    }
+  }
+  
+  return result;
+}
+
+/**
+ * Normalize RSI from [0,100] to [-100,+100]
+ */
+export function normalizeRSI(rsi: number[]): number[] {
+  return rsi.map(value => {
+    if (isNaN(value)) return NaN;
+    return (value - 50) * 2; // Converts 0->-100, 50->0, 100->+100
+  });
+}
+
+/**
+ * Calculate Bollinger Band Position (0 to 1, where price is within bands)
+ */
+export function calculateBollingerPosition(candles: Candle[], period: number = 20): number[] {
+  const closes = candles.map(c => c.close);
+  const bb = calculateBollingerBands(closes, period, 2);
+  const position: number[] = [];
+  
+  for (let i = 0; i < candles.length; i++) {
+    if (isNaN(bb.upper[i]) || isNaN(bb.lower[i])) {
+      position.push(NaN);
+    } else {
+      const range = bb.upper[i] - bb.lower[i];
+      if (range === 0) {
+        position.push(0.5);
+      } else {
+        const pos = (candles[i].close - bb.lower[i]) / range;
+        position.push(Math.max(0, Math.min(1, pos))); // Clamp to [0,1]
+      }
+    }
+  }
+  
+  return position;
+}
+
+/**
+ * Calculate Trend Score based on EMA10 vs EMA21
+ */
+export function calculateTrendScore(data: number[]): number[] {
+  const ema10 = calculateEMA(data, 10);
+  const ema21 = calculateEMA(data, 21);
+  const diff: number[] = [];
+  
+  for (let i = 0; i < data.length; i++) {
+    if (isNaN(ema10[i]) || isNaN(ema21[i])) {
+      diff.push(NaN);
+    } else {
+      diff.push(ema10[i] - ema21[i]);
+    }
+  }
+  
+  return normalizeToRange(diff, -100, 100);
+}
+
+/**
+ * Calculate Benchmark Relative Strength
+ * Compares asset returns vs benchmark returns
+ */
+export function calculateBenchmarkRelativeStrength(
+  assetCandles: Candle[],
+  benchmarkCandles: Candle[],
+  period: number = 14
+): number[] {
+  const result: number[] = [];
+  
+  for (let i = 0; i < assetCandles.length; i++) {
+    if (i < period) {
+      result.push(NaN);
+      continue;
+    }
+    
+    // Calculate returns over period
+    const assetReturn = (assetCandles[i].close - assetCandles[i - period].close) / assetCandles[i - period].close;
+    const benchmarkReturn = (benchmarkCandles[i].close - benchmarkCandles[i - period].close) / benchmarkCandles[i - period].close;
+    
+    const relativeStrength = (assetReturn - benchmarkReturn) * 100;
+    result.push(relativeStrength);
+  }
+  
+  return normalizeToRange(result, -100, 100);
+}
+
+/**
+ * Calculate Composite MSTG Score
+ */
+export function calculateCompositeScore(
+  momentum: number[],
+  trend: number[],
+  volatility: number[],
+  relativeStrength: number[],
+  weights: { wM: number, wT: number, wV: number, wR: number }
+): number[] {
+  const rawScores: number[] = [];
+  
+  for (let i = 0; i < momentum.length; i++) {
+    if (isNaN(momentum[i]) || isNaN(trend[i]) || isNaN(volatility[i]) || isNaN(relativeStrength[i])) {
+      rawScores.push(NaN);
+    } else {
+      const score = 
+        weights.wM * momentum[i] +
+        weights.wT * trend[i] +
+        weights.wV * (volatility[i] * 200 - 100) + // Convert [0,1] to [-100,100]
+        weights.wR * relativeStrength[i];
+      rawScores.push(score);
+    }
+  }
+  
+  // Apply EMA_5 smoothing
+  return calculateEMA(rawScores, 5);
+}

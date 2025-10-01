@@ -241,6 +241,29 @@ serve(async (req) => {
       );
     }
 
+    // Check if this is MSTG strategy
+    const isMSTG = strategy.strategy_type === 'market_sentiment_trend_gauge';
+    
+    if (isMSTG) {
+      console.log('Running MSTG strategy backtest...');
+      return await runMSTGBacktest(
+        strategy,
+        candles,
+        initialBalance,
+        productType,
+        leverage,
+        makerFee,
+        takerFee,
+        slippage,
+        executionTiming,
+        supabaseClient,
+        strategyId,
+        startDate,
+        endDate,
+        corsHeaders
+      );
+    }
+
     // Run standard backtest simulation
     let balance = initialBalance || strategy.initial_capital || 1000;
     let availableBalance = balance;
@@ -855,6 +878,314 @@ function evaluateCondition(
       console.warn(`Unsupported operator: ${operator}`);
       return false;
   }
+}
+
+// ============= MSTG STRATEGY IMPLEMENTATION =============
+async function runMSTGBacktest(
+  strategy: any,
+  candles: Candle[],
+  initialBalance: number,
+  productType: string,
+  leverage: number,
+  makerFee: number,
+  takerFee: number,
+  slippage: number,
+  executionTiming: string,
+  supabaseClient: any,
+  strategyId: string,
+  startDate: string,
+  endDate: string,
+  corsHeaders: any
+) {
+  console.log('Initializing MSTG backtest...');
+  
+  const benchmarkSymbol = strategy.benchmark_symbol || 'BTCUSDT';
+  
+  // Fetch benchmark data
+  const { data: benchmarkData, error: benchmarkError } = await supabaseClient
+    .from('market_data')
+    .select('*')
+    .eq('symbol', benchmarkSymbol)
+    .eq('timeframe', strategy.timeframe)
+    .gte('open_time', new Date(startDate).getTime())
+    .lte('open_time', new Date(endDate).getTime())
+    .order('open_time', { ascending: true });
+
+  if (benchmarkError || !benchmarkData || benchmarkData.length === 0) {
+    console.warn('No benchmark data found, using asset itself as benchmark');
+  }
+
+  const benchmarkCandles: Candle[] = benchmarkData ? benchmarkData.map((d: any) => ({
+    open: parseFloat(d.open),
+    high: parseFloat(d.high),
+    low: parseFloat(d.low),
+    close: parseFloat(d.close),
+    volume: parseFloat(d.volume),
+    open_time: d.open_time,
+    close_time: d.close_time,
+  })) : candles;
+
+  // Calculate MSTG components
+  const closes = candles.map(c => c.close);
+  
+  // 1. Momentum Score (M) - Normalized RSI
+  const rsi = indicators.calculateRSI(closes, 14);
+  const momentum = indicators.normalizeRSI(rsi);
+  
+  // 2. Trend Direction Score (T) - EMA10 vs EMA21
+  const trendScore = indicators.calculateTrendScore(closes);
+  
+  // 3. Volatility Position Score (V) - Bollinger Band position
+  const bbPosition = indicators.calculateBollingerPosition(candles, 20);
+  
+  // 4. Relative Strength Score (R) - Asset vs Benchmark
+  const relativeStrength = indicators.calculateBenchmarkRelativeStrength(
+    candles,
+    benchmarkCandles,
+    14
+  );
+  
+  // 5. Calculate Composite TS Score
+  const weights = {
+    wM: strategy.mstg_weight_momentum || 0.25,
+    wT: strategy.mstg_weight_trend || 0.35,
+    wV: strategy.mstg_weight_volatility || 0.20,
+    wR: strategy.mstg_weight_relative || 0.20,
+  };
+  
+  const tsScore = indicators.calculateCompositeScore(
+    momentum,
+    trendScore,
+    bbPosition,
+    relativeStrength,
+    weights
+  );
+  
+  // Trading parameters
+  const longThreshold = strategy.mstg_long_threshold || 30;
+  const shortThreshold = strategy.mstg_short_threshold || -30;
+  const exitThreshold = strategy.mstg_exit_threshold || 0;
+  const extremeThreshold = strategy.mstg_extreme_threshold || 60;
+  
+  console.log(`MSTG Parameters: Long=${longThreshold}, Short=${shortThreshold}, Exit=${exitThreshold}`);
+  
+  // Backtest simulation
+  let balance = initialBalance || strategy.initial_capital || 10000;
+  let availableBalance = balance;
+  let lockedMargin = 0;
+  let position: Trade | null = null;
+  const trades: Trade[] = [];
+  let maxBalance = balance;
+  let maxDrawdown = 0;
+  const balanceHistory: { time: number; balance: number }[] = [{ time: candles[0].open_time, balance }];
+
+  const stepSize = 0.00001;
+  const minQty = 0.001;
+  const minNotional = 10;
+
+  for (let i = 1; i < candles.length; i++) {
+    const currentCandle = candles[i];
+    const ts = tsScore[i - 1]; // Use previous candle to avoid look-ahead bias
+    const prevTs = i > 1 ? tsScore[i - 2] : NaN;
+    
+    if (isNaN(ts)) continue;
+
+    const executionPrice = executionTiming === 'open' ? currentCandle.open : currentCandle.close;
+    const priceWithSlippage = executionPrice * (1 + slippage / 100);
+
+    // Check exit conditions first
+    if (position) {
+      let shouldExit = false;
+      let exitReason = '';
+
+      if (position.type === 'buy' && ts < exitThreshold) {
+        shouldExit = true;
+        exitReason = 'TS crossed below exit threshold';
+      } else if (position.type === 'sell' && ts > exitThreshold) {
+        shouldExit = true;
+        exitReason = 'TS crossed above exit threshold';
+      }
+
+      // Extreme zone - partial profit or tighten stops
+      if ((position.type === 'buy' && ts > extremeThreshold) || 
+          (position.type === 'sell' && ts < -extremeThreshold)) {
+        console.log(`Extreme zone detected at candle ${i}, TS=${ts.toFixed(2)}`);
+      }
+
+      if (shouldExit) {
+        const exitPriceWithSlippage = position.type === 'buy' 
+          ? priceWithSlippage * (1 - slippage / 100)
+          : priceWithSlippage * (1 + slippage / 100);
+
+        let pnl = 0;
+        if (productType === 'futures') {
+          pnl = position.type === 'buy'
+            ? (exitPriceWithSlippage - position.entry_price) * position.quantity
+            : (position.entry_price - exitPriceWithSlippage) * position.quantity;
+          
+          const exitFee = Math.abs(exitPriceWithSlippage * position.quantity * takerFee);
+          pnl -= exitFee;
+          
+          availableBalance += lockedMargin + pnl;
+          lockedMargin = 0;
+        } else {
+          const saleProceeds = exitPriceWithSlippage * position.quantity;
+          const exitFee = saleProceeds * takerFee;
+          pnl = saleProceeds - exitFee - (position.entry_price * position.quantity);
+          availableBalance += saleProceeds - exitFee;
+        }
+
+        balance += pnl;
+        position.exit_price = exitPriceWithSlippage;
+        position.exit_time = currentCandle.open_time;
+        position.profit = pnl;
+        trades.push({ ...position });
+        position = null;
+
+        console.log(`Exit: ${exitReason}, PnL=${pnl.toFixed(2)}, Balance=${balance.toFixed(2)}`);
+      }
+    }
+
+    // Check entry conditions
+    if (!position) {
+      let shouldEnter = false;
+      let entryType: 'buy' | 'sell' | null = null;
+
+      if (ts > longThreshold) {
+        shouldEnter = true;
+        entryType = 'buy';
+      } else if (ts < shortThreshold) {
+        shouldEnter = true;
+        entryType = 'sell';
+      }
+
+      if (shouldEnter && entryType) {
+        const positionSizeUSD = (availableBalance * (strategy.position_size_percent || 100)) / 100;
+        
+        let quantity: number;
+        let margin: number;
+        let notional: number;
+        
+        if (productType === 'futures') {
+          notional = positionSizeUSD * leverage;
+          quantity = notional / priceWithSlippage;
+          margin = notional / leverage;
+        } else {
+          notional = positionSizeUSD;
+          quantity = notional / priceWithSlippage;
+          margin = notional;
+        }
+
+        quantity = Math.floor(quantity / stepSize) * stepSize;
+        notional = quantity * priceWithSlippage;
+        
+        if (quantity < minQty || notional < minNotional) {
+          continue;
+        }
+
+        const entryFee = notional * makerFee;
+        const totalCost = productType === 'futures' ? margin + entryFee : notional + entryFee;
+        
+        if (totalCost > availableBalance) {
+          continue;
+        }
+
+        availableBalance -= totalCost;
+        if (productType === 'futures') {
+          lockedMargin = margin;
+        }
+
+        position = {
+          entry_price: priceWithSlippage,
+          entry_time: currentCandle.open_time,
+          type: entryType,
+          quantity: quantity,
+        };
+
+        console.log(`Entry ${entryType}: TS=${ts.toFixed(2)}, Price=${priceWithSlippage.toFixed(2)}, Qty=${quantity.toFixed(5)}`);
+      }
+    }
+
+    // Update balance history and drawdown
+    balanceHistory.push({ time: currentCandle.open_time, balance });
+    if (balance > maxBalance) {
+      maxBalance = balance;
+    }
+    const drawdown = ((maxBalance - balance) / maxBalance) * 100;
+    if (drawdown > maxDrawdown) {
+      maxDrawdown = drawdown;
+    }
+  }
+
+  // Close any open position at end
+  if (position) {
+    const lastCandle = candles[candles.length - 1];
+    const exitPrice = lastCandle.close;
+    
+    let pnl = 0;
+    if (productType === 'futures') {
+      pnl = position.type === 'buy'
+        ? (exitPrice - position.entry_price) * position.quantity
+        : (position.entry_price - exitPrice) * position.quantity;
+      availableBalance += lockedMargin + pnl;
+      lockedMargin = 0;
+    } else {
+      const saleProceeds = exitPrice * position.quantity;
+      pnl = saleProceeds - (position.entry_price * position.quantity);
+      availableBalance += saleProceeds;
+    }
+
+    balance += pnl;
+    position.exit_price = exitPrice;
+    position.exit_time = lastCandle.open_time;
+    position.profit = pnl;
+    trades.push({ ...position });
+  }
+
+  // Calculate metrics
+  const totalReturn = ((balance - initialBalance) / initialBalance) * 100;
+  const winningTrades = trades.filter(t => (t.profit || 0) > 0).length;
+  const losingTrades = trades.filter(t => (t.profit || 0) < 0).length;
+  const winRate = trades.length > 0 ? (winningTrades / trades.length) * 100 : 0;
+
+  console.log(`MSTG Backtest complete: ${trades.length} trades, ${winRate.toFixed(2)}% win rate`);
+
+  await supabaseClient
+    .from('strategy_backtest_results')
+    .insert({
+      strategy_id: strategyId,
+      start_date: startDate,
+      end_date: endDate,
+      initial_balance: initialBalance,
+      final_balance: balance,
+      total_return: totalReturn,
+      total_trades: trades.length,
+      winning_trades: winningTrades,
+      losing_trades: losingTrades,
+      win_rate: winRate,
+      max_drawdown: maxDrawdown,
+    });
+
+  return new Response(
+    JSON.stringify({
+      success: true,
+      results: {
+        initial_balance: initialBalance,
+        final_balance: balance,
+        total_return: totalReturn,
+        total_trades: trades.length,
+        winning_trades: winningTrades,
+        losing_trades: losingTrades,
+        win_rate: winRate,
+        max_drawdown: maxDrawdown,
+        sharpe_ratio: null,
+        profit_factor: null,
+        trades: trades,
+        balance_history: balanceHistory,
+      }
+    }),
+    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+  );
 }
 
 // ============= 4H REENTRY STRATEGY IMPLEMENTATION =============

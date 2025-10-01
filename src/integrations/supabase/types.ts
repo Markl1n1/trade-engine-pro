@@ -126,10 +126,19 @@ export type Database = {
       }
       strategies: {
         Row: {
+          benchmark_symbol: string | null
           created_at: string
           description: string | null
           id: string
           initial_capital: number | null
+          mstg_exit_threshold: number | null
+          mstg_extreme_threshold: number | null
+          mstg_long_threshold: number | null
+          mstg_short_threshold: number | null
+          mstg_weight_momentum: number | null
+          mstg_weight_relative: number | null
+          mstg_weight_trend: number | null
+          mstg_weight_volatility: number | null
           name: string
           position_size_percent: number | null
           status: Database["public"]["Enums"]["strategy_status"]
@@ -142,10 +151,19 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          benchmark_symbol?: string | null
           created_at?: string
           description?: string | null
           id?: string
           initial_capital?: number | null
+          mstg_exit_threshold?: number | null
+          mstg_extreme_threshold?: number | null
+          mstg_long_threshold?: number | null
+          mstg_short_threshold?: number | null
+          mstg_weight_momentum?: number | null
+          mstg_weight_relative?: number | null
+          mstg_weight_trend?: number | null
+          mstg_weight_volatility?: number | null
           name: string
           position_size_percent?: number | null
           status?: Database["public"]["Enums"]["strategy_status"]
@@ -158,10 +176,19 @@ export type Database = {
           user_id: string
         }
         Update: {
+          benchmark_symbol?: string | null
           created_at?: string
           description?: string | null
           id?: string
           initial_capital?: number | null
+          mstg_exit_threshold?: number | null
+          mstg_extreme_threshold?: number | null
+          mstg_long_threshold?: number | null
+          mstg_short_threshold?: number | null
+          mstg_weight_momentum?: number | null
+          mstg_weight_relative?: number | null
+          mstg_weight_trend?: number | null
+          mstg_weight_volatility?: number | null
           name?: string
           position_size_percent?: number | null
           status?: Database["public"]["Enums"]["strategy_status"]

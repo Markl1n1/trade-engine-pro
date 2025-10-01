@@ -20,6 +20,25 @@ function calculateSMA(data: number[], period: number): number[] {
   return result;
 }
 
+// Simple EMA calculation
+function calculateEMA(data: number[], period: number): number[] {
+  const k = 2 / (period + 1);
+  const ema: number[] = [];
+  let prevEMA = data[0];
+
+  for (let i = 0; i < data.length; i++) {
+    if (i === 0) {
+      ema.push(data[i]);
+    } else {
+      const currentEMA = data[i] * k + prevEMA * (1 - k);
+      ema.push(currentEMA);
+      prevEMA = currentEMA;
+    }
+  }
+
+  return ema;
+}
+
 // Simple RSI calculation
 function calculateRSI(data: number[], period: number = 14): number[] {
   const result: number[] = [];
@@ -140,47 +159,123 @@ serve(async (req) => {
         indicatorCache[key] = calculateSMA(closes, period);
       } else if (type === 'RSI') {
         indicatorCache[key] = calculateRSI(closes, period);
+      } else if (type === 'EMA') {
+        indicatorCache[key] = calculateEMA(closes, period);
       }
     });
 
-    // Simple signal generation (vectorized)
+    // Check if MSTG strategy
+    const isMSTG = strategy.strategy_type === 'market_sentiment_trend_gauge';
+
+    // Initialize signal arrays
     const signals: boolean[] = new Array(candles.length).fill(false);
     const exitSignals: boolean[] = new Array(candles.length).fill(false);
 
-    for (let i = 50; i < candles.length; i++) {
-      // Entry: Simple SMA crossover or RSI oversold
-      const entryConditions = conditions.filter(c => c.order_type === 'entry');
-      let entryMet = true;
+    if (isMSTG) {
+      console.log('[Simple Backtest] Running MSTG strategy');
       
-      for (const cond of entryConditions) {
-        const key = `${cond.indicator_type}_${cond.period_1}`;
-        const values = indicatorCache[key];
-        if (!values) continue;
-
-        if (cond.indicator_type === 'SMA' && cond.operator === 'crosses_above') {
-          entryMet = entryMet && (closes[i] > values[i] && closes[i-1] <= values[i-1]);
-        } else if (cond.indicator_type === 'RSI' && cond.operator === 'less_than') {
-          entryMet = entryMet && (values[i] < cond.value);
-        }
-      }
-      signals[i] = entryMet;
-
-      // Exit: Simple opposite condition
-      const exitConditions = conditions.filter(c => c.order_type === 'exit');
-      let exitMet = false;
+      // Calculate MSTG components
+      const rsi = calculateRSI(closes, 14);
+      const momentum = rsi.map(v => (v - 50) * 2); // Normalize to [-100, 100]
       
-      for (const cond of exitConditions) {
-        const key = `${cond.indicator_type}_${cond.period_1}`;
-        const values = indicatorCache[key];
-        if (!values) continue;
-
-        if (cond.indicator_type === 'SMA' && cond.operator === 'crosses_below') {
-          exitMet = exitMet || (closes[i] < values[i] && closes[i-1] >= values[i-1]);
-        } else if (cond.indicator_type === 'RSI' && cond.operator === 'greater_than') {
-          exitMet = exitMet || (values[i] > cond.value);
+      // Trend: EMA10 vs EMA21
+      const ema10 = calculateEMA(closes, 10);
+      const ema21 = calculateEMA(closes, 21);
+      const trendRaw = ema10.map((v, i) => v - ema21[i]);
+      
+      // Simple normalization for trend
+      const trendMin = Math.min(...trendRaw.filter(v => !isNaN(v)));
+      const trendMax = Math.max(...trendRaw.filter(v => !isNaN(v)));
+      const trendRange = trendMax - trendMin;
+      const trend = trendRaw.map(v => isNaN(v) ? NaN : ((v - trendMin) / trendRange) * 200 - 100);
+      
+      // Volatility: Simple BB position (0 to 1)
+      const sma20 = calculateSMA(closes, 20);
+      const volatility = closes.map((c, i) => {
+        if (i < 19) return NaN;
+        const slice = closes.slice(i - 19, i + 1);
+        const mean = sma20[i];
+        const variance = slice.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / 20;
+        const stdDev = Math.sqrt(variance);
+        const upper = mean + 2 * stdDev;
+        const lower = mean - 2 * stdDev;
+        const range = upper - lower;
+        return range === 0 ? 0.5 : Math.max(0, Math.min(1, (c - lower) / range));
+      });
+      
+      // Relative strength: Asset vs benchmark (simplified - use asset momentum)
+      const relativeStrength = momentum; // Simplified for now
+      
+      // Calculate TS score
+      const weights = {
+        wM: 0.25,
+        wT: 0.35,
+        wV: 0.20,
+        wR: 0.20,
+      };
+      
+      const tsRaw = momentum.map((m, i) => {
+        if (isNaN(m) || isNaN(trend[i]) || isNaN(volatility[i]) || isNaN(relativeStrength[i])) {
+          return NaN;
         }
+        return weights.wM * m + 
+               weights.wT * trend[i] + 
+               weights.wV * (volatility[i] * 200 - 100) + 
+               weights.wR * relativeStrength[i];
+      });
+      
+      // Apply EMA_5 smoothing
+      const tsScore = calculateEMA(tsRaw, 5);
+      
+      // Generate signals based on TS thresholds
+      const longThreshold = 30;
+      const shortThreshold = -30;
+      const exitThreshold = 0;
+      
+      for (let i = 50; i < candles.length; i++) {
+        const ts = tsScore[i - 1];
+        if (isNaN(ts)) continue;
+        
+        signals[i] = ts > longThreshold;
+        exitSignals[i] = ts < exitThreshold;
       }
-      exitSignals[i] = exitMet;
+    } else {
+      // Original simple signal logic for non-MSTG strategies
+      for (let i = 50; i < candles.length; i++) {
+        // Entry: Simple SMA crossover or RSI oversold
+        const entryConditions = conditions.filter(c => c.order_type === 'entry');
+        let entryMet = true;
+        
+        for (const cond of entryConditions) {
+          const key = `${cond.indicator_type}_${cond.period_1}`;
+          const values = indicatorCache[key];
+          if (!values) continue;
+
+          if (cond.indicator_type === 'SMA' && cond.operator === 'crosses_above') {
+            entryMet = entryMet && (closes[i] > values[i] && closes[i-1] <= values[i-1]);
+          } else if (cond.indicator_type === 'RSI' && cond.operator === 'less_than') {
+            entryMet = entryMet && (values[i] < cond.value);
+          }
+        }
+        signals[i] = entryMet;
+
+        // Exit: Simple opposite condition
+        const exitConditions = conditions.filter(c => c.order_type === 'exit');
+        let exitMet = false;
+        
+        for (const cond of exitConditions) {
+          const key = `${cond.indicator_type}_${cond.period_1}`;
+          const values = indicatorCache[key];
+          if (!values) continue;
+
+          if (cond.indicator_type === 'SMA' && cond.operator === 'crosses_below') {
+            exitMet = exitMet || (closes[i] < values[i] && closes[i-1] >= values[i-1]);
+          } else if (cond.indicator_type === 'RSI' && cond.operator === 'greater_than') {
+            exitMet = exitMet || (values[i] > cond.value);
+          }
+        }
+        exitSignals[i] = exitMet;
+      }
     }
 
     // Simulate trades (vectorized approach)
