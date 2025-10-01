@@ -285,23 +285,41 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
         strategyId = strategy.id;
       }
 
-      // Insert conditions
+      // Insert conditions - explicitly map only valid database columns
       const allConditions = [
         ...buyConditions.map((c, idx) => ({ 
-          ...c, 
           strategy_id: strategyId, 
+          order_type: c.order_type,
           order_index: idx,
           indicator_type: c.indicator_type as any,
           operator: c.operator as any,
-          indicator_type_2: c.indicator_type_2 as any,
+          value: c.value,
+          value2: c.value2 || null,
+          period_1: c.period_1 || null,
+          period_2: c.period_2 || null,
+          indicator_type_2: c.indicator_type_2 as any || null,
+          deviation: c.deviation || null,
+          smoothing: c.smoothing || null,
+          multiplier: c.multiplier || null,
+          acceleration: c.acceleration || null,
+          logical_operator: c.logical_operator || 'AND',
         })),
         ...sellConditions.map((c, idx) => ({ 
-          ...c, 
           strategy_id: strategyId, 
+          order_type: c.order_type,
           order_index: idx,
           indicator_type: c.indicator_type as any,
           operator: c.operator as any,
-          indicator_type_2: c.indicator_type_2 as any,
+          value: c.value,
+          value2: c.value2 || null,
+          period_1: c.period_1 || null,
+          period_2: c.period_2 || null,
+          indicator_type_2: c.indicator_type_2 as any || null,
+          deviation: c.deviation || null,
+          smoothing: c.smoothing || null,
+          multiplier: c.multiplier || null,
+          acceleration: c.acceleration || null,
+          logical_operator: c.logical_operator || 'AND',
         })),
       ];
 
