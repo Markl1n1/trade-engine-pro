@@ -40,6 +40,7 @@ const Settings = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [testingTelegram, setTestingTelegram] = useState(false);
   const [testingBinance, setTestingBinance] = useState(false);
+  const [testingMonitor, setTestingMonitor] = useState(false);
   const [settings, setSettings] = useState<UserSettings>({
     binance_mainnet_api_key: "",
     binance_mainnet_api_secret: "",
@@ -271,6 +272,42 @@ const Settings = () => {
     }
   };
 
+  const handleTestMonitoring = async () => {
+    setTestingMonitor(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('monitor-strategies', {
+        body: {},
+      });
+
+      if (error) throw error;
+
+      if (data.signals && data.signals.length > 0) {
+        const signalSummary = data.signals.map((s: any) => 
+          `${s.strategy_name}: ${s.signal.toUpperCase()} ${s.symbol} @ $${s.price}`
+        ).join('\n');
+        
+        toast({
+          title: "Signals Generated! 📊",
+          description: `Found ${data.signals.length} signal(s):\n${signalSummary}`,
+        });
+      } else {
+        toast({
+          title: "Monitoring Active ✓",
+          description: `Checked ${data.strategiesChecked || 0} strategies. No signals at this time.`,
+        });
+      }
+    } catch (error: any) {
+      console.error("Error testing monitoring:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to test strategy monitoring",
+        variant: "destructive",
+      });
+    } finally {
+      setTestingMonitor(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -486,6 +523,46 @@ const Settings = () => {
             )}
           </Button>
         </div>
+      </Card>
+
+      {/* Strategy Monitoring Test */}
+      <Card className="p-6">
+        <h2 className="text-xl font-semibold mb-4">Strategy Monitoring</h2>
+        <p className="text-sm text-muted-foreground mb-4">
+          Test real-time strategy monitoring with live market data from Binance. 
+          The system will evaluate your active strategies and send signals to Telegram when conditions are met.
+        </p>
+        <Alert className="bg-primary/10 border-primary/30 mb-4">
+          <AlertCircle className="h-4 w-4 text-primary" />
+          <AlertDescription className="text-sm">
+            <strong>How it works:</strong>
+            <ul className="list-disc ml-4 mt-2 space-y-1">
+              <li>Fetches real-time market data from Binance {settings.use_testnet ? 'testnet' : 'mainnet'}</li>
+              <li>Evaluates all your active strategies (standard + 4h reentry)</li>
+              <li>Generates buy/sell/close signals when conditions are met</li>
+              <li>Sends formatted alerts to your Telegram group</li>
+              <li>Tracks position states between evaluations</li>
+            </ul>
+          </AlertDescription>
+        </Alert>
+        <Button 
+          variant="default" 
+          onClick={handleTestMonitoring}
+          disabled={testingMonitor}
+          size="lg"
+        >
+          {testingMonitor ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Monitoring Strategies...
+            </>
+          ) : (
+            <>
+              <CheckCircle className="mr-2 h-4 w-4" />
+              Test Strategy Monitoring
+            </>
+          )}
+        </Button>
       </Card>
 
       {/* Save Button */}

@@ -438,6 +438,7 @@ serve(async (req) => {
         success: true,
         message: `Monitored ${strategies.length} strategies`,
         signals,
+        strategiesChecked: strategies.length,
         telegram_enabled: telegramEnabled,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
