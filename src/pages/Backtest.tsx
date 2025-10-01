@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { BarChart3, Play, Loader2 } from "lucide-react";
+import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { BarChart3, Play, Loader2, Info } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
@@ -456,32 +457,66 @@ const Backtest = () => {
 
       <Card className="p-6">
         <h3 className="text-lg font-bold mb-4">Backtest Metrics</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div>
-            <p className="text-xs text-muted-foreground">Final Balance</p>
-            <p className="text-xl font-bold mt-1">
-              {results ? `$${results.final_balance.toFixed(2)}` : "—"}
-            </p>
+        <TooltipProvider>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+              <p className="text-xs text-muted-foreground">Final Balance</p>
+              <p className="text-xl font-bold mt-1">
+                {results ? `$${results.final_balance.toFixed(2)}` : "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Total Return</p>
+              <p className={`text-xl font-bold mt-1 ${results && results.total_return >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                {results ? `${results.total_return >= 0 ? '+' : ''}${results.total_return.toFixed(2)}%` : "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Win Rate</p>
+              <p className="text-xl font-bold mt-1">
+                {results ? `${results.win_rate.toFixed(1)}%` : "—"}
+              </p>
+            </div>
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <p className="text-xs text-muted-foreground">Max Drawdown</p>
+                <UITooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    <p className="text-xs font-semibold mb-1">Maximum Drawdown</p>
+                    <p className="text-xs">The largest percentage decline from a peak balance to a trough during the backtest period.</p>
+                    <p className="text-xs mt-2">Formula: ((Peak Balance - Trough Balance) / Peak Balance) × 100</p>
+                    <p className="text-xs mt-2">Example: If balance peaks at $1,200 then drops to $900, drawdown = 25%</p>
+                    <p className="text-xs mt-2 font-semibold">Lower is better - indicates risk management quality.</p>
+                  </TooltipContent>
+                </UITooltip>
+              </div>
+              <p className="text-xl font-bold mt-1 text-red-500">
+                {results ? `${results.max_drawdown.toFixed(2)}%` : "—"}
+              </p>
+            </div>
           </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Total Return</p>
-            <p className={`text-xl font-bold mt-1 ${results && results.total_return >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-              {results ? `${results.total_return >= 0 ? '+' : ''}${results.total_return.toFixed(2)}%` : "—"}
-            </p>
+        </TooltipProvider>
+        
+        {results && (
+          <div className="mt-6 p-4 bg-secondary/30 rounded-lg">
+            <h4 className="font-semibold text-sm mb-3">Backtest Logic Summary</h4>
+            <div className="text-xs space-y-2 text-muted-foreground">
+              <p><strong>Data Source:</strong> Historical Binance data from market_data table</p>
+              <p><strong>Entry:</strong> Buy when ALL buy conditions are met (indicators calculated from historical candles)</p>
+              <p><strong>Exit:</strong> Sell when ANY of these occur:</p>
+              <ul className="ml-4 space-y-1">
+                <li>• Stop loss hit: Price drops {stopLossPercent}% from entry</li>
+                <li>• Take profit hit: Price rises {takeProfitPercent}% from entry</li>
+                <li>• Sell signal: ALL sell conditions are met</li>
+              </ul>
+              <p><strong>Position Sizing:</strong> {((parseFloat(initialBalance) * (selectedStrategyData?.position_size_percent || 100)) / 100).toFixed(2)} per trade</p>
+              <p className="mt-2 pt-2 border-t border-border"><strong>Total Processed:</strong> {results.total_trades} trades from {startDate} to {endDate}</p>
+            </div>
           </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Win Rate</p>
-            <p className="text-xl font-bold mt-1">
-              {results ? `${results.win_rate.toFixed(1)}%` : "—"}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Max Drawdown</p>
-            <p className="text-xl font-bold mt-1 text-red-500">
-              {results ? `${results.max_drawdown.toFixed(2)}%` : "—"}
-            </p>
-          </div>
-        </div>
+        )}
       </Card>
     </div>
   );

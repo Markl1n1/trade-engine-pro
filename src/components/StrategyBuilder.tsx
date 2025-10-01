@@ -7,7 +7,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Trash2, Sparkles } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Plus, Trash2, Sparkles, Info } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { IndicatorSelector } from "./IndicatorSelector";
@@ -184,24 +185,46 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
   const loadTemplate = (template: any) => {
     const templateData = template.template_data;
     setName(template.name);
+    setDescription(template.description || '');
     setSymbol(template.symbol || "BTCUSDT");
     setTimeframe(template.timeframe || "1h");
     setInitialCapital(template.initial_capital || 10000);
     setPositionSize(template.position_size_percent || 100);
+    setStopLoss(String(template.stop_loss_percent || ''));
+    setTakeProfit(String(template.take_profit_percent || ''));
+    
+    // Map template fields to database schema
+    const mapCondition = (c: any, orderType: OrderType) => ({
+      order_type: orderType,
+      // Map 'indicator' field to 'indicator_type' for database compatibility
+      indicator_type: c.indicator_type || c.indicator || "RSI",
+      // Ensure all operators are lowercase
+      operator: (c.operator || "greater_than").toLowerCase(),
+      // Set defaults for required fields
+      value: c.value || 0,
+      value2: c.value2 || null,
+      period_1: c.period_1 || c.period || 14,
+      period_2: c.period_2 || null,
+      indicator_type_2: c.indicator_type_2 || null,
+      deviation: c.deviation || null,
+      smoothing: c.smoothing || null,
+      multiplier: c.multiplier || null,
+      acceleration: c.acceleration || null,
+      logical_operator: c.logical_operator || 'AND',
+    });
     
     if (templateData.buy_conditions) {
-      setBuyConditions(templateData.buy_conditions.map((c: any) => ({
-        ...c,
-        order_type: "buy",
-      })));
+      setBuyConditions(templateData.buy_conditions.map((c: any) => mapCondition(c, "buy")));
     }
     
     if (templateData.sell_conditions) {
-      setSellConditions(templateData.sell_conditions.map((c: any) => ({
-        ...c,
-        order_type: "sell",
-      })));
+      setSellConditions(templateData.sell_conditions.map((c: any) => mapCondition(c, "sell")));
     }
+    
+    toast({
+      title: "Template loaded",
+      description: "Review the conditions and adjust parameters as needed",
+    });
   };
 
   const removeCondition = (type: "buy" | "sell", index: number) => {
@@ -409,7 +432,24 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
 
           <div className="space-y-3">
             <div>
-              <Label>Operator</Label>
+              <div className="flex items-center gap-2 mb-1">
+                <Label>Operator</Label>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      <p className="text-xs">Comparison operator for the condition:</p>
+                      <ul className="text-xs mt-1 space-y-1">
+                        <li>• <strong>Greater/Less Than</strong>: Compare indicator value to threshold</li>
+                        <li>• <strong>Crosses Above/Below</strong>: Detect when indicator crosses a level</li>
+                        <li>• <strong>Between</strong>: Check if indicator is within a range</li>
+                      </ul>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
               <Select
                 value={condition.operator}
                 onValueChange={(val) => updateCondition(type, idx, "operator", val)}
@@ -439,7 +479,24 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
               />
             ) : (
               <div>
-                <Label>Value (in indicator's native units)</Label>
+                <div className="flex items-center gap-2 mb-1">
+                  <Label>Value (in indicator's native units)</Label>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-xs">
+                        <p className="text-xs">Threshold value in the indicator's native units. For example:</p>
+                        <ul className="text-xs mt-1 space-y-1">
+                          <li>• <strong>RSI</strong>: 0-100 (e.g., 30 for oversold, 70 for overbought)</li>
+                          <li>• <strong>MACD</strong>: Use 0 to detect crossovers</li>
+                          <li>• <strong>BB %</strong>: 0-100 (e.g., 0 for lower band, 100 for upper band)</li>
+                        </ul>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
                 <Input
                   type="number"
                   step="0.01"
