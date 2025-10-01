@@ -1,11 +1,14 @@
 import { Card } from "@/components/ui/card";
-import { ArrowDown, ArrowUp, TrendingUp, RefreshCw, Info } from "lucide-react";
+import { ArrowDown, ArrowUp, TrendingUp, RefreshCw, Info, X, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { AddMarketPairDialog } from "@/components/AddMarketPairDialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { useToast } from "@/hooks/use-toast";
 
 interface TickerData {
   symbol: string;
@@ -52,11 +55,17 @@ const Dashboard = () => {
   const [loadingSignals, setLoadingSignals] = useState(true);
   const [userPairs, setUserPairs] = useState<string[]>([]);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [closingPosition, setClosingPosition] = useState<string | null>(null);
+  const [clearingSignals, setClearingSignals] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [signalsPerPage, setSignalsPerPage] = useState(10);
+  const { toast } = useToast();
 
   useEffect(() => {
     loadUserPairs();
     fetchAccountData();
     fetchStrategySignals();
+    loadSignalsPerPage();
   }, []);
 
   useEffect(() => {
@@ -66,6 +75,28 @@ const Dashboard = () => {
       return () => clearInterval(interval);
     }
   }, [userPairs]);
+
+  // Auto-monitor strategies every 3 minutes
+  useEffect(() => {
+    const monitorInterval = setInterval(async () => {
+      try {
+        console.log('Auto-monitoring strategies...');
+        await supabase.functions.invoke('monitor-strategies', { body: {} });
+        await fetchStrategySignals();
+      } catch (error) {
+        console.error('Auto-monitor error:', error);
+      }
+    }, 180000); // 3 minutes
+
+    return () => clearInterval(monitorInterval);
+  }, []);
+
+  const loadSignalsPerPage = () => {
+    const saved = localStorage.getItem('signalsPerPage');
+    if (saved) {
+      setSignalsPerPage(parseInt(saved));
+    }
+  };
 
   const loadUserPairs = async () => {
     try {
@@ -162,6 +193,96 @@ const Dashboard = () => {
       console.error('Error fetching strategy signals:', error);
     } finally {
       setLoadingSignals(false);
+    }
+  };
+
+  const handleClosePosition = async (symbol: string) => {
+    setClosingPosition(symbol);
+    try {
+      const { data, error } = await supabase.functions.invoke('close-position', {
+        body: { symbol, closeAll: false }
+      });
+
+      if (error) throw error;
+
+      if (data.success) {
+        toast({
+          title: "Position Closed",
+          description: `Successfully closed position for ${symbol}`,
+        });
+        await fetchAccountData();
+        await fetchStrategySignals();
+      }
+    } catch (error: any) {
+      console.error('Error closing position:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to close position",
+        variant: "destructive",
+      });
+    } finally {
+      setClosingPosition(null);
+    }
+  };
+
+  const handleCloseAllPositions = async () => {
+    setClosingPosition('all');
+    try {
+      const { data, error } = await supabase.functions.invoke('close-position', {
+        body: { closeAll: true }
+      });
+
+      if (error) throw error;
+
+      if (data.success) {
+        toast({
+          title: "All Positions Closed",
+          description: data.message,
+        });
+        await fetchAccountData();
+        await fetchStrategySignals();
+      }
+    } catch (error: any) {
+      console.error('Error closing all positions:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to close positions",
+        variant: "destructive",
+      });
+    } finally {
+      setClosingPosition(null);
+    }
+  };
+
+  const handleClearAllSignals = async () => {
+    setClearingSignals(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Close all open strategy positions
+      const { error } = await supabase
+        .from('strategy_live_states')
+        .update({ position_open: false, entry_price: null, entry_time: null })
+        .eq('user_id', user.id)
+        .eq('position_open', true);
+
+      if (error) throw error;
+
+      toast({
+        title: "Signals Cleared",
+        description: "All strategy signals have been cleared",
+      });
+      await fetchStrategySignals();
+    } catch (error: any) {
+      console.error('Error clearing signals:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to clear signals",
+        variant: "destructive",
+      });
+    } finally {
+      setClearingSignals(false);
     }
   };
 
@@ -277,7 +398,33 @@ const Dashboard = () => {
       </TooltipProvider>
 
       <Card className="p-6">
-        <h3 className="text-lg font-bold mb-4">Open Positions</h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-bold">Open Positions</h3>
+          {accountData && accountData.positions.length > 0 && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" size="sm" disabled={closingPosition === 'all'}>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Close All
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Close All Positions?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will close all {accountData.positions.length} open position(s) at market price. This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleCloseAllPositions}>
+                    Close All Positions
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
+        </div>
         {loadingAccount ? (
           <div className="text-center py-12">
             <div className="text-sm text-muted-foreground">Loading positions...</div>
@@ -302,9 +449,36 @@ const Dashboard = () => {
                     </Badge>
                     <Badge variant="outline">{position.leverage}x</Badge>
                   </div>
-                  <span className={position.unrealizedProfit >= 0 ? "text-green-600 font-bold" : "text-red-600 font-bold"}>
-                    {position.unrealizedProfit >= 0 ? "+" : ""}${position.unrealizedProfit.toFixed(2)}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className={position.unrealizedProfit >= 0 ? "text-green-600 font-bold" : "text-red-600 font-bold"}>
+                      {position.unrealizedProfit >= 0 ? "+" : ""}${position.unrealizedProfit.toFixed(2)}
+                    </span>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          disabled={closingPosition === position.symbol}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Close {position.symbol} Position?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This will close your {position.side} position at market price. Current P&L: {position.unrealizedProfit >= 0 ? "+" : ""}${position.unrealizedProfit.toFixed(2)}
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => handleClosePosition(position.symbol)}>
+                            Close Position
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <div>
@@ -323,7 +497,33 @@ const Dashboard = () => {
       </Card>
 
       <Card className="p-6">
-        <h3 className="text-lg font-bold mb-4">Strategy Signals (Open)</h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-bold">Strategy Signals (Open)</h3>
+          {strategySignals.length > 0 && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="outline" size="sm" disabled={clearingSignals}>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Clear All
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Clear All Signals?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will clear all {strategySignals.length} active signal(s). This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleClearAllSignals}>
+                    Clear All Signals
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
+        </div>
         {loadingSignals ? (
           <div className="text-center py-12">
             <div className="text-sm text-muted-foreground">Loading strategy signals...</div>
@@ -337,8 +537,11 @@ const Dashboard = () => {
             </p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {strategySignals.map((signal) => (
+          <>
+            <div className="space-y-3">
+              {strategySignals
+                .slice((currentPage - 1) * signalsPerPage, currentPage * signalsPerPage)
+                .map((signal) => (
               <div key={signal.id} className="p-4 bg-secondary/50 rounded-lg border border-border">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
@@ -362,7 +565,37 @@ const Dashboard = () => {
                 </div>
               </div>
             ))}
-          </div>
+            </div>
+            {strategySignals.length > signalsPerPage && (
+              <Pagination className="mt-4">
+                <PaginationContent>
+                  <PaginationItem>
+                    <PaginationPrevious 
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      className={currentPage === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                    />
+                  </PaginationItem>
+                  {Array.from({ length: Math.ceil(strategySignals.length / signalsPerPage) }, (_, i) => i + 1).map((page) => (
+                    <PaginationItem key={page}>
+                      <PaginationLink
+                        onClick={() => setCurrentPage(page)}
+                        isActive={currentPage === page}
+                        className="cursor-pointer"
+                      >
+                        {page}
+                      </PaginationLink>
+                    </PaginationItem>
+                  ))}
+                  <PaginationItem>
+                    <PaginationNext 
+                      onClick={() => setCurrentPage(p => Math.min(Math.ceil(strategySignals.length / signalsPerPage), p + 1))}
+                      className={currentPage >= Math.ceil(strategySignals.length / signalsPerPage) ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                    />
+                  </PaginationItem>
+                </PaginationContent>
+              </Pagination>
+            )}
+          </>
         )}
       </Card>
 

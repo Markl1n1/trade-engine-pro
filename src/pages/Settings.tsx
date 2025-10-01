@@ -33,6 +33,10 @@ interface UserSettings {
   telegram_enabled: boolean;
 }
 
+interface AppSettings {
+  signalsPerPage: number;
+}
+
 const Settings = () => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
@@ -41,6 +45,9 @@ const Settings = () => {
   const [testingTelegram, setTestingTelegram] = useState(false);
   const [testingBinance, setTestingBinance] = useState(false);
   const [testingMonitor, setTestingMonitor] = useState(false);
+  const [appSettings, setAppSettings] = useState<AppSettings>({
+    signalsPerPage: 10,
+  });
   const [settings, setSettings] = useState<UserSettings>({
     binance_mainnet_api_key: "",
     binance_mainnet_api_secret: "",
@@ -54,6 +61,7 @@ const Settings = () => {
 
   useEffect(() => {
     checkAuthAndLoadSettings();
+    loadAppSettings();
   }, []);
 
   const checkAuthAndLoadSettings = async () => {
@@ -72,6 +80,21 @@ const Settings = () => {
       console.error("Error checking auth:", error);
       setLoading(false);
     }
+  };
+
+  const loadAppSettings = () => {
+    const savedSignalsPerPage = localStorage.getItem('signalsPerPage');
+    if (savedSignalsPerPage) {
+      setAppSettings(prev => ({ ...prev, signalsPerPage: parseInt(savedSignalsPerPage) }));
+    }
+  };
+
+  const saveAppSettings = () => {
+    localStorage.setItem('signalsPerPage', appSettings.signalsPerPage.toString());
+    toast({
+      title: "Settings Saved",
+      description: "Application settings have been saved",
+    });
   };
 
   const loadSettings = async () => {
@@ -563,6 +586,34 @@ const Settings = () => {
             </>
           )}
         </Button>
+      </Card>
+
+      {/* Application Settings */}
+      <Card className="p-6">
+        <h2 className="text-xl font-semibold mb-4">Application Settings</h2>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="signals-per-page">Signals Per Page</Label>
+            <p className="text-sm text-muted-foreground mb-2">
+              Number of strategy signals to display per page in the Dashboard
+            </p>
+            <select
+              id="signals-per-page"
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              value={appSettings.signalsPerPage}
+              onChange={(e) => setAppSettings(prev => ({ ...prev, signalsPerPage: parseInt(e.target.value) }))}
+            >
+              <option value="5">5 signals</option>
+              <option value="10">10 signals</option>
+              <option value="20">20 signals</option>
+              <option value="50">50 signals</option>
+            </select>
+          </div>
+          <Button onClick={saveAppSettings}>
+            <Save className="mr-2 h-4 w-4" />
+            Save Application Settings
+          </Button>
+        </div>
       </Card>
 
       {/* Save Button */}
