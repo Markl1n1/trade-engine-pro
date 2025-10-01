@@ -176,6 +176,17 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
     { value: "1d", label: "1 Day" },
   ];
 
+  // Auto-update timeframe when 4h_reentry strategy is selected
+  useEffect(() => {
+    if (strategyType === "4h_reentry" && timeframe !== "5m") {
+      setTimeframe("5m");
+      toast({
+        title: "Timeframe Updated",
+        description: "4h Reentry strategy requires 5-minute timeframe",
+      });
+    }
+  }, [strategyType]);
+
   const addCondition = (type: OrderType) => {
     const newCondition: Condition = {
       order_type: type,

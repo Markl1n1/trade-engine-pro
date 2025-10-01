@@ -31,15 +31,31 @@ interface IndicatorCache {
   [key: string]: number[] | { [subkey: string]: number[] };
 }
 
-// Timezone conversion utility for NY time
+// Timezone conversion utility for NY time with DST handling
 function convertToNYTime(timestamp: number): Date {
-  // NY is UTC-5 (EST) or UTC-4 (EDT)
-  // For simplicity, we'll use UTC-5 as standard offset
   const date = new Date(timestamp);
-  const utcHours = date.getUTCHours();
-  const utcMinutes = date.getUTCMinutes();
-  const nyHours = (utcHours - 5 + 24) % 24;
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), nyHours, utcMinutes);
+  
+  // Determine if date is in DST (second Sunday in March to first Sunday in November)
+  const year = date.getUTCFullYear();
+  
+  // Second Sunday in March
+  const marchSecondSunday = new Date(Date.UTC(year, 2, 1)); // March 1
+  marchSecondSunday.setUTCDate(1 + (7 - marchSecondSunday.getUTCDay()) + 7);
+  
+  // First Sunday in November
+  const novFirstSunday = new Date(Date.UTC(year, 10, 1)); // November 1
+  novFirstSunday.setUTCDate(1 + (7 - novFirstSunday.getUTCDay()));
+  
+  // DST begins at 2:00 AM on second Sunday in March, ends at 2:00 AM on first Sunday in November
+  const isDST = date >= marchSecondSunday && date < novFirstSunday;
+  
+  // NY is UTC-4 (EDT) during DST, UTC-5 (EST) otherwise
+  const offset = isDST ? -4 : -5;
+  
+  const utcTime = date.getTime();
+  const nyTime = new Date(utcTime + (offset * 60 * 60 * 1000));
+  
+  return nyTime;
 }
 
 function isInNYSession(timestamp: number, sessionStart: string, sessionEnd: string): boolean {
@@ -877,6 +893,7 @@ async function run4hReentryBacktest(
     
     const nyTime = convertToNYTime(currentCandle.open_time);
     const currentDate = nyTime.toISOString().split('T')[0];
+    const nyTimeStr = `${nyTime.getUTCHours().toString().padStart(2, '0')}:${nyTime.getUTCMinutes().toString().padStart(2, '0')}`;
 
     // Step 1: Build/update the 4h range for current day
     if (isInNYSession(currentCandle.open_time, sessionStart, sessionEnd)) {
@@ -887,10 +904,17 @@ async function run4hReentryBacktest(
           H_4h: currentCandle.high,
           L_4h: currentCandle.low
         };
+        console.log(`[${i}] New day range started for ${currentDate} at ${nyTimeStr} NY - Initial H_4h: ${currentCandle.high.toFixed(2)}, L_4h: ${currentCandle.low.toFixed(2)}`);
       } else {
         // Update current day range
+        const prevH = currentDayRange.H_4h;
+        const prevL = currentDayRange.L_4h;
         currentDayRange.H_4h = Math.max(currentDayRange.H_4h, currentCandle.high);
         currentDayRange.L_4h = Math.min(currentDayRange.L_4h, currentCandle.low);
+        
+        if (i % 12 === 0) { // Log every hour (12 x 5min candles)
+          console.log(`[${i}] Range update ${currentDate} ${nyTimeStr}: H_4h: ${prevH.toFixed(2)}->${currentDayRange.H_4h.toFixed(2)}, L_4h: ${prevL.toFixed(2)}->${currentDayRange.L_4h.toFixed(2)}`);
+        }
       }
     }
 
@@ -918,7 +942,7 @@ async function run4hReentryBacktest(
         const distance = Math.abs(entryPrice - stopLossPrice);
         takeProfitPrice = entryPrice + (riskRewardRatio * distance);
         
-        console.log(`[${i}] LONG re-entry signal: C_prev=${C_prev.toFixed(2)} < L_4h=${currentDayRange.L_4h.toFixed(2)}, C_curr=${C_curr.toFixed(2)} >= L_4h`);
+        console.log(`[${i}] ${nyTimeStr} LONG re-entry: C_prev=${C_prev.toFixed(2)} < L_4h=${currentDayRange.L_4h.toFixed(2)}, C_curr=${C_curr.toFixed(2)} >= L_4h | Entry=${entryPrice.toFixed(2)}, SL=${stopLossPrice.toFixed(2)}, TP=${takeProfitPrice.toFixed(2)}`);
       }
       // SHORT setup: C_{t-1} > H_4h AND C_t <= H_4h
       else if (C_prev > currentDayRange.H_4h && C_curr <= currentDayRange.H_4h) {
@@ -928,7 +952,7 @@ async function run4hReentryBacktest(
         const distance = Math.abs(entryPrice - stopLossPrice);
         takeProfitPrice = entryPrice - (riskRewardRatio * distance);
         
-        console.log(`[${i}] SHORT re-entry signal: C_prev=${C_prev.toFixed(2)} > H_4h=${currentDayRange.H_4h.toFixed(2)}, C_curr=${C_curr.toFixed(2)} <= H_4h`);
+        console.log(`[${i}] ${nyTimeStr} SHORT re-entry: C_prev=${C_prev.toFixed(2)} > H_4h=${currentDayRange.H_4h.toFixed(2)}, C_curr=${C_curr.toFixed(2)} <= H_4h | Entry=${entryPrice.toFixed(2)}, SL=${stopLossPrice.toFixed(2)}, TP=${takeProfitPrice.toFixed(2)}`);
       }
 
       if (shouldEnterLong || shouldEnterShort) {
