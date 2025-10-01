@@ -138,17 +138,16 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
     }
   };
 
+  // Only show operators that are currently supported by the backtest function
   const operators = [
-    { value: "greater_than", label: ">" },
-    { value: "less_than", label: "<" },
-    { value: "equals", label: "=" },
-    { value: "CROSSES_ABOVE", label: "Crosses Above" },
-    { value: "CROSSES_BELOW", label: "Crosses Below" },
-    { value: "indicator_comparison", label: "Compare to Indicator" },
-    { value: "BULLISH_DIVERGENCE", label: "Bullish Divergence" },
-    { value: "BEARISH_DIVERGENCE", label: "Bearish Divergence" },
-    { value: "BREAKOUT_ABOVE", label: "Breakout Above" },
-    { value: "BREAKOUT_BELOW", label: "Breakout Below" },
+    { value: "greater_than", label: "Greater Than" },
+    { value: "less_than", label: "Less Than" },
+    { value: "equals", label: "Equals" },
+    { value: "between", label: "Between" },
+    { value: "crosses_above", label: "Crosses Above" },
+    { value: "crosses_below", label: "Crosses Below" },
+    { value: "breakout_above", label: "Breakout Above" },
+    { value: "breakout_below", label: "Breakout Below" },
   ];
 
   const logicalOperators = [
@@ -346,6 +345,30 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
     setSellConditions([]);
   };
 
+  // Helper functions for value field hints
+  const getValuePlaceholder = (indicator?: string) => {
+    if (!indicator) return "Enter value";
+    const ind = indicator.toUpperCase();
+    if (["RSI", "STOCHASTIC", "STOCH_RSI", "CCI", "WPR", "MFI"].includes(ind)) return "e.g., 70";
+    if (ind === "MACD") return "e.g., 0";
+    if (ind === "ATR") return "e.g., 1.5";
+    return "Enter value";
+  };
+
+  const getValueHint = (indicator?: string) => {
+    if (!indicator) return "Threshold value for comparison";
+    const ind = indicator.toUpperCase();
+    if (ind === "RSI") return "RSI ranges from 0-100. Common: 30 (oversold), 70 (overbought)";
+    if (ind === "STOCHASTIC" || ind === "STOCH_RSI") return "Ranges from 0-100. Common: 20/80 levels";
+    if (ind === "CCI") return "Typically ranges -200 to +200. Common: ±100";
+    if (ind === "WPR") return "Ranges from -100 to 0. Common: -20/-80 levels";
+    if (ind === "MFI") return "Ranges from 0-100. Similar to RSI";
+    if (ind === "MACD") return "Compare to 0 for signal line crosses";
+    if (ind === "ATR") return "Enter volatility threshold in price units";
+    if (["SMA", "EMA", "WMA"].includes(ind)) return "Compare to price or another MA";
+    return "Enter threshold in indicator's native units (not percentage)";
+  };
+
   const renderConditions = (conditions: Condition[], type: "buy" | "sell") => {
     return conditions.map((condition, idx) => (
       <div key={idx} className="space-y-3 mb-4 p-4 border rounded-lg bg-muted/30">
@@ -387,8 +410,8 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
             </div>
 
             {condition.operator === "indicator_comparison" || 
-             condition.operator === "CROSSES_ABOVE" || 
-             condition.operator === "CROSSES_BELOW" ? (
+             condition.operator === "crosses_above" || 
+             condition.operator === "crosses_below" ? (
               <IndicatorSelector
                 label="Compare To"
                 value={condition.indicator_type_2 || "EMA"}
@@ -398,13 +421,29 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
               />
             ) : (
               <div>
-                <Label>Value</Label>
+                <Label>Value (in indicator's native units)</Label>
                 <Input
                   type="number"
+                  step="0.01"
                   value={condition.value}
                   onChange={(e) => updateCondition(type, idx, "value", Number(e.target.value))}
-                  placeholder="Threshold value"
+                  placeholder={getValuePlaceholder(condition.indicator_type)}
                 />
+                <p className="text-xs text-muted-foreground mt-1">
+                  {getValueHint(condition.indicator_type)}
+                </p>
+                {condition.operator === "between" && (
+                  <div className="mt-2">
+                    <Label>Upper Bound</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={condition.value2 || ""}
+                      onChange={(e) => updateCondition(type, idx, "value2", Number(e.target.value))}
+                      placeholder="Upper value"
+                    />
+                  </div>
+                )}
               </div>
             )}
           </div>

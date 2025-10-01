@@ -46,10 +46,10 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // Fetch strategy details with all conditions
+    // Fetch strategy details
     const { data: strategy, error: strategyError } = await supabaseClient
       .from('strategies')
-      .select('*, strategy_conditions(*), condition_groups(*)')
+      .select('*')
       .eq('id', strategyId)
       .single();
 
@@ -58,12 +58,46 @@ serve(async (req) => {
     }
 
     console.log(`Strategy: ${strategy.name}, Symbol: ${strategy.symbol}, Timeframe: ${strategy.timeframe}`);
-    console.log(`Conditions count: ${strategy.strategy_conditions?.length || 0}`);
+
+    // Fetch conditions separately (embedded select doesn't work reliably)
+    const { data: conditions, error: conditionsError } = await supabaseClient
+      .from('strategy_conditions')
+      .select('*')
+      .eq('strategy_id', strategyId)
+      .order('order_index', { ascending: true });
+
+    if (conditionsError) {
+      console.error('Error fetching conditions:', conditionsError);
+      throw new Error('Failed to load strategy conditions');
+    }
+
+    console.log(`Loaded ${conditions?.length || 0} conditions from database`);
+
+    // Fetch condition groups
+    const { data: groups, error: groupsError } = await supabaseClient
+      .from('condition_groups')
+      .select('*')
+      .eq('strategy_id', strategyId)
+      .order('order_index', { ascending: true });
+
+    if (groupsError) {
+      console.error('Error fetching groups:', groupsError);
+    }
+
+    console.log(`Loaded ${groups?.length || 0} condition groups from database`);
 
     // Validate strategy has conditions
-    if (!strategy.strategy_conditions || strategy.strategy_conditions.length === 0) {
+    if (!conditions || conditions.length === 0) {
       throw new Error('Strategy has no conditions defined. Please add entry/exit conditions before running backtest.');
     }
+
+    // Normalize indicator types and operators to lowercase for compatibility
+    const normalizedConditions = conditions.map(c => ({
+      ...c,
+      indicator_type: c.indicator_type?.toLowerCase(),
+      indicator_type_2: c.indicator_type_2?.toLowerCase(),
+      operator: c.operator?.toLowerCase()
+    }));
 
     // Fetch market data
     const { data: marketData, error: marketError } = await supabaseClient
@@ -98,7 +132,7 @@ serve(async (req) => {
 
     // Analyze conditions to determine which indicators to calculate
     const indicatorRequirements = new Set<string>();
-    strategy.strategy_conditions.forEach((condition: any) => {
+    normalizedConditions.forEach((condition: any) => {
       const key1 = buildIndicatorKey(condition.indicator_type, condition);
       indicatorRequirements.add(key1);
       
@@ -141,8 +175,8 @@ serve(async (req) => {
       // Check entry conditions
       if (!position) {
         const shouldEnter = checkConditions(
-          strategy.strategy_conditions, 
-          strategy.condition_groups || [],
+          normalizedConditions, 
+          groups || [],
           previousCandles, 
           indicatorCache, 
           i, 
@@ -166,8 +200,8 @@ serve(async (req) => {
       } else {
         // Check exit conditions
         const shouldExit = checkConditions(
-          strategy.strategy_conditions, 
-          strategy.condition_groups || [],
+          normalizedConditions, 
+          groups || [],
           previousCandles, 
           indicatorCache, 
           i, 
@@ -346,6 +380,7 @@ function calculateAndCacheIndicator(
         cache[key] = indicators.calculateRSI(closePrices, period);
         break;
       case 'stochastic':
+      case 'stoch':
         const stoch = indicators.calculateStochastic(candles, period, params.smoothing || 3, 3);
         cache[key] = { k: stoch.k, d: stoch.d };
         break;
@@ -359,6 +394,7 @@ function calculateAndCacheIndicator(
         cache[key] = indicators.calculateMFI(candles, period);
         break;
       case 'stochrsi':
+      case 'stoch_rsi':
         cache[key] = indicators.calculateStochRSI(closePrices, period, 14);
         break;
       case 'momentum':

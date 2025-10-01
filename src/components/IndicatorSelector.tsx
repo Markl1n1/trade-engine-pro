@@ -4,26 +4,27 @@ import { Label } from "@/components/ui/label";
 
 export type IndicatorCategory = 'moving_average' | 'oscillator' | 'volume' | 'trend' | 'volatility';
 
+// Only show indicators that are currently supported by the backtest function
 export const INDICATOR_CATEGORIES: Record<IndicatorCategory, { label: string; indicators: string[] }> = {
   moving_average: {
     label: 'Moving Averages',
-    indicators: ['SMA', 'EMA', 'WMA', 'KAMA', 'MAMA', 'DEMA', 'TEMA', 'WILDER_MA', 'VWMA', 'HULL_MA', 'MCGINLEY']
+    indicators: ['SMA', 'EMA', 'WMA', 'DEMA', 'TEMA', 'HULL_MA', 'VWMA']
   },
   oscillator: {
     label: 'Oscillators',
-    indicators: ['RSI', 'STOCHASTIC', 'STOCH_RSI', 'MOMENTUM', 'CCI', 'WPR', 'MFI', 'CRSI', 'TRIX', 'TSI', 'ULTIMATE_OSC', 'ROC', 'BOP', 'AWESOME_OSC', 'ACCELERATOR_OSC', 'STC', 'RMI', 'RCI', 'SMA_RSI', 'EMA_RSI', 'SMI', 'SMIE', 'CHMO', 'KDJ']
+    indicators: ['RSI', 'STOCHASTIC', 'STOCH_RSI', 'MOMENTUM', 'CCI', 'WPR', 'MFI', 'ROC']
   },
   volume: {
     label: 'Volume Indicators',
-    indicators: ['OBV', 'AD_LINE', 'CHAIKIN_OSC', 'CMF', 'TMF', 'MFI', 'VWAP', 'VWMA', 'DEMAND_INDEX', 'VOLUME']
+    indicators: ['OBV', 'AD_LINE', 'CMF', 'VWAP', 'VOLUME']
   },
   trend: {
     label: 'Trend Indicators',
-    indicators: ['MACD', 'ADX', 'PLUS_DI', 'MINUS_DI', 'AROON', 'PSAR', 'ICHIMOKU_TENKAN', 'ICHIMOKU_KIJUN', 'ICHIMOKU_SENKOU_A', 'ICHIMOKU_SENKOU_B', 'TII']
+    indicators: ['MACD', 'ADX']
   },
   volatility: {
     label: 'Volatility Indicators',
-    indicators: ['ATR', 'BOLLINGER_BANDS', 'BB_UPPER', 'BB_MIDDLE', 'BB_LOWER', 'KELTNER_UPPER', 'KELTNER_LOWER', 'VOLATILITY_STOP', 'FIBONACCI']
+    indicators: ['ATR', 'BOLLINGER_BANDS']
   }
 };
 
@@ -120,14 +121,18 @@ export function IndicatorSelector({
 
       {selectedParams?.periods && onPeriodChange && (
         <div>
-          <Label>Period</Label>
+          <Label>Period (lookback window in candles)</Label>
           <Input
             type="number"
             value={period || 14}
             onChange={(e) => onPeriodChange(parseInt(e.target.value))}
             min={1}
             max={200}
+            placeholder="e.g., 14 for RSI(14)"
           />
+          <p className="text-xs text-muted-foreground mt-1">
+            Number of candles the indicator uses for calculation
+          </p>
         </div>
       )}
 
