@@ -17,6 +17,7 @@ const Backtest = () => {
   const [initialBalance, setInitialBalance] = useState<string>("1000");
   const [stopLossPercent, setStopLossPercent] = useState<string>("3");
   const [takeProfitPercent, setTakeProfitPercent] = useState<string>("6");
+  const [isStrategyDefaults, setIsStrategyDefaults] = useState(true);
   const [isRunning, setIsRunning] = useState(false);
   const [results, setResults] = useState<any>(null);
   const [isLoadingData, setIsLoadingData] = useState(false);
@@ -39,6 +40,18 @@ const Backtest = () => {
     setEndDate(end.toISOString().split('T')[0]);
     setStartDate(start.toISOString().split('T')[0]);
   }, []);
+
+  // Auto-populate backtest parameters from selected strategy
+  useEffect(() => {
+    if (selectedStrategy && strategies.length > 0) {
+      const strategy = strategies.find(s => s.id === selectedStrategy);
+      if (strategy && isStrategyDefaults) {
+        setInitialBalance(String(strategy.initial_capital || 1000));
+        setStopLossPercent(String(strategy.stop_loss_percent || 3));
+        setTakeProfitPercent(String(strategy.take_profit_percent || 6));
+      }
+    }
+  }, [selectedStrategy, strategies, isStrategyDefaults]);
 
   const loadStrategies = async () => {
     const { data, error } = await supabase
@@ -280,11 +293,19 @@ const Backtest = () => {
             </div>
 
             <div>
-              <Label className="text-xs text-muted-foreground">Initial Balance ($)</Label>
+              <Label className="text-xs text-muted-foreground flex items-center gap-2">
+                Initial Balance ($)
+                {isStrategyDefaults && (
+                  <span className="text-[10px] text-primary">(from strategy)</span>
+                )}
+              </Label>
               <Input
                 type="number"
                 value={initialBalance}
-                onChange={(e) => setInitialBalance(e.target.value)}
+                onChange={(e) => {
+                  setInitialBalance(e.target.value);
+                  setIsStrategyDefaults(false);
+                }}
                 className="mt-1"
                 min="0"
                 step="100"
@@ -293,11 +314,19 @@ const Backtest = () => {
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-xs text-muted-foreground">Stop Loss (%)</Label>
+                <Label className="text-xs text-muted-foreground flex items-center gap-2">
+                  Stop Loss (%)
+                  {isStrategyDefaults && (
+                    <span className="text-[10px] text-primary">(from strategy)</span>
+                  )}
+                </Label>
                 <Input
                   type="number"
                   value={stopLossPercent}
-                  onChange={(e) => setStopLossPercent(e.target.value)}
+                  onChange={(e) => {
+                    setStopLossPercent(e.target.value);
+                    setIsStrategyDefaults(false);
+                  }}
                   className="mt-1"
                   min="0.1"
                   max="100"
@@ -305,11 +334,19 @@ const Backtest = () => {
                 />
               </div>
               <div>
-                <Label className="text-xs text-muted-foreground">Take Profit (%)</Label>
+                <Label className="text-xs text-muted-foreground flex items-center gap-2">
+                  Take Profit (%)
+                  {isStrategyDefaults && (
+                    <span className="text-[10px] text-primary">(from strategy)</span>
+                  )}
+                </Label>
                 <Input
                   type="number"
                   value={takeProfitPercent}
-                  onChange={(e) => setTakeProfitPercent(e.target.value)}
+                  onChange={(e) => {
+                    setTakeProfitPercent(e.target.value);
+                    setIsStrategyDefaults(false);
+                  }}
                   className="mt-1"
                   min="0.1"
                   max="1000"

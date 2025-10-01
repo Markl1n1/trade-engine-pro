@@ -121,14 +121,7 @@ const Settings = () => {
       return;
     }
 
-    setSaving(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) {
-        throw new Error("No user found");
-      }
-
       // Validate input
       const validationResult = settingsSchema.safeParse({
         binance_mainnet_api_key: settings.binance_mainnet_api_key || undefined,
@@ -146,36 +139,66 @@ const Settings = () => {
           description: errorMessage,
           variant: "destructive",
         });
-        setSaving(false);
         return;
       }
 
-      // Store credentials securely (Lovable Cloud provides encryption at rest)
+      setSaving(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error("User not authenticated");
+      }
+
+      console.log("Saving settings for user:", user.id.substring(0, 8) + "...");
+
+      const settingsData = {
+        user_id: user.id,
+        binance_mainnet_api_key: settings.binance_mainnet_api_key?.trim() || null,
+        binance_mainnet_api_secret: settings.binance_mainnet_api_secret?.trim() || null,
+        binance_testnet_api_key: settings.binance_testnet_api_key?.trim() || null,
+        binance_testnet_api_secret: settings.binance_testnet_api_secret?.trim() || null,
+        use_testnet: settings.use_testnet,
+        telegram_bot_token: settings.telegram_bot_token?.trim() || null,
+        telegram_chat_id: settings.telegram_chat_id?.trim() || null,
+        telegram_enabled: settings.telegram_enabled,
+      };
+
+      console.log("Settings data prepared:", {
+        use_testnet: settings.use_testnet,
+        has_mainnet_key: !!settings.binance_mainnet_api_key,
+        has_testnet_key: !!settings.binance_testnet_api_key,
+        telegram_enabled: settings.telegram_enabled,
+      });
+
       const { error } = await supabase
         .from("user_settings")
-        .upsert({
-          user_id: user.id,
-          binance_mainnet_api_key: settings.binance_mainnet_api_key || null,
-          binance_mainnet_api_secret: settings.binance_mainnet_api_secret || null,
-          binance_testnet_api_key: settings.binance_testnet_api_key || null,
-          binance_testnet_api_secret: settings.binance_testnet_api_secret || null,
-          use_testnet: settings.use_testnet,
-          telegram_bot_token: settings.telegram_bot_token || null,
-          telegram_chat_id: settings.telegram_chat_id || null,
-          telegram_enabled: settings.telegram_enabled,
+        .upsert(settingsData, {
+          onConflict: 'user_id'
         });
 
-      if (error) throw error;
+      if (error) {
+        console.error("Database error:", error);
+        throw new Error(`Database error: ${error.message} (Code: ${error.code || 'unknown'})`);
+      }
+
+      console.log("Settings saved successfully");
 
       toast({
         title: "Success",
-        description: "Settings saved successfully with encryption",
+        description: "Settings saved successfully",
       });
-    } catch (error) {
-      console.error("Error saving settings:", error);
+    } catch (error: any) {
+      console.error("Save settings error:", error);
+      
+      let errorMessage = "Failed to save settings";
+      
+      if (error.message) {
+        errorMessage = error.message;
+      }
+      
       toast({
         title: "Error",
-        description: "Failed to save settings",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {

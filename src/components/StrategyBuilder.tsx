@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,17 +39,104 @@ interface StrategyBuilderProps {
 }
 
 export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }: StrategyBuilderProps) => {
-  const [name, setName] = useState(editStrategy?.name || "");
-  const [description, setDescription] = useState(editStrategy?.description || "");
-  const [symbol, setSymbol] = useState(editStrategy?.symbol || "BTCUSDT");
-  const [timeframe, setTimeframe] = useState(editStrategy?.timeframe || "1h");
-  const [initialCapital, setInitialCapital] = useState(editStrategy?.initial_capital || 10000);
-  const [positionSize, setPositionSize] = useState(editStrategy?.position_size_percent || 100);
-  const [stopLoss, setStopLoss] = useState(editStrategy?.stop_loss_percent || "");
-  const [takeProfit, setTakeProfit] = useState(editStrategy?.take_profit_percent || "");
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [symbol, setSymbol] = useState("BTCUSDT");
+  const [timeframe, setTimeframe] = useState("1h");
+  const [initialCapital, setInitialCapital] = useState(10000);
+  const [positionSize, setPositionSize] = useState(100);
+  const [stopLoss, setStopLoss] = useState("");
+  const [takeProfit, setTakeProfit] = useState("");
   const [buyConditions, setBuyConditions] = useState<Condition[]>([]);
   const [sellConditions, setSellConditions] = useState<Condition[]>([]);
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  // Load strategy data when editing
+  useEffect(() => {
+    if (editStrategy && open) {
+      loadStrategyData();
+    } else if (!open) {
+      resetForm();
+    }
+  }, [editStrategy, open]);
+
+  const loadStrategyData = async () => {
+    if (!editStrategy) return;
+    
+    setLoading(true);
+    try {
+      setName(editStrategy.name || "");
+      setDescription(editStrategy.description || "");
+      setSymbol(editStrategy.symbol || "BTCUSDT");
+      setTimeframe(editStrategy.timeframe || "1h");
+      setInitialCapital(editStrategy.initial_capital || 10000);
+      setPositionSize(editStrategy.position_size_percent || 100);
+      setStopLoss(editStrategy.stop_loss_percent || "");
+      setTakeProfit(editStrategy.take_profit_percent || "");
+
+      // Load conditions from database
+      const { data: conditions, error } = await supabase
+        .from("strategy_conditions")
+        .select("*")
+        .eq("strategy_id", editStrategy.id)
+        .order("order_index");
+
+      if (error) {
+        console.error("Error loading conditions:", error);
+        throw error;
+      }
+
+      if (conditions) {
+        const buyConditionsData = conditions
+          .filter(c => c.order_type === "buy")
+          .map(c => ({
+            order_type: c.order_type,
+            indicator_type: c.indicator_type,
+            operator: c.operator,
+            value: c.value,
+            value2: c.value2,
+            period_1: c.period_1,
+            period_2: c.period_2,
+            indicator_type_2: c.indicator_type_2,
+            deviation: c.deviation,
+            smoothing: c.smoothing,
+            multiplier: c.multiplier,
+            acceleration: c.acceleration,
+            logical_operator: c.logical_operator,
+          }));
+
+        const sellConditionsData = conditions
+          .filter(c => c.order_type === "sell")
+          .map(c => ({
+            order_type: c.order_type,
+            indicator_type: c.indicator_type,
+            operator: c.operator,
+            value: c.value,
+            value2: c.value2,
+            period_1: c.period_1,
+            period_2: c.period_2,
+            indicator_type_2: c.indicator_type_2,
+            deviation: c.deviation,
+            smoothing: c.smoothing,
+            multiplier: c.multiplier,
+            acceleration: c.acceleration,
+            logical_operator: c.logical_operator,
+          }));
+
+        setBuyConditions(buyConditionsData);
+        setSellConditions(sellConditionsData);
+      }
+    } catch (error: any) {
+      toast({ 
+        title: "Error", 
+        description: `Failed to load strategy: ${error.message}`, 
+        variant: "destructive" 
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const operators = [
     { value: "greater_than", label: ">" },
@@ -147,29 +234,53 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
       if (!user) throw new Error("Not authenticated");
 
       const strategyData = {
-        user_id: user.id,
         name,
         description,
         symbol,
         timeframe,
         initial_capital: initialCapital,
         position_size_percent: positionSize,
-        stop_loss_percent: stopLoss || null,
-        take_profit_percent: takeProfit || null,
+        stop_loss_percent: stopLoss ? Number(stopLoss) : null,
+        take_profit_percent: takeProfit ? Number(takeProfit) : null,
+        updated_at: new Date().toISOString(),
       };
 
-      const { data: strategy, error: strategyError } = await supabase
-        .from("strategies")
-        .insert([strategyData])
-        .select()
-        .single();
+      let strategyId: string;
 
-      if (strategyError) throw strategyError;
+      if (editStrategy) {
+        // Update existing strategy
+        const { error: strategyError } = await supabase
+          .from("strategies")
+          .update(strategyData)
+          .eq("id", editStrategy.id);
 
+        if (strategyError) throw strategyError;
+        strategyId = editStrategy.id;
+
+        // Delete existing conditions
+        const { error: deleteError } = await supabase
+          .from("strategy_conditions")
+          .delete()
+          .eq("strategy_id", strategyId);
+
+        if (deleteError) throw deleteError;
+      } else {
+        // Create new strategy
+        const { data: strategy, error: strategyError } = await supabase
+          .from("strategies")
+          .insert([{ ...strategyData, user_id: user.id }])
+          .select()
+          .single();
+
+        if (strategyError) throw strategyError;
+        strategyId = strategy.id;
+      }
+
+      // Insert conditions
       const allConditions = [
         ...buyConditions.map((c, idx) => ({ 
           ...c, 
-          strategy_id: strategy.id, 
+          strategy_id: strategyId, 
           order_index: idx,
           indicator_type: c.indicator_type as any,
           operator: c.operator as any,
@@ -177,7 +288,7 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
         })),
         ...sellConditions.map((c, idx) => ({ 
           ...c, 
-          strategy_id: strategy.id, 
+          strategy_id: strategyId, 
           order_index: idx,
           indicator_type: c.indicator_type as any,
           operator: c.operator as any,
@@ -193,12 +304,20 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
         if (conditionsError) throw conditionsError;
       }
 
-      toast({ title: "Success", description: "Strategy created successfully" });
+      toast({ 
+        title: "Success", 
+        description: editStrategy ? "Strategy updated successfully" : "Strategy created successfully" 
+      });
       onSuccess();
       onOpenChange(false);
       resetForm();
     } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      console.error("Strategy save error:", error);
+      toast({ 
+        title: "Error", 
+        description: `Failed to save strategy: ${error.message}`, 
+        variant: "destructive" 
+      });
     } finally {
       setSaving(false);
     }
@@ -319,10 +438,10 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-primary" />
-            Create Trading Strategy
+            {editStrategy ? "Edit Trading Strategy" : "Create Trading Strategy"}
           </DialogTitle>
           <DialogDescription>
-            Use templates or build your strategy from scratch with 50+ technical indicators
+            {loading ? "Loading strategy data..." : "Use templates or build your strategy from scratch with 50+ technical indicators"}
           </DialogDescription>
         </DialogHeader>
 
@@ -465,11 +584,11 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
         </Tabs>
 
         <div className="flex gap-2 justify-end border-t pt-4 mt-6">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving || loading}>
             Cancel
           </Button>
-          <Button onClick={handleSave} disabled={saving}>
-            {saving ? "Creating..." : "Create Strategy"}
+          <Button onClick={handleSave} disabled={saving || loading}>
+            {saving ? (editStrategy ? "Updating..." : "Creating...") : (editStrategy ? "Update Strategy" : "Create Strategy")}
           </Button>
         </div>
       </DialogContent>
