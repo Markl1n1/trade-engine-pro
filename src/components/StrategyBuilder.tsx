@@ -50,6 +50,7 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
   const [positionSize, setPositionSize] = useState(100);
   const [stopLoss, setStopLoss] = useState("");
   const [takeProfit, setTakeProfit] = useState("");
+  const [benchmarkSymbol, setBenchmarkSymbol] = useState("BTCUSDT");
   const [buyConditions, setBuyConditions] = useState<Condition[]>([]);
   const [sellConditions, setSellConditions] = useState<Condition[]>([]);
   const [saving, setSaving] = useState(false);
@@ -86,6 +87,7 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
       setPositionSize(editStrategy.position_size_percent || 100);
       setStopLoss(editStrategy.stop_loss_percent || "");
       setTakeProfit(editStrategy.take_profit_percent || "");
+      setBenchmarkSymbol(editStrategy.benchmark_symbol || "BTCUSDT");
 
       // Load conditions from database
       const { data: conditions, error } = await supabase
@@ -305,6 +307,16 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
       return;
     }
 
+    // Validate benchmark symbol for MSTG
+    if (strategyType === "market_sentiment_trend_gauge" && !benchmarkSymbol.trim()) {
+      toast({ 
+        title: "Benchmark Required", 
+        description: "Market Sentiment strategy requires a benchmark symbol for relative strength calculation.", 
+        variant: "destructive" 
+      });
+      return;
+    }
+
     setSaving(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -320,6 +332,7 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
         position_size_percent: positionSize,
         stop_loss_percent: stopLoss ? Number(stopLoss) : null,
         take_profit_percent: takeProfit ? Number(takeProfit) : null,
+        benchmark_symbol: strategyType === "market_sentiment_trend_gauge" ? benchmarkSymbol : null,
         updated_at: new Date().toISOString(),
       };
 
@@ -429,6 +442,7 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
     setPositionSize(100);
     setStopLoss("");
     setTakeProfit("");
+    setBenchmarkSymbol("BTCUSDT");
     setBuyConditions([]);
     setSellConditions([]);
     setStrategyConfig({
@@ -661,14 +675,32 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
                 <SelectContent>
                   <SelectItem value="standard">Standard (Indicator-Based)</SelectItem>
                   <SelectItem value="4h_reentry">4h Reentry Breakout</SelectItem>
+                  <SelectItem value="market_sentiment_trend_gauge">Market Sentiment Trend Gauge</SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
                 {strategyType === "standard" 
                   ? "Build custom strategies using technical indicators and conditions" 
-                  : "Pre-configured strategy with specialized logic for 4h range re-entry trading"}
+                  : strategyType === "4h_reentry"
+                  ? "Pre-configured strategy with specialized logic for 4h range re-entry trading"
+                  : "Multi-factor composite score combining momentum, trend, volatility, and relative strength"}
               </p>
             </div>
+
+            {strategyType === "market_sentiment_trend_gauge" && (
+              <div className="space-y-2">
+                <Label htmlFor="benchmarkSymbol">Benchmark Symbol</Label>
+                <Input
+                  id="benchmarkSymbol"
+                  value={benchmarkSymbol}
+                  onChange={(e) => setBenchmarkSymbol(e.target.value)}
+                  placeholder="BTCUSDT"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Symbol to compare against for relative strength calculation (e.g., BTCUSDT for crypto, SPY for stocks)
+                </p>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="description">Description</Label>

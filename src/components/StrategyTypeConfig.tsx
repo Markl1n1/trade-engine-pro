@@ -21,6 +21,51 @@ export const StrategyTypeConfig = ({
   riskRewardRatio = 2,
   onConfigChange,
 }: StrategyTypeConfigProps) => {
+  if (strategyType === "standard") {
+    return null;
+  }
+
+  if (strategyType === "market_sentiment_trend_gauge") {
+    return (
+      <Card className="p-4 space-y-4 bg-secondary/30 border-primary/20">
+        <div className="flex items-center gap-2 mb-2">
+          <h3 className="text-sm font-semibold">Market Sentiment Trend Gauge Configuration</h3>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+              </TooltipTrigger>
+              <TooltipContent className="max-w-md">
+                <p className="text-xs">
+                  MSTG combines four key components into a composite trend score (TS):
+                </p>
+                <ul className="text-xs mt-2 space-y-1">
+                  <li>• <strong>Momentum (25%):</strong> RSI-based momentum indicator</li>
+                  <li>• <strong>Trend (35%):</strong> EMA10 vs EMA21 relationship</li>
+                  <li>• <strong>Volatility (20%):</strong> Position within Bollinger Bands</li>
+                  <li>• <strong>Relative Strength (20%):</strong> Asset vs benchmark performance</li>
+                </ul>
+                <p className="text-xs mt-2">
+                  Long when TS &gt; +30, Short when TS &lt; -30, Exit when TS crosses 0
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+
+        <div className="text-xs text-muted-foreground space-y-1 pt-2 border-t">
+          <p><strong>Trading Logic:</strong></p>
+          <p>• Long Entry: TS &gt; +30 (strong bullish sentiment)</p>
+          <p>• Short Entry: TS &lt; -30 (strong bearish sentiment)</p>
+          <p>• Exit Long: TS crosses below 0</p>
+          <p>• Exit Short: TS crosses above 0</p>
+          <p>• Extreme Zones: TS &gt; +60 or TS &lt; -60 (partial profit taking recommended)</p>
+          <p className="mt-2"><strong>Note:</strong> MSTG uses pre-configured weights and thresholds. The benchmark symbol is set in the Basic Setup tab.</p>
+        </div>
+      </Card>
+    );
+  }
+
   if (strategyType !== "4h_reentry") {
     return null;
   }
