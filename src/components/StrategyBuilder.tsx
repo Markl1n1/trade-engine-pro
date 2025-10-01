@@ -190,7 +190,7 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
   const addCondition = (type: OrderType) => {
     const newCondition: Condition = {
       order_type: type,
-      indicator_type: "RSI",
+      indicator_type: "rsi",
       operator: "greater_than",
       value: 0,
       period_1: 14,
@@ -230,7 +230,7 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
     const mapCondition = (c: any, orderType: OrderType) => ({
       order_type: orderType,
       // Map 'indicator' field to 'indicator_type' for database compatibility
-      indicator_type: c.indicator_type || c.indicator || "RSI",
+      indicator_type: c.indicator_type || c.indicator || "rsi",
       // Ensure all operators are lowercase
       operator: (c.operator || "greater_than").toLowerCase(),
       // Set defaults for required fields
