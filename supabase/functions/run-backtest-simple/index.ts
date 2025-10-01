@@ -213,8 +213,8 @@ serve(async (req) => {
       });
       console.log(`[MSTG Debug] Volatility calculated, first valid values: ${volatility.slice(20, 25).map(v => isNaN(v) ? 'NaN' : v.toFixed(2)).join(', ')}`);
       
-      // Relative strength: Asset vs benchmark (simplified - use asset momentum)
-      const relativeStrength = momentum; // Simplified for now
+      // Relative strength: Asset vs benchmark (use neutral value since we don't have benchmark data)
+      const relativeStrength = closes.map(() => 0); // Neutral score when no benchmark
       
       // Calculate TS score
       const weights = {

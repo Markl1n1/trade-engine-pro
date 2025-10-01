@@ -27,16 +27,38 @@ export function calculateEMA(data: number[], period: number): number[] {
   const result: number[] = [];
   const multiplier = 2 / (period + 1);
   
-  // First value is SMA
-  const sma = data.slice(0, period).reduce((a, b) => a + b, 0) / period;
-  result.push(sma);
+  // Find first valid (non-NaN) values for SMA calculation
+  const validData: number[] = [];
+  const validIndices: number[] = [];
   
-  for (let i = period; i < data.length; i++) {
-    const ema = (data[i] - result[result.length - 1]) * multiplier + result[result.length - 1];
-    result.push(ema);
+  for (let i = 0; i < data.length; i++) {
+    if (!isNaN(data[i]) && isFinite(data[i])) {
+      validData.push(data[i]);
+      validIndices.push(i);
+    }
   }
   
-  return new Array(period - 1).fill(NaN).concat(result);
+  if (validData.length < period) {
+    return data.map(() => NaN);
+  }
+  
+  // Calculate initial SMA from first valid values
+  const sma = validData.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  let prevEMA = sma;
+  
+  for (let i = 0; i < data.length; i++) {
+    if (i < validIndices[period - 1]) {
+      result.push(NaN);
+    } else if (isNaN(data[i]) || !isFinite(data[i])) {
+      result.push(NaN);
+    } else {
+      const ema = (data[i] - prevEMA) * multiplier + prevEMA;
+      result.push(ema);
+      prevEMA = ema;
+    }
+  }
+  
+  return result;
 }
 
 export function calculateWMA(data: number[], period: number): number[] {
@@ -532,6 +554,15 @@ export function calculateBenchmarkRelativeStrength(
 ): number[] {
   const result: number[] = [];
   
+  // Check if asset and benchmark are the same
+  const isSameAsset = assetCandles.length === benchmarkCandles.length && 
+    assetCandles.every((c, i) => c.close === benchmarkCandles[i]?.close);
+  
+  if (isSameAsset) {
+    // If comparing to itself, return neutral scores (0)
+    return assetCandles.map((_, i) => i < period ? NaN : 0);
+  }
+  
   for (let i = 0; i < assetCandles.length; i++) {
     if (i < period) {
       result.push(NaN);
@@ -562,14 +593,21 @@ export function calculateCompositeScore(
   const rawScores: number[] = [];
   
   for (let i = 0; i < momentum.length; i++) {
-    if (isNaN(momentum[i]) || isNaN(trend[i]) || isNaN(volatility[i]) || isNaN(relativeStrength[i])) {
+    // Allow score calculation even if some components are NaN by treating them as 0
+    const m = isNaN(momentum[i]) ? 0 : momentum[i];
+    const t = isNaN(trend[i]) ? 0 : trend[i];
+    const v = isNaN(volatility[i]) ? 0.5 : volatility[i]; // Default to neutral
+    const r = isNaN(relativeStrength[i]) ? 0 : relativeStrength[i];
+    
+    // Only push NaN if ALL components are NaN
+    if (isNaN(momentum[i]) && isNaN(trend[i]) && isNaN(volatility[i]) && isNaN(relativeStrength[i])) {
       rawScores.push(NaN);
     } else {
       const score = 
-        weights.wM * momentum[i] +
-        weights.wT * trend[i] +
-        weights.wV * (volatility[i] * 200 - 100) + // Convert [0,1] to [-100,100]
-        weights.wR * relativeStrength[i];
+        weights.wM * m +
+        weights.wT * t +
+        weights.wV * (v * 200 - 100) + // Convert [0,1] to [-100,100]
+        weights.wR * r;
       rawScores.push(score);
     }
   }
