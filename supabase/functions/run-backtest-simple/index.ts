@@ -123,14 +123,18 @@ serve(async (req) => {
 
     console.log(`[Simple Backtest] Processing ${candles.length} candles`);
 
-    // Fetch conditions
+    // Check if MSTG strategy - do this BEFORE trying to fetch conditions
+    const isMSTG = strategy.strategy_type === 'market_sentiment_trend_gauge';
+
+    // Fetch conditions (only required for non-MSTG strategies)
     const { data: conditions } = await supabaseClient
       .from('strategy_conditions')
       .select('*')
       .eq('strategy_id', strategyId)
       .order('order_index', { ascending: true });
 
-    if (!conditions || conditions.length === 0) {
+    // Only validate conditions for non-MSTG strategies
+    if (!isMSTG && (!conditions || conditions.length === 0)) {
       throw new Error('No conditions defined');
     }
 
@@ -141,31 +145,30 @@ serve(async (req) => {
     
     const indicatorCache: Record<string, number[]> = {};
 
-    // Calculate unique indicators
-    const uniqueIndicators = new Set<string>();
-    conditions.forEach(cond => {
-      if (cond.indicator_type && cond.period_1) {
-        uniqueIndicators.add(`${cond.indicator_type}_${cond.period_1}`);
-      }
-    });
+    // Calculate unique indicators (only for non-MSTG strategies)
+    if (!isMSTG && conditions) {
+      const uniqueIndicators = new Set<string>();
+      conditions.forEach(cond => {
+        if (cond.indicator_type && cond.period_1) {
+          uniqueIndicators.add(`${cond.indicator_type}_${cond.period_1}`);
+        }
+      });
 
-    console.log(`[Simple Backtest] Calculating ${uniqueIndicators.size} unique indicators`);
+      console.log(`[Simple Backtest] Calculating ${uniqueIndicators.size} unique indicators`);
 
-    uniqueIndicators.forEach(key => {
-      const [type, periodStr] = key.split('_');
-      const period = parseInt(periodStr);
-      
-      if (type === 'SMA') {
-        indicatorCache[key] = calculateSMA(closes, period);
-      } else if (type === 'RSI') {
-        indicatorCache[key] = calculateRSI(closes, period);
-      } else if (type === 'EMA') {
-        indicatorCache[key] = calculateEMA(closes, period);
-      }
-    });
-
-    // Check if MSTG strategy
-    const isMSTG = strategy.strategy_type === 'market_sentiment_trend_gauge';
+      uniqueIndicators.forEach(key => {
+        const [type, periodStr] = key.split('_');
+        const period = parseInt(periodStr);
+        
+        if (type === 'SMA') {
+          indicatorCache[key] = calculateSMA(closes, period);
+        } else if (type === 'RSI') {
+          indicatorCache[key] = calculateRSI(closes, period);
+        } else if (type === 'EMA') {
+          indicatorCache[key] = calculateEMA(closes, period);
+        }
+      });
+    }
 
     // Initialize signal arrays
     const signals: boolean[] = new Array(candles.length).fill(false);
@@ -176,18 +179,23 @@ serve(async (req) => {
       
       // Calculate MSTG components
       const rsi = calculateRSI(closes, 14);
-      const momentum = rsi.map(v => (v - 50) * 2); // Normalize to [-100, 100]
+      console.log(`[MSTG Debug] RSI calculated, first valid values: ${rsi.slice(20, 25).map(v => v.toFixed(2)).join(', ')}`);
+      
+      const momentum = rsi.map(v => isNaN(v) ? NaN : (v - 50) * 2); // Normalize to [-100, 100]
+      console.log(`[MSTG Debug] Momentum calculated, first valid values: ${momentum.slice(20, 25).map(v => isNaN(v) ? 'NaN' : v.toFixed(2)).join(', ')}`);
       
       // Trend: EMA10 vs EMA21
       const ema10 = calculateEMA(closes, 10);
       const ema21 = calculateEMA(closes, 21);
       const trendRaw = ema10.map((v, i) => v - ema21[i]);
       
-      // Simple normalization for trend
-      const trendMin = Math.min(...trendRaw.filter(v => !isNaN(v)));
-      const trendMax = Math.max(...trendRaw.filter(v => !isNaN(v)));
-      const trendRange = trendMax - trendMin;
+      // Simple normalization for trend - filter out NaN values
+      const validTrendValues = trendRaw.filter(v => !isNaN(v) && isFinite(v));
+      const trendMin = validTrendValues.length > 0 ? Math.min(...validTrendValues) : 0;
+      const trendMax = validTrendValues.length > 0 ? Math.max(...validTrendValues) : 100;
+      const trendRange = trendMax - trendMin || 1; // Avoid division by zero
       const trend = trendRaw.map(v => isNaN(v) ? NaN : ((v - trendMin) / trendRange) * 200 - 100);
+      console.log(`[MSTG Debug] Trend calculated, first valid values: ${trend.slice(20, 25).map(v => isNaN(v) ? 'NaN' : v.toFixed(2)).join(', ')}`);
       
       // Volatility: Simple BB position (0 to 1)
       const sma20 = calculateSMA(closes, 20);
@@ -195,6 +203,7 @@ serve(async (req) => {
         if (i < 19) return NaN;
         const slice = closes.slice(i - 19, i + 1);
         const mean = sma20[i];
+        if (isNaN(mean)) return NaN;
         const variance = slice.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / 20;
         const stdDev = Math.sqrt(variance);
         const upper = mean + 2 * stdDev;
@@ -202,6 +211,7 @@ serve(async (req) => {
         const range = upper - lower;
         return range === 0 ? 0.5 : Math.max(0, Math.min(1, (c - lower) / range));
       });
+      console.log(`[MSTG Debug] Volatility calculated, first valid values: ${volatility.slice(20, 25).map(v => isNaN(v) ? 'NaN' : v.toFixed(2)).join(', ')}`);
       
       // Relative strength: Asset vs benchmark (simplified - use asset momentum)
       const relativeStrength = momentum; // Simplified for now
@@ -224,23 +234,54 @@ serve(async (req) => {
                weights.wR * relativeStrength[i];
       });
       
+      // Count valid TS values before smoothing
+      const validTsRaw = tsRaw.filter(v => !isNaN(v));
+      console.log(`[MSTG Debug] TS Raw calculated, ${validTsRaw.length} valid values out of ${tsRaw.length}`);
+      if (validTsRaw.length > 0) {
+        console.log(`[MSTG Debug] TS Raw range: ${Math.min(...validTsRaw).toFixed(2)} to ${Math.max(...validTsRaw).toFixed(2)}`);
+        console.log(`[MSTG Debug] First valid TS Raw values: ${tsRaw.slice(20, 30).filter(v => !isNaN(v)).map(v => v.toFixed(2)).join(', ')}`);
+      }
+      
       // Apply EMA_5 smoothing
       const tsScore = calculateEMA(tsRaw, 5);
+      const validTs = tsScore.filter(v => !isNaN(v));
+      console.log(`[MSTG Debug] TS Score (smoothed) calculated, ${validTs.length} valid values`);
+      if (validTs.length > 0) {
+        console.log(`[MSTG Debug] TS Score range: ${Math.min(...validTs).toFixed(2)} to ${Math.max(...validTs).toFixed(2)}`);
+        console.log(`[MSTG Debug] First valid TS Scores: ${tsScore.slice(50, 60).filter(v => !isNaN(v)).map(v => v.toFixed(2)).join(', ')}`);
+      }
       
       // Generate signals based on TS thresholds
       const longThreshold = 30;
       const shortThreshold = -30;
       const exitThreshold = 0;
       
+      console.log(`[MSTG Debug] Using thresholds: Long=${longThreshold}, Short=${shortThreshold}, Exit=${exitThreshold}`);
+      
+      let signalCount = 0;
+      let exitSignalCount = 0;
+      
       for (let i = 50; i < candles.length; i++) {
         const ts = tsScore[i - 1];
         if (isNaN(ts)) continue;
         
-        signals[i] = ts > longThreshold;
-        exitSignals[i] = ts < exitThreshold;
+        if (ts > longThreshold) {
+          signals[i] = true;
+          signalCount++;
+        }
+        if (ts < exitThreshold) {
+          exitSignals[i] = true;
+          exitSignalCount++;
+        }
       }
+      
+      console.log(`[MSTG Debug] Generated ${signalCount} entry signals and ${exitSignalCount} exit signals`);
     } else {
       // Original simple signal logic for non-MSTG strategies
+      if (!conditions) {
+        throw new Error('No conditions available for non-MSTG strategy');
+      }
+      
       for (let i = 50; i < candles.length; i++) {
         // Entry: Simple SMA crossover or RSI oversold
         const entryConditions = conditions.filter(c => c.order_type === 'entry');

@@ -928,15 +928,25 @@ async function runMSTGBacktest(
   // Calculate MSTG components
   const closes = candles.map(c => c.close);
   
+  console.log(`[MSTG Debug] Starting indicator calculations for ${closes.length} candles`);
+  console.log(`[MSTG Debug] Asset: ${strategy.symbol}, Benchmark: ${benchmarkSymbol}`);
+  console.log(`[MSTG Debug] Price range: ${Math.min(...closes).toFixed(2)} to ${Math.max(...closes).toFixed(2)}`);
+  
   // 1. Momentum Score (M) - Normalized RSI
   const rsi = indicators.calculateRSI(closes, 14);
   const momentum = indicators.normalizeRSI(rsi);
+  const validMomentum = momentum.filter(v => !isNaN(v));
+  console.log(`[MSTG Debug] Momentum: ${validMomentum.length} valid values, range: ${validMomentum.length > 0 ? `${Math.min(...validMomentum).toFixed(2)} to ${Math.max(...validMomentum).toFixed(2)}` : 'N/A'}`);
   
   // 2. Trend Direction Score (T) - EMA10 vs EMA21
   const trendScore = indicators.calculateTrendScore(closes);
+  const validTrend = trendScore.filter(v => !isNaN(v));
+  console.log(`[MSTG Debug] Trend Score: ${validTrend.length} valid values, range: ${validTrend.length > 0 ? `${Math.min(...validTrend).toFixed(2)} to ${Math.max(...validTrend).toFixed(2)}` : 'N/A'}`);
   
   // 3. Volatility Position Score (V) - Bollinger Band position
   const bbPosition = indicators.calculateBollingerPosition(candles, 20);
+  const validBB = bbPosition.filter(v => !isNaN(v));
+  console.log(`[MSTG Debug] BB Position: ${validBB.length} valid values, range: ${validBB.length > 0 ? `${Math.min(...validBB).toFixed(2)} to ${Math.max(...validBB).toFixed(2)}` : 'N/A'}`);
   
   // 4. Relative Strength Score (R) - Asset vs Benchmark
   const relativeStrength = indicators.calculateBenchmarkRelativeStrength(
@@ -944,6 +954,8 @@ async function runMSTGBacktest(
     benchmarkCandles,
     14
   );
+  const validRS = relativeStrength.filter(v => !isNaN(v));
+  console.log(`[MSTG Debug] Relative Strength: ${validRS.length} valid values, range: ${validRS.length > 0 ? `${Math.min(...validRS).toFixed(2)} to ${Math.max(...validRS).toFixed(2)}` : 'N/A'}`);
   
   // 5. Calculate Composite TS Score
   const weights = {
@@ -953,6 +965,8 @@ async function runMSTGBacktest(
     wR: strategy.mstg_weight_relative || 0.20,
   };
   
+  console.log(`[MSTG Debug] Weights: M=${weights.wM}, T=${weights.wT}, V=${weights.wV}, R=${weights.wR}`);
+  
   const tsScore = indicators.calculateCompositeScore(
     momentum,
     trendScore,
@@ -960,6 +974,15 @@ async function runMSTGBacktest(
     relativeStrength,
     weights
   );
+  
+  const validTS = tsScore.filter(v => !isNaN(v));
+  console.log(`[MSTG Debug] Final TS Score: ${validTS.length} valid values out of ${tsScore.length}`);
+  if (validTS.length > 0) {
+    console.log(`[MSTG Debug] TS Score range: ${Math.min(...validTS).toFixed(2)} to ${Math.max(...validTS).toFixed(2)}`);
+    console.log(`[MSTG Debug] Sample TS values [50-60]: ${tsScore.slice(50, 60).map(v => isNaN(v) ? 'NaN' : v.toFixed(2)).join(', ')}`);
+  } else {
+    console.error(`[MSTG Debug] ERROR: All TS scores are NaN! Cannot generate any trades.`);
+  }
   
   // Trading parameters
   const longThreshold = strategy.mstg_long_threshold || 30;
@@ -983,12 +1006,18 @@ async function runMSTGBacktest(
   const minQty = 0.001;
   const minNotional = 10;
 
+  let skippedNaN = 0;
+  let entryChecks = 0;
+  
   for (let i = 1; i < candles.length; i++) {
     const currentCandle = candles[i];
     const ts = tsScore[i - 1]; // Use previous candle to avoid look-ahead bias
     const prevTs = i > 1 ? tsScore[i - 2] : NaN;
     
-    if (isNaN(ts)) continue;
+    if (isNaN(ts)) {
+      skippedNaN++;
+      continue;
+    }
 
     const executionPrice = executionTiming === 'open' ? currentCandle.open : currentCandle.close;
     const priceWithSlippage = executionPrice * (1 + slippage / 100);
@@ -1048,15 +1077,22 @@ async function runMSTGBacktest(
 
     // Check entry conditions
     if (!position) {
+      entryChecks++;
       let shouldEnter = false;
       let entryType: 'buy' | 'sell' | null = null;
 
       if (ts > longThreshold) {
         shouldEnter = true;
         entryType = 'buy';
+        if (entryChecks <= 5) {
+          console.log(`[MSTG Debug] [${i}] Long signal detected: TS=${ts.toFixed(2)} > ${longThreshold}`);
+        }
       } else if (ts < shortThreshold) {
         shouldEnter = true;
         entryType = 'sell';
+        if (entryChecks <= 5) {
+          console.log(`[MSTG Debug] [${i}] Short signal detected: TS=${ts.toFixed(2)} < ${shortThreshold}`);
+        }
       }
 
       if (shouldEnter && entryType) {
@@ -1148,6 +1184,8 @@ async function runMSTGBacktest(
   const losingTrades = trades.filter(t => (t.profit || 0) < 0).length;
   const winRate = trades.length > 0 ? (winningTrades / trades.length) * 100 : 0;
 
+  console.log(`[MSTG Debug] Skipped ${skippedNaN} candles due to NaN TS score`);
+  console.log(`[MSTG Debug] Checked ${entryChecks} candles for entry signals`);
   console.log(`MSTG Backtest complete: ${trades.length} trades, ${winRate.toFixed(2)}% win rate`);
 
   await supabaseClient
