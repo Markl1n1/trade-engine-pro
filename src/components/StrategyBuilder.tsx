@@ -13,6 +13,7 @@ import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { IndicatorSelector } from "./IndicatorSelector";
 import { StrategyTemplates } from "./StrategyTemplates";
+import { StrategyTypeConfig } from "./StrategyTypeConfig";
 
 type OrderType = "buy" | "sell";
 
@@ -44,6 +45,7 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
   const [description, setDescription] = useState("");
   const [symbol, setSymbol] = useState("BTCUSDT");
   const [timeframe, setTimeframe] = useState("1h");
+  const [strategyType, setStrategyType] = useState("standard");
   const [initialCapital, setInitialCapital] = useState(10000);
   const [positionSize, setPositionSize] = useState(100);
   const [stopLoss, setStopLoss] = useState("");
@@ -52,6 +54,14 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
   const [sellConditions, setSellConditions] = useState<Condition[]>([]);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
+  
+  // Strategy-specific configuration
+  const [strategyConfig, setStrategyConfig] = useState({
+    sessionStart: "00:00",
+    sessionEnd: "03:59",
+    timezone: "America/New_York",
+    riskRewardRatio: 2,
+  });
 
   // Load strategy data when editing
   useEffect(() => {
@@ -71,6 +81,7 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
       setDescription(editStrategy.description || "");
       setSymbol(editStrategy.symbol || "BTCUSDT");
       setTimeframe(editStrategy.timeframe || "1h");
+      setStrategyType(editStrategy.strategy_type || "standard");
       setInitialCapital(editStrategy.initial_capital || 10000);
       setPositionSize(editStrategy.position_size_percent || 100);
       setStopLoss(editStrategy.stop_loss_percent || "");
@@ -188,10 +199,21 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
     setDescription(template.description || '');
     setSymbol(template.symbol || "BTCUSDT");
     setTimeframe(template.timeframe || "1h");
+    setStrategyType(template.strategy_type || "standard");
     setInitialCapital(template.initial_capital || 10000);
     setPositionSize(template.position_size_percent || 100);
     setStopLoss(String(template.stop_loss_percent || ''));
     setTakeProfit(String(template.take_profit_percent || ''));
+    
+    // Load strategy-specific config if present
+    if (templateData.sessionStart) {
+      setStrategyConfig({
+        sessionStart: templateData.sessionStart || "00:00",
+        sessionEnd: templateData.sessionEnd || "03:59",
+        timezone: templateData.timezone || "America/New_York",
+        riskRewardRatio: templateData.riskRewardRatio || 2,
+      });
+    }
     
     // Map template fields to database schema
     const mapCondition = (c: any, orderType: OrderType) => ({
@@ -215,15 +237,27 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
     
     if (templateData.buy_conditions) {
       setBuyConditions(templateData.buy_conditions.map((c: any) => mapCondition(c, "buy")));
+    } else if (templateData.conditions) {
+      // Handle new format where conditions might be in a single array
+      const buyConds = templateData.conditions.filter((c: any) => c.orderType === "buy");
+      if (buyConds.length > 0) {
+        setBuyConditions(buyConds.map((c: any) => mapCondition(c, "buy")));
+      }
     }
     
     if (templateData.sell_conditions) {
       setSellConditions(templateData.sell_conditions.map((c: any) => mapCondition(c, "sell")));
+    } else if (templateData.conditions) {
+      // Handle new format where conditions might be in a single array
+      const sellConds = templateData.conditions.filter((c: any) => c.orderType === "sell");
+      if (sellConds.length > 0) {
+        setSellConditions(sellConds.map((c: any) => mapCondition(c, "sell")));
+      }
     }
     
     toast({
       title: "Template loaded",
-      description: "Review the conditions and adjust parameters as needed",
+      description: "Review the configuration and adjust parameters as needed",
     });
   };
 
@@ -250,8 +284,8 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
       return;
     }
 
-    // Validate that at least one condition exists
-    if (buyConditions.length === 0 && sellConditions.length === 0) {
+    // Validate that at least one condition exists (only for standard strategies)
+    if (strategyType === "standard" && buyConditions.length === 0 && sellConditions.length === 0) {
       toast({ 
         title: "Conditions Required", 
         description: "Please add at least one buy or sell condition before saving. Strategies need conditions to run backtests.", 
@@ -270,6 +304,7 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
         description,
         symbol,
         timeframe,
+        strategy_type: strategyType,
         initial_capital: initialCapital,
         position_size_percent: positionSize,
         stop_loss_percent: stopLoss ? Number(stopLoss) : null,
@@ -378,12 +413,19 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
     setDescription("");
     setSymbol("BTCUSDT");
     setTimeframe("1h");
+    setStrategyType("standard");
     setInitialCapital(10000);
     setPositionSize(100);
     setStopLoss("");
     setTakeProfit("");
     setBuyConditions([]);
     setSellConditions([]);
+    setStrategyConfig({
+      sessionStart: "00:00",
+      sessionEnd: "03:59",
+      timezone: "America/New_York",
+      riskRewardRatio: 2,
+    });
   };
 
   // Helper functions for value field hints
@@ -600,6 +642,24 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
             </div>
 
             <div className="space-y-2">
+              <Label htmlFor="strategyType">Strategy Type</Label>
+              <Select value={strategyType} onValueChange={setStrategyType}>
+                <SelectTrigger id="strategyType">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="standard">Standard (Indicator-Based)</SelectItem>
+                  <SelectItem value="4h_reentry">4h Reentry Breakout</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {strategyType === "standard" 
+                  ? "Build custom strategies using technical indicators and conditions" 
+                  : "Pre-configured strategy with specialized logic for 4h range re-entry trading"}
+              </p>
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="description">Description</Label>
               <Textarea
                 id="description"
@@ -660,41 +720,69 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="takeProfit">Take Profit (%)</Label>
-              <Input
-                id="takeProfit"
-                type="number"
-                value={takeProfit}
-                onChange={(e) => setTakeProfit(e.target.value)}
-                placeholder="Optional"
-                className="w-1/4"
+            {strategyType === "standard" && (
+              <div className="space-y-2">
+                <Label htmlFor="takeProfit">Take Profit (%)</Label>
+                <Input
+                  id="takeProfit"
+                  type="number"
+                  value={takeProfit}
+                  onChange={(e) => setTakeProfit(e.target.value)}
+                  placeholder="Optional"
+                  className="w-1/4"
+                />
+              </div>
+            )}
+
+            {strategyType !== "standard" && (
+              <StrategyTypeConfig
+                strategyType={strategyType}
+                sessionStart={strategyConfig.sessionStart}
+                sessionEnd={strategyConfig.sessionEnd}
+                timezone={strategyConfig.timezone}
+                riskRewardRatio={strategyConfig.riskRewardRatio}
+                onConfigChange={(key, value) => 
+                  setStrategyConfig({ ...strategyConfig, [key]: value })
+                }
               />
-            </div>
+            )}
           </TabsContent>
 
           <TabsContent value="conditions" className="space-y-6 mt-4">
-            <Card className="p-4">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold text-green-600">Buy Conditions</h3>
-                <Button size="sm" onClick={() => addCondition("buy")}>
-                  <Plus className="h-4 w-4 mr-1" />
-                  Add
-                </Button>
-              </div>
-              {renderConditions(buyConditions, "buy")}
-            </Card>
+            {strategyType !== "standard" ? (
+              <Card className="p-8 text-center">
+                <Info className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <h3 className="text-lg font-semibold mb-2">Custom Strategy Logic</h3>
+                <p className="text-sm text-muted-foreground max-w-md mx-auto">
+                  This strategy uses specialized logic that is pre-configured. 
+                  You can adjust the strategy parameters in the Basic Setup tab.
+                </p>
+              </Card>
+            ) : (
+              <>
+                <Card className="p-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-semibold text-green-600">Buy Conditions</h3>
+                    <Button size="sm" onClick={() => addCondition("buy")}>
+                      <Plus className="h-4 w-4 mr-1" />
+                      Add
+                    </Button>
+                  </div>
+                  {renderConditions(buyConditions, "buy")}
+                </Card>
 
-            <Card className="p-4">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold text-red-600">Sell Conditions</h3>
-                <Button size="sm" onClick={() => addCondition("sell")}>
-                  <Plus className="h-4 w-4 mr-1" />
-                  Add
-                </Button>
-              </div>
-              {renderConditions(sellConditions, "sell")}
-            </Card>
+                <Card className="p-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-semibold text-red-600">Sell Conditions</h3>
+                    <Button size="sm" onClick={() => addCondition("sell")}>
+                      <Plus className="h-4 w-4 mr-1" />
+                      Add
+                    </Button>
+                  </div>
+                  {renderConditions(sellConditions, "sell")}
+                </Card>
+              </>
+            )}
           </TabsContent>
 
           <TabsContent value="templates" className="mt-4">

@@ -134,7 +134,13 @@ const Strategies = () => {
                     <p className="text-sm text-muted-foreground">{strategy.description}</p>
                   )}
 
-                  <div className="grid grid-cols-4 gap-4 mt-4 text-sm">
+                  <div className="grid grid-cols-5 gap-4 mt-4 text-sm">
+                    <div>
+                      <div className="text-muted-foreground">Type</div>
+                      <div className="font-medium capitalize">
+                        {strategy.strategy_type === "4h_reentry" ? "4h Reentry" : strategy.strategy_type || "Standard"}
+                      </div>
+                    </div>
                     <div>
                       <div className="text-muted-foreground">Symbol</div>
                       <div className="font-medium">{strategy.symbol}</div>
@@ -148,8 +154,14 @@ const Strategies = () => {
                       <div className="font-medium">${strategy.initial_capital}</div>
                     </div>
                     <div>
-                      <div className="text-muted-foreground">Conditions</div>
-                      <div className="font-medium">{strategy.strategy_conditions?.length || 0}</div>
+                      <div className="text-muted-foreground">
+                        {strategy.strategy_type === "4h_reentry" ? "Logic" : "Conditions"}
+                      </div>
+                      <div className="font-medium">
+                        {strategy.strategy_type === "4h_reentry" 
+                          ? "Custom" 
+                          : strategy.strategy_conditions?.length || 0}
+                      </div>
                     </div>
                   </div>
                 </div>
