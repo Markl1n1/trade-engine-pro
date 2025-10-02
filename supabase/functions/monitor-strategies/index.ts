@@ -85,6 +85,78 @@ function calculateIndicator(
         const atr = indicators.calculateATR(candles, params.period_1 || 14);
         return atr[atr.length - 1];
       
+      case 'psar':
+        const psar = indicators.calculateParabolicSAR(candles, params.acceleration || 0.02, 0.2);
+        return psar[psar.length - 1];
+      
+      case 'supertrend':
+        const st = indicators.calculateSuperTrend(candles, params.period_1 || 10, params.multiplier || 3);
+        return st.trend[st.trend.length - 1];
+      
+      case 'kdj_j':
+        const kdj = indicators.calculateKDJ(candles, params.period_1 || 9, params.smoothing || 3, 3);
+        return kdj.j[kdj.j.length - 1];
+      
+      case 'stochastic':
+        const stoch = indicators.calculateStochastic(candles, params.period_1 || 14, 3, 3);
+        return stoch.k[stoch.k.length - 1];
+      
+      case 'adx':
+        const adx = indicators.calculateADX(candles, params.period_1 || 14);
+        return adx.adx[adx.adx.length - 1];
+      
+      case 'cmf':
+        const cmf = indicators.calculateCMF(candles, params.period_1 || 20);
+        return cmf[cmf.length - 1];
+      
+      case 'vwap':
+        const vwap = indicators.calculateVWAP(candles);
+        return vwap[vwap.length - 1];
+      
+      case 'anchored_vwap':
+        const avwap = indicators.calculateAnchoredVWAP(candles, params.anchor || 0);
+        return avwap[avwap.length - 1];
+      
+      case 'obv':
+        const obv = indicators.calculateOBV(candles);
+        return obv[obv.length - 1];
+      
+      case 'cci':
+        const cci = indicators.calculateCCI(candles, params.period_1 || 20);
+        return cci[cci.length - 1];
+      
+      case 'wpr':
+        const wpr = indicators.calculateWPR(candles, params.period_1 || 14);
+        return wpr[wpr.length - 1];
+      
+      case 'mfi':
+        const mfi = indicators.calculateMFI(candles, params.period_1 || 14);
+        return mfi[mfi.length - 1];
+      
+      case 'bb_width':
+        const bbWidth = indicators.calculateBollingerBands(closes, params.period_1 || 20, params.deviation || 2);
+        const width = indicators.calculateBollingerWidth(bbWidth.upper, bbWidth.lower);
+        return width[width.length - 1];
+      
+      case 'percent_b':
+        const bbPercent = indicators.calculateBollingerBands(closes, params.period_1 || 20, params.deviation || 2);
+        const percentB = indicators.calculatePercentB(closes, bbPercent.upper, bbPercent.lower);
+        return percentB[percentB.length - 1];
+      
+      case 'td_sequential':
+        const td = indicators.calculateTDSequential(candles);
+        return td.setup[td.setup.length - 1];
+      
+      case 'ema_crossover':
+        const shortEMA = indicators.calculateEMA(closes, params.period_1 || 10);
+        const longEMA = indicators.calculateEMA(closes, params.period_2 || 21);
+        const crossover = indicators.detectEMACrossover(shortEMA, longEMA);
+        return crossover[crossover.length - 1];
+      
+      case 'ichimoku_tenkan':
+        const ichimoku = indicators.calculateIchimoku(candles, 9, 26, 52);
+        return ichimoku.tenkan[ichimoku.tenkan.length - 1];
+      
       case 'price':
         return closes[closes.length - 1];
       

@@ -15,7 +15,6 @@ const INDICATOR_DB_MAP: Record<string, string> = {
   'ADX': 'adx',
   'STOCHASTIC': 'stochastic',
   'BOLLINGER_BANDS': 'bollinger_bands',
-  // Uppercase ones stay as-is
   'WMA': 'WMA',
   'DEMA': 'DEMA',
   'TEMA': 'TEMA',
@@ -31,7 +30,17 @@ const INDICATOR_DB_MAP: Record<string, string> = {
   'AD_LINE': 'AD_LINE',
   'CMF': 'CMF',
   'VWAP': 'VWAP',
-  'VOLUME': 'VOLUME'
+  'VOLUME': 'VOLUME',
+  'PSAR': 'psar',
+  'SUPERTREND': 'supertrend',
+  'KDJ_J': 'kdj_j',
+  'TD_SEQUENTIAL': 'td_sequential',
+  'ANCHORED_VWAP': 'anchored_vwap',
+  'BB_WIDTH': 'bb_width',
+  'PERCENT_B': 'percent_b',
+  'EMA_CROSSOVER': 'ema_crossover',
+  'ICHIMOKU_TENKAN': 'ichimoku_tenkan',
+  'ICHIMOKU_KIJUN': 'ichimoku_kijun'
 };
 
 export const INDICATOR_CATEGORIES: Record<IndicatorCategory, { label: string; indicators: string[] }> = {
@@ -41,19 +50,19 @@ export const INDICATOR_CATEGORIES: Record<IndicatorCategory, { label: string; in
   },
   oscillator: {
     label: 'Oscillators',
-    indicators: ['RSI', 'STOCHASTIC', 'STOCH_RSI', 'MOMENTUM', 'CCI', 'WPR', 'MFI', 'ROC']
+    indicators: ['RSI', 'STOCHASTIC', 'STOCH_RSI', 'MOMENTUM', 'CCI', 'WPR', 'MFI', 'ROC', 'KDJ_J']
   },
   volume: {
     label: 'Volume Indicators',
-    indicators: ['OBV', 'AD_LINE', 'CMF', 'VWAP', 'VOLUME']
+    indicators: ['OBV', 'AD_LINE', 'CMF', 'VWAP', 'ANCHORED_VWAP', 'VOLUME']
   },
   trend: {
     label: 'Trend Indicators',
-    indicators: ['MACD', 'ADX']
+    indicators: ['MACD', 'ADX', 'SUPERTREND', 'PSAR', 'ICHIMOKU_TENKAN', 'ICHIMOKU_KIJUN', 'EMA_CROSSOVER']
   },
   volatility: {
     label: 'Volatility Indicators',
-    indicators: ['ATR', 'BOLLINGER_BANDS']
+    indicators: ['ATR', 'BOLLINGER_BANDS', 'BB_WIDTH', 'PERCENT_B', 'TD_SEQUENTIAL']
   }
 };
 
@@ -72,16 +81,25 @@ export const INDICATOR_PARAMS: Record<string, { periods?: boolean; deviation?: b
   BB_UPPER: { periods: true, deviation: true },
   BB_MIDDLE: { periods: true },
   BB_LOWER: { periods: true, deviation: true },
+  BB_WIDTH: { periods: true, deviation: true },
+  PERCENT_B: { periods: true, deviation: true },
   ATR: { periods: true },
   STOCHASTIC: { periods: true, smoothing: true },
   ADX: { periods: true },
   CCI: { periods: true },
   MFI: { periods: true },
   PSAR: { acceleration: true },
+  SUPERTREND: { periods: true, multiplier: true },
+  KDJ_J: { periods: true, smoothing: true },
+  TD_SEQUENTIAL: {},
   KELTNER_UPPER: { periods: true, multiplier: true },
   KELTNER_LOWER: { periods: true, multiplier: true },
   ICHIMOKU_TENKAN: { periods: true },
   ICHIMOKU_KIJUN: { periods: true },
+  ICHIMOKU_SENKOU_A: {},
+  ICHIMOKU_SENKOU_B: { periods: true },
+  ICHIMOKU_CHIKOU: {},
+  EMA_CROSSOVER: { periods: true },
   DEMA: { periods: true },
   TEMA: { periods: true },
   HULL_MA: { periods: true },
@@ -91,8 +109,13 @@ export const INDICATOR_PARAMS: Record<string, { periods?: boolean; deviation?: b
   ULTIMATE_OSC: { periods: true },
   VWMA: { periods: true },
   VWAP: {},
+  ANCHORED_VWAP: {},
   OBV: {},
   VOLUME: {},
+  AD_LINE: {},
+  CMF: { periods: true },
+  MOMENTUM: { periods: true },
+  ROC: { periods: true },
 };
 
 interface IndicatorSelectorProps {

@@ -676,6 +676,10 @@ function calculateAndCacheIndicator(
       case 'roc':
         cache[key] = indicators.calculateROC(closePrices, period);
         break;
+      case 'kdj_j':
+        const kdj = indicators.calculateKDJ(candles, period, params.smoothing || 3, 3);
+        cache[key] = { k: kdj.k, d: kdj.d, j: kdj.j };
+        break;
 
       // Volume Indicators
       case 'obv':
@@ -690,6 +694,9 @@ function calculateAndCacheIndicator(
       case 'vwap':
         cache[key] = indicators.calculateVWAP(candles);
         break;
+      case 'anchored_vwap':
+        cache[key] = indicators.calculateAnchoredVWAP(candles, params.anchor || 0);
+        break;
 
       // Trend Indicators
       case 'macd':
@@ -700,6 +707,31 @@ function calculateAndCacheIndicator(
         const adx = indicators.calculateADX(candles, period);
         cache[key] = { adx: adx.adx, plusDI: adx.plusDI, minusDI: adx.minusDI };
         break;
+      case 'psar':
+        cache[key] = indicators.calculateParabolicSAR(candles, params.acceleration || 0.02, 0.2);
+        break;
+      case 'supertrend':
+        const st = indicators.calculateSuperTrend(candles, period, params.multiplier || 3);
+        cache[key] = { trend: st.trend, direction: st.direction };
+        break;
+      case 'ema_crossover':
+        const shortEMA = indicators.calculateEMA(closePrices, period);
+        const longEMA = indicators.calculateEMA(closePrices, params.period2 || 21);
+        cache[key] = indicators.detectEMACrossover(shortEMA, longEMA);
+        break;
+      case 'ichimoku_tenkan':
+      case 'ichimoku_kijun':
+      case 'ichimoku_senkou_a':
+      case 'ichimoku_senkou_b':
+      case 'ichimoku_chikou':
+        const ichimoku = indicators.calculateIchimoku(candles, 9, 26, 52);
+        cache['ichimoku_tenkan'] = ichimoku.tenkan;
+        cache['ichimoku_kijun'] = ichimoku.kijun;
+        cache['ichimoku_senkou_a'] = ichimoku.senkouA;
+        cache['ichimoku_senkou_b'] = ichimoku.senkouB;
+        cache['ichimoku_chikou'] = ichimoku.chikou;
+        cache[key] = cache[type.toLowerCase()];
+        break;
 
       // Volatility Indicators
       case 'atr':
@@ -708,6 +740,18 @@ function calculateAndCacheIndicator(
       case 'bollinger_bands':
         const bb = indicators.calculateBollingerBands(closePrices, period, params.deviation || 2);
         cache[key] = { upper: bb.upper, middle: bb.middle, lower: bb.lower };
+        break;
+      case 'bb_width':
+        const bbw = indicators.calculateBollingerBands(closePrices, period, params.deviation || 2);
+        cache[key] = indicators.calculateBollingerWidth(bbw.upper, bbw.lower);
+        break;
+      case 'percent_b':
+        const bbp = indicators.calculateBollingerBands(closePrices, period, params.deviation || 2);
+        cache[key] = indicators.calculatePercentB(closePrices, bbp.upper, bbp.lower);
+        break;
+      case 'td_sequential':
+        const td = indicators.calculateTDSequential(candles);
+        cache[key] = { setup: td.setup, countdown: td.countdown };
         break;
 
       // Price/Volume (simple cases)
@@ -745,11 +789,15 @@ function getIndicatorValue(
 
   // Handle complex indicators that return objects
   if (typeof cached === 'object' && !Array.isArray(cached)) {
-    // For MACD, Stochastic, ADX, Bollinger Bands
+    // For MACD, Stochastic, ADX, Bollinger Bands, KDJ, SuperTrend, TD Sequential
     if ('macd' in cached) return (cached.macd as number[])[currentIndex] ?? null;
-    if ('k' in cached) return (cached.k as number[])[currentIndex] ?? null;
+    if ('k' in cached && indicatorType.includes('stoch')) return (cached.k as number[])[currentIndex] ?? null;
+    if ('j' in cached && indicatorType.includes('kdj')) return (cached.j as number[])[currentIndex] ?? null;
     if ('adx' in cached) return (cached.adx as number[])[currentIndex] ?? null;
-    if ('upper' in cached) return (cached.middle as number[])[currentIndex] ?? null;
+    if ('upper' in cached && indicatorType.includes('bollinger')) return (cached.upper as number[])[currentIndex] ?? null;
+    if ('trend' in cached && indicatorType.includes('supertrend')) return (cached.trend as number[])[currentIndex] ?? null;
+    if ('setup' in cached && indicatorType.includes('td')) return (cached.setup as number[])[currentIndex] ?? null;
+    return null;
   }
 
   // Handle simple array indicators

@@ -615,3 +615,326 @@ export function calculateCompositeScore(
   // Apply EMA_5 smoothing
   return calculateEMA(rawScores, 5);
 }
+
+// ============= NEW INDICATORS =============
+
+/**
+ * Parabolic SAR
+ */
+export function calculateParabolicSAR(
+  candles: Candle[],
+  acceleration: number = 0.02,
+  maxAcceleration: number = 0.2
+): number[] {
+  if (candles.length < 2) return candles.map(() => NaN);
+
+  const sar: number[] = [];
+  let af = acceleration;
+  let isUptrend = candles[1].close > candles[0].close;
+  let ep = isUptrend ? candles[1].high : candles[1].low;
+  let currentSAR = isUptrend ? candles[0].low : candles[0].high;
+
+  sar.push(NaN); // First value
+
+  for (let i = 1; i < candles.length; i++) {
+    sar.push(currentSAR);
+
+    // Update SAR
+    currentSAR = currentSAR + af * (ep - currentSAR);
+
+    // Check for trend reversal
+    if (isUptrend) {
+      if (candles[i].low < currentSAR) {
+        isUptrend = false;
+        currentSAR = ep;
+        ep = candles[i].low;
+        af = acceleration;
+      } else {
+        if (candles[i].high > ep) {
+          ep = candles[i].high;
+          af = Math.min(af + acceleration, maxAcceleration);
+        }
+      }
+    } else {
+      if (candles[i].high > currentSAR) {
+        isUptrend = true;
+        currentSAR = ep;
+        ep = candles[i].high;
+        af = acceleration;
+      } else {
+        if (candles[i].low < ep) {
+          ep = candles[i].low;
+          af = Math.min(af + acceleration, maxAcceleration);
+        }
+      }
+    }
+  }
+
+  return sar;
+}
+
+/**
+ * KDJ J Line
+ */
+export function calculateKDJ(
+  candles: Candle[],
+  period: number = 9,
+  smoothK: number = 3,
+  smoothD: number = 3
+): { k: number[], d: number[], j: number[] } {
+  const stoch = calculateStochastic(candles, period, smoothK, smoothD);
+  const j = stoch.k.map((k, i) => 3 * k - 2 * stoch.d[i]);
+  return { k: stoch.k, d: stoch.d, j };
+}
+
+/**
+ * SuperTrend
+ */
+export function calculateSuperTrend(
+  candles: Candle[],
+  period: number = 10,
+  multiplier: number = 3
+): { trend: number[], direction: number[] } {
+  const atr = calculateATR(candles, period);
+  const trend: number[] = [];
+  const direction: number[] = [];
+
+  let upperBand: number[] = [];
+  let lowerBand: number[] = [];
+
+  for (let i = 0; i < candles.length; i++) {
+    const hl2 = (candles[i].high + candles[i].low) / 2;
+    upperBand[i] = hl2 + multiplier * (atr[i] || 0);
+    lowerBand[i] = hl2 - multiplier * (atr[i] || 0);
+  }
+
+  let currentTrend = 1; // 1 = up, -1 = down
+  for (let i = 0; i < candles.length; i++) {
+    if (i === 0) {
+      trend.push(lowerBand[i]);
+      direction.push(1);
+      continue;
+    }
+
+    // Adjust bands
+    if (lowerBand[i] > trend[i - 1] || candles[i - 1].close < trend[i - 1]) {
+      lowerBand[i] = lowerBand[i];
+    } else {
+      lowerBand[i] = Math.max(lowerBand[i], trend[i - 1]);
+    }
+
+    if (upperBand[i] < trend[i - 1] || candles[i - 1].close > trend[i - 1]) {
+      upperBand[i] = upperBand[i];
+    } else {
+      upperBand[i] = Math.min(upperBand[i], trend[i - 1]);
+    }
+
+    // Determine trend
+    if (candles[i].close > upperBand[i]) {
+      currentTrend = 1;
+      trend.push(lowerBand[i]);
+    } else if (candles[i].close < lowerBand[i]) {
+      currentTrend = -1;
+      trend.push(upperBand[i]);
+    } else {
+      trend.push(currentTrend === 1 ? lowerBand[i] : upperBand[i]);
+    }
+
+    direction.push(currentTrend);
+  }
+
+  return { trend, direction };
+}
+
+/**
+ * TD Sequential
+ */
+export function calculateTDSequential(candles: Candle[]): { setup: number[], countdown: number[] } {
+  const setup: number[] = [];
+  const countdown: number[] = [];
+
+  let setupCount = 0;
+  let countdownCount = 0;
+  let setupComplete = false;
+
+  for (let i = 0; i < candles.length; i++) {
+    if (i < 4) {
+      setup.push(0);
+      countdown.push(0);
+      continue;
+    }
+
+    // Setup phase
+    if (candles[i].close < candles[i - 4].close) {
+      setupCount = setupCount > 0 ? setupCount + 1 : 1;
+    } else if (candles[i].close > candles[i - 4].close) {
+      setupCount = setupCount < 0 ? setupCount - 1 : -1;
+    } else {
+      setupCount = 0;
+    }
+
+    if (Math.abs(setupCount) >= 9) {
+      setupComplete = true;
+      setupCount = setupCount > 0 ? 9 : -9;
+    }
+
+    setup.push(setupCount);
+
+    // Countdown phase
+    if (setupComplete && i >= 8) {
+      if (setupCount > 0 && candles[i].close < candles[i - 2].low) {
+        countdownCount++;
+      } else if (setupCount < 0 && candles[i].close > candles[i - 2].high) {
+        countdownCount++;
+      }
+
+      if (countdownCount >= 13) {
+        countdownCount = 13;
+        setupComplete = false;
+      }
+    }
+
+    countdown.push(countdownCount);
+  }
+
+  return { setup, countdown };
+}
+
+/**
+ * Anchored VWAP
+ */
+export function calculateAnchoredVWAP(candles: Candle[], anchorIndex: number = 0): number[] {
+  const result: number[] = [];
+  let cumulativePV = 0;
+  let cumulativeVolume = 0;
+
+  for (let i = 0; i < candles.length; i++) {
+    if (i < anchorIndex) {
+      result.push(NaN);
+      continue;
+    }
+
+    const typicalPrice = (candles[i].high + candles[i].low + candles[i].close) / 3;
+    cumulativePV += typicalPrice * candles[i].volume;
+    cumulativeVolume += candles[i].volume;
+
+    result.push(cumulativeVolume === 0 ? NaN : cumulativePV / cumulativeVolume);
+  }
+
+  return result;
+}
+
+/**
+ * Ichimoku Cloud Components
+ */
+export function calculateIchimoku(
+  candles: Candle[],
+  tenkanPeriod: number = 9,
+  kijunPeriod: number = 26,
+  senkouBPeriod: number = 52
+): {
+  tenkan: number[];
+  kijun: number[];
+  senkouA: number[];
+  senkouB: number[];
+  chikou: number[];
+} {
+  const tenkan: number[] = [];
+  const kijun: number[] = [];
+  const senkouA: number[] = [];
+  const senkouB: number[] = [];
+  const chikou: number[] = [];
+
+  for (let i = 0; i < candles.length; i++) {
+    // Tenkan-sen (Conversion Line)
+    if (i < tenkanPeriod - 1) {
+      tenkan.push(NaN);
+    } else {
+      const slice = candles.slice(i - tenkanPeriod + 1, i + 1);
+      const high = Math.max(...slice.map(c => c.high));
+      const low = Math.min(...slice.map(c => c.low));
+      tenkan.push((high + low) / 2);
+    }
+
+    // Kijun-sen (Base Line)
+    if (i < kijunPeriod - 1) {
+      kijun.push(NaN);
+    } else {
+      const slice = candles.slice(i - kijunPeriod + 1, i + 1);
+      const high = Math.max(...slice.map(c => c.high));
+      const low = Math.min(...slice.map(c => c.low));
+      kijun.push((high + low) / 2);
+    }
+
+    // Senkou Span A (Leading Span A) - projected 26 periods ahead
+    if (i < kijunPeriod - 1) {
+      senkouA.push(NaN);
+    } else {
+      senkouA.push((tenkan[i] + kijun[i]) / 2);
+    }
+
+    // Senkou Span B (Leading Span B) - projected 26 periods ahead
+    if (i < senkouBPeriod - 1) {
+      senkouB.push(NaN);
+    } else {
+      const slice = candles.slice(i - senkouBPeriod + 1, i + 1);
+      const high = Math.max(...slice.map(c => c.high));
+      const low = Math.min(...slice.map(c => c.low));
+      senkouB.push((high + low) / 2);
+    }
+
+    // Chikou Span (Lagging Span) - current close shifted back 26 periods
+    chikou.push(candles[i].close);
+  }
+
+  return { tenkan, kijun, senkouA, senkouB, chikou };
+}
+
+/**
+ * Bollinger Band Width
+ */
+export function calculateBollingerWidth(upper: number[], lower: number[]): number[] {
+  return upper.map((u, i) => u - lower[i]);
+}
+
+/**
+ * Percent B (%B)
+ */
+export function calculatePercentB(price: number[], upper: number[], lower: number[]): number[] {
+  return price.map((p, i) => {
+    const range = upper[i] - lower[i];
+    return range === 0 ? 0.5 : (p - lower[i]) / range;
+  });
+}
+
+/**
+ * EMA Crossover Signal Detection
+ */
+export function detectEMACrossover(
+  emaShort: number[],
+  emaLong: number[]
+): number[] {
+  const signals: number[] = [];
+
+  for (let i = 0; i < emaShort.length; i++) {
+    if (i === 0 || isNaN(emaShort[i]) || isNaN(emaLong[i]) || isNaN(emaShort[i - 1]) || isNaN(emaLong[i - 1])) {
+      signals.push(0);
+      continue;
+    }
+
+    // Bullish crossover
+    if (emaShort[i - 1] <= emaLong[i - 1] && emaShort[i] > emaLong[i]) {
+      signals.push(1);
+    }
+    // Bearish crossover
+    else if (emaShort[i - 1] >= emaLong[i - 1] && emaShort[i] < emaLong[i]) {
+      signals.push(-1);
+    }
+    // No crossover
+    else {
+      signals.push(0);
+    }
+  }
+
+  return signals;
+}

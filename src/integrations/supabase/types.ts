@@ -49,6 +49,45 @@ export type Database = {
           },
         ]
       }
+      exchange_metrics: {
+        Row: {
+          created_at: string
+          dr: number | null
+          gcr: number | null
+          id: string
+          ifer: number | null
+          symbol: string
+          timestamp: string
+          tmv: number | null
+          ufr: number | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          dr?: number | null
+          gcr?: number | null
+          id?: string
+          ifer?: number | null
+          symbol: string
+          timestamp?: string
+          tmv?: number | null
+          ufr?: number | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          dr?: number | null
+          gcr?: number | null
+          id?: string
+          ifer?: number | null
+          symbol?: string
+          timestamp?: string
+          tmv?: number | null
+          ufr?: number | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       market_data: {
         Row: {
           close: number
@@ -752,6 +791,20 @@ export type Database = {
         | "KELTNER_UPPER"
         | "KELTNER_LOWER"
         | "VOLUME"
+        | "supertrend"
+        | "td_sequential"
+        | "anchored_vwap"
+        | "bb_width"
+        | "percent_b"
+        | "ema_crossover"
+        | "kdj_j"
+        | "psar"
+        | "cmf"
+        | "ichimoku_tenkan"
+        | "ichimoku_kijun"
+        | "ichimoku_senkou_a"
+        | "ichimoku_senkou_b"
+        | "ichimoku_chikou"
       order_type: "buy" | "sell"
       strategy_status: "draft" | "active" | "paused" | "archived"
     }
@@ -965,6 +1018,20 @@ export const Constants = {
         "KELTNER_UPPER",
         "KELTNER_LOWER",
         "VOLUME",
+        "supertrend",
+        "td_sequential",
+        "anchored_vwap",
+        "bb_width",
+        "percent_b",
+        "ema_crossover",
+        "kdj_j",
+        "psar",
+        "cmf",
+        "ichimoku_tenkan",
+        "ichimoku_kijun",
+        "ichimoku_senkou_a",
+        "ichimoku_senkou_b",
+        "ichimoku_chikou",
       ],
       order_type: ["buy", "sell"],
       strategy_status: ["draft", "active", "paused", "archived"],
