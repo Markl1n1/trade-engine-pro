@@ -104,22 +104,53 @@ serve(async (req) => {
       throw new Error('Strategy not found');
     }
 
-    // Fetch market data
+    // Fetch market data (fetch ALL candles - Supabase default limit is 1000)
     const startTime = new Date(startDate).getTime();
     const endTime = new Date(endDate).getTime();
+    
+    let allCandles: any[] = [];
+    let from = 0;
+    const batchSize = 1000;
+    let hasMore = true;
 
-    const { data: candles, error: dataError } = await supabaseClient
-      .from('market_data')
-      .select('*')
-      .eq('symbol', strategy.symbol)
-      .eq('timeframe', strategy.timeframe)
-      .gte('open_time', startTime)
-      .lte('open_time', endTime)
-      .order('open_time', { ascending: true });
+    console.log(`Fetching market data from ${startDate} to ${endDate}...`);
 
-    if (dataError || !candles || candles.length === 0) {
+    while (hasMore) {
+      const { data: batch, error: batchError } = await supabaseClient
+        .from('market_data')
+        .select('*')
+        .eq('symbol', strategy.symbol)
+        .eq('timeframe', strategy.timeframe)
+        .gte('open_time', startTime)
+        .lte('open_time', endTime)
+        .order('open_time', { ascending: true })
+        .range(from, from + batchSize - 1);
+
+      if (batchError) {
+        throw new Error(`Error fetching market data: ${batchError.message}`);
+      }
+
+      if (!batch || batch.length === 0) {
+        hasMore = false;
+      } else {
+        allCandles = allCandles.concat(batch);
+        console.log(`Fetched batch ${Math.floor(from / batchSize) + 1}: ${batch.length} candles (total: ${allCandles.length})`);
+        
+        if (batch.length < batchSize) {
+          hasMore = false;
+        } else {
+          from += batchSize;
+        }
+      }
+    }
+
+    const candles = allCandles;
+
+    if (!candles || candles.length === 0) {
       throw new Error('No market data available for selected period');
     }
+
+    console.log(`Total candles fetched: ${candles.length}`);
 
     console.log(`[Simple Backtest] Processing ${candles.length} candles`);
 

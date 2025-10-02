@@ -156,19 +156,50 @@ serve(async (req) => {
       operator: c.operator?.toLowerCase()
     }));
 
-    // Fetch market data
-    const { data: marketData, error: marketError } = await supabaseClient
-      .from('market_data')
-      .select('*')
-      .eq('symbol', strategy.symbol)
-      .eq('timeframe', strategy.timeframe)
-      .gte('open_time', new Date(startDate).getTime())
-      .lte('open_time', new Date(endDate).getTime())
-      .order('open_time', { ascending: true });
+    // Fetch market data (fetch ALL candles - Supabase default limit is 1000)
+    let allMarketData: any[] = [];
+    let from = 0;
+    const batchSize = 1000;
+    let hasMore = true;
 
-    if (marketError || !marketData || marketData.length === 0) {
+    console.log(`Fetching market data from ${startDate} to ${endDate}...`);
+
+    while (hasMore) {
+      const { data: batch, error: batchError } = await supabaseClient
+        .from('market_data')
+        .select('*')
+        .eq('symbol', strategy.symbol)
+        .eq('timeframe', strategy.timeframe)
+        .gte('open_time', new Date(startDate).getTime())
+        .lte('open_time', new Date(endDate).getTime())
+        .order('open_time', { ascending: true })
+        .range(from, from + batchSize - 1);
+
+      if (batchError) {
+        throw new Error(`Error fetching market data: ${batchError.message}`);
+      }
+
+      if (!batch || batch.length === 0) {
+        hasMore = false;
+      } else {
+        allMarketData = allMarketData.concat(batch);
+        console.log(`Fetched batch ${Math.floor(from / batchSize) + 1}: ${batch.length} candles (total: ${allMarketData.length})`);
+        
+        if (batch.length < batchSize) {
+          hasMore = false;
+        } else {
+          from += batchSize;
+        }
+      }
+    }
+
+    const marketData = allMarketData;
+
+    if (!marketData || marketData.length === 0) {
       throw new Error('No market data found for the specified period');
     }
+
+    console.log(`Total candles fetched: ${marketData.length}`);
 
     console.log(`Found ${marketData.length} candles for backtesting`);
 
@@ -901,18 +932,46 @@ async function runMSTGBacktest(
   
   const benchmarkSymbol = strategy.benchmark_symbol || 'BTCUSDT';
   
-  // Fetch benchmark data
-  const { data: benchmarkData, error: benchmarkError } = await supabaseClient
-    .from('market_data')
-    .select('*')
-    .eq('symbol', benchmarkSymbol)
-    .eq('timeframe', strategy.timeframe)
-    .gte('open_time', new Date(startDate).getTime())
-    .lte('open_time', new Date(endDate).getTime())
-    .order('open_time', { ascending: true });
+  // Fetch benchmark data (fetch ALL candles)
+  let allBenchmarkData: any[] = [];
+  let from = 0;
+  const batchSize = 1000;
+  let hasMore = true;
 
-  if (benchmarkError || !benchmarkData || benchmarkData.length === 0) {
+  while (hasMore) {
+    const { data: batch, error: batchError } = await supabaseClient
+      .from('market_data')
+      .select('*')
+      .eq('symbol', benchmarkSymbol)
+      .eq('timeframe', strategy.timeframe)
+      .gte('open_time', new Date(startDate).getTime())
+      .lte('open_time', new Date(endDate).getTime())
+      .order('open_time', { ascending: true })
+      .range(from, from + batchSize - 1);
+
+    if (batchError) {
+      console.warn('Error fetching benchmark batch:', batchError);
+      break;
+    }
+
+    if (!batch || batch.length === 0) {
+      hasMore = false;
+    } else {
+      allBenchmarkData = allBenchmarkData.concat(batch);
+      if (batch.length < batchSize) {
+        hasMore = false;
+      } else {
+        from += batchSize;
+      }
+    }
+  }
+
+  const benchmarkData = allBenchmarkData;
+
+  if (!benchmarkData || benchmarkData.length === 0) {
     console.warn('No benchmark data found, using asset itself as benchmark');
+  } else {
+    console.log(`Fetched ${benchmarkData.length} benchmark candles`);
   }
 
   const benchmarkCandles: Candle[] = benchmarkData ? benchmarkData.map((d: any) => ({

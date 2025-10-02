@@ -21,7 +21,7 @@ const Auth = () => {
       console.log('[Auth] User detected, navigating to dashboard');
       navigate('/');
     }
-  }, [user, navigate]);
+  }, [user]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
