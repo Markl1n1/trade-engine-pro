@@ -226,21 +226,35 @@ async function processKlineUpdate(
   // Update or append candle
   if (buffer.length > 0 && buffer[buffer.length - 1].timestamp === candle.timestamp) {
     buffer[buffer.length - 1] = candle;
-  } else {
+  } else if (kline.k.x) {
+    // Only append to historical buffer when candle closes
     buffer.push(candle);
     if (buffer.length > MAX_CANDLES) {
       buffer.shift();
     }
   }
 
-  // Check if candle is closed
-  if (!kline.k.x) return; // Only process closed candles
+  // Helper to check if conditions only use price-based indicators
+  const isPriceOnlyConditions = (conditions: any[]): boolean => {
+    if (!conditions || conditions.length === 0) return false;
+    const priceIndicators = ['price', 'open', 'high', 'low', 'volume'];
+    return conditions.every(cond => priceIndicators.includes(cond.indicator_type));
+  };
 
-  console.log(`[WEBSOCKET] Processing closed candle for ${symbol} ${interval} at price ${candle.close}`);
+  console.log(`[WEBSOCKET] Processing ${kline.k.x ? 'closed' : 'live'} candle for ${symbol} ${interval} at price ${candle.close}`);
 
   // Evaluate all strategies for this symbol/timeframe
   for (const strategy of strategies) {
     if (strategy.symbol !== symbol || strategy.timeframe !== interval) continue;
+
+    // Check if this strategy uses only price-based indicators
+    const entryPriceOnly = isPriceOnlyConditions(strategy.entry_conditions);
+    const exitPriceOnly = isPriceOnlyConditions(strategy.exit_conditions);
+    
+    // Skip if not a closed candle and strategy doesn't use price-only conditions
+    if (!kline.k.x && !entryPriceOnly && !exitPriceOnly) {
+      continue;
+    }
 
     const strategyKey = `${strategy.id}_${symbol}_${interval}`;
     const now = Date.now();
@@ -258,13 +272,17 @@ async function processKlineUpdate(
       let signalType: 'buy' | 'sell' | null = null;
       let reason = '';
 
-      console.log(`[DEBUG] Evaluating ${strategy.name}: position_open=${liveState.position_open}`);
+      console.log(`[DEBUG] Evaluating ${strategy.name}: position_open=${liveState.position_open}, tick=${!kline.k.x}, priceOnly=${entryPriceOnly}/${exitPriceOnly}`);
       console.log(`[DEBUG] Entry conditions: ${strategy.entry_conditions.length}, Exit conditions: ${strategy.exit_conditions.length}`);
+
+      // For price-only strategies on live ticks, include current candle
+      // For technical indicators, only use closed candles
+      const evalBuffer = (entryPriceOnly || exitPriceOnly) && !kline.k.x ? [...buffer, candle] : buffer;
 
       if (!liveState.position_open) {
         // Check entry conditions
-        console.log(`[DEBUG] Checking ENTRY conditions for ${strategy.name}`);
-        if (checkConditions(strategy.entry_conditions, buffer, true)) {
+        console.log(`[DEBUG] Checking ENTRY conditions for ${strategy.name} (tick=${!kline.k.x})`);
+        if (checkConditions(strategy.entry_conditions, evalBuffer, true)) {
           signalType = 'buy';
           reason = 'Entry conditions met';
           console.log(`[DEBUG] ✅ ENTRY SIGNAL GENERATED for ${strategy.name}`);
@@ -286,8 +304,8 @@ async function processKlineUpdate(
         }
       } else {
         // Check exit conditions
-        console.log(`[DEBUG] Checking EXIT conditions for ${strategy.name}`);
-        if (checkConditions(strategy.exit_conditions, buffer, true)) {
+        console.log(`[DEBUG] Checking EXIT conditions for ${strategy.name} (tick=${!kline.k.x})`);
+        if (checkConditions(strategy.exit_conditions, evalBuffer, true)) {
           signalType = 'sell';
           reason = 'Exit conditions met';
           console.log(`[DEBUG] ✅ EXIT SIGNAL GENERATED for ${strategy.name}`);
@@ -310,7 +328,7 @@ async function processKlineUpdate(
       }
 
       if (signalGenerated && signalType) {
-        console.log(`[WEBSOCKET] 🚨 SIGNAL DETECTED: ${signalType.toUpperCase()} for ${strategy.name} at ${candle.close}`);
+        console.log(`[WEBSOCKET] 🚨 SIGNAL DETECTED: ${signalType.toUpperCase()} for ${strategy.name} at ${candle.close} [instant=${!kline.k.x}]`);
 
         // Insert signal
         const { data: signalData, error: signalError } = await supabase
