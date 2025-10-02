@@ -805,6 +805,10 @@ export type Database = {
         | "ichimoku_senkou_a"
         | "ichimoku_senkou_b"
         | "ichimoku_chikou"
+        | "price"
+        | "open"
+        | "high"
+        | "low"
       order_type: "buy" | "sell"
       strategy_status: "draft" | "active" | "paused" | "archived"
     }
@@ -1032,6 +1036,10 @@ export const Constants = {
         "ichimoku_senkou_a",
         "ichimoku_senkou_b",
         "ichimoku_chikou",
+        "price",
+        "open",
+        "high",
+        "low",
       ],
       order_type: ["buy", "sell"],
       strategy_status: ["draft", "active", "paused", "archived"],

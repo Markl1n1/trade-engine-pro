@@ -44,7 +44,10 @@ const INDICATOR_DB_MAP: Record<string, string> = {
   'ICHIMOKU_SENKOU_A': 'ichimoku_senkou_a',
   'ICHIMOKU_SENKOU_B': 'ichimoku_senkou_b',
   'ICHIMOKU_CHIKOU': 'ichimoku_chikou',
-  'PRICE': 'price'
+  'PRICE': 'price',
+  'OPEN': 'open',
+  'HIGH': 'high',
+  'LOW': 'low'
 };
 
 export const INDICATOR_CATEGORIES: Record<IndicatorCategory, { label: string; indicators: string[] }> = {
@@ -62,7 +65,7 @@ export const INDICATOR_CATEGORIES: Record<IndicatorCategory, { label: string; in
   },
   trend: {
     label: 'Trend Indicators',
-    indicators: ['MACD', 'ADX', 'SUPERTREND', 'PSAR', 'ICHIMOKU_TENKAN', 'ICHIMOKU_KIJUN', 'EMA_CROSSOVER']
+    indicators: ['MACD', 'ADX', 'SUPERTREND', 'PSAR', 'ICHIMOKU_TENKAN', 'ICHIMOKU_KIJUN', 'EMA_CROSSOVER', 'PRICE', 'OPEN', 'HIGH', 'LOW']
   },
   volatility: {
     label: 'Volatility Indicators',
@@ -120,6 +123,10 @@ export const INDICATOR_PARAMS: Record<string, { periods?: boolean; deviation?: b
   CMF: { periods: true },
   MOMENTUM: { periods: true },
   ROC: { periods: true },
+  PRICE: {},
+  OPEN: {},
+  HIGH: {},
+  LOW: {},
 };
 
 interface IndicatorSelectorProps {

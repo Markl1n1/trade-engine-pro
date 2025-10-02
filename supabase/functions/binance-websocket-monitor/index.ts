@@ -91,6 +91,15 @@ function calculateIndicator(type: string, candles: Candle[], params: any): numbe
     case 'price':
       return closes[closes.length - 1];
 
+    case 'open':
+      return candles[candles.length - 1].open;
+
+    case 'high':
+      return highs[highs.length - 1];
+
+    case 'low':
+      return lows[lows.length - 1];
+
     case 'volume':
       return volumes[volumes.length - 1];
 
