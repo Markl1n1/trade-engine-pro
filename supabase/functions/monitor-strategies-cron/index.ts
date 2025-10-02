@@ -22,10 +22,10 @@ interface StrategyState {
   range_low: number | null;
 }
 
-// Fetch market data from Binance
+// Fetch market data from Binance Futures API
 async function fetchMarketData(symbol: string, timeframe: string, limit = 100): Promise<Candle[]> {
   const response = await fetch(
-    `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${timeframe}&limit=${limit}`
+    `https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=${timeframe}&limit=${limit}`
   );
   
   if (!response.ok) {
@@ -52,7 +52,8 @@ function calculateIndicator(type: string, candles: Candle[], params: any): numbe
   const highs = candles.map(c => c.high);
   const lows = candles.map(c => c.low);
 
-  switch (type) {
+  // Normalize indicator type to lowercase for case-insensitive matching
+  switch (type.toLowerCase()) {
     case 'sma': {
       const period = params.period_1 || 14;
       if (closes.length < period) return null;
@@ -285,20 +286,27 @@ Deno.serve(async (req) => {
         // Fetch market data for this strategy's symbol
         const candles = await fetchMarketData(strategy.symbol, strategy.timeframe, 100);
         const currentPrice = candles[candles.length - 1].close;
+        const lastCandleTime = new Date(candles[candles.length - 1].timestamp).toISOString();
 
-        // Get entry and exit conditions
+        console.log(`[CRON] ${strategy.name}: Current price ${currentPrice}, Last candle ${lastCandleTime}`);
+
+        // Get entry and exit conditions (use 'buy' and 'sell' not 'entry' and 'exit')
         const entryConditions = strategy.strategy_conditions?.filter(
-          (c: any) => c.order_type === 'entry'
+          (c: any) => c.order_type === 'buy'
         ) || [];
         const exitConditions = strategy.strategy_conditions?.filter(
-          (c: any) => c.order_type === 'exit'
+          (c: any) => c.order_type === 'sell'
         ) || [];
+
+        console.log(`[CRON] ${strategy.name}: Entry conditions=${entryConditions.length}, Exit conditions=${exitConditions.length}`);
 
         let signal = null;
 
         // Check for exit conditions if position is open
         if (liveState?.position_open && exitConditions.length > 0) {
+          console.log(`[CRON] ${strategy.name}: Checking EXIT conditions (position open)`);
           const exitMet = checkConditions(exitConditions, candles);
+          console.log(`[CRON] ${strategy.name}: EXIT conditions result=${exitMet}`);
           
           if (exitMet) {
             signal = {
@@ -327,7 +335,9 @@ Deno.serve(async (req) => {
 
         // Check for entry conditions if no position is open
         if (!liveState?.position_open && entryConditions.length > 0) {
+          console.log(`[CRON] ${strategy.name}: Checking ENTRY conditions (no position)`);
           const entryMet = checkConditions(entryConditions, candles);
+          console.log(`[CRON] ${strategy.name}: ENTRY conditions result=${entryMet}`);
           
           if (entryMet) {
             signal = {
