@@ -201,9 +201,11 @@ async function processKlineUpdate(
   strategies: ActiveStrategy[],
   userSettings: Map<string, any>
 ) {
-  const symbol = kline.s;
-  const interval = kline.i;
+  const symbol = kline.k.s;
+  const interval = kline.k.i;
   const bufferKey = `${symbol}_${interval}`;
+  
+  console.log(`[WEBSOCKET] Received kline: symbol=${symbol}, interval=${interval}, closed=${kline.k.x}`);
 
   // Update candle buffer
   const candle: Candle = {
