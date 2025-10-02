@@ -12,11 +12,51 @@ export function MonitoringStatus() {
   const [activeCount, setActiveCount] = useState(0);
   const [recentSignals, setRecentSignals] = useState<any[]>([]);
   const [checking, setChecking] = useState(false);
+  const [wsStatus, setWsStatus] = useState<'connecting' | 'connected' | 'disconnected'>('disconnected');
+  const [lastUpdate, setLastUpdate] = useState<number | null>(null);
 
   useEffect(() => {
     loadMonitoringStatus();
-    const interval = setInterval(loadMonitoringStatus, 30000); // Refresh every 30s
-    return () => clearInterval(interval);
+    const interval = setInterval(loadMonitoringStatus, 30000);
+    
+    // Connect to WebSocket monitor
+    const connectWebSocket = () => {
+      setWsStatus('connecting');
+      const ws = new WebSocket(`wss://wnkjtkigpyfnthnfmdlk.supabase.co/functions/v1/binance-websocket-monitor`);
+      
+      ws.onopen = () => {
+        console.log('[MONITOR] WebSocket connected');
+        setWsStatus('connected');
+      };
+      
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === 'heartbeat' || data.type === 'connected') {
+          setLastUpdate(data.timestamp);
+          setWsStatus('connected');
+        } else if (data.type === 'disconnected') {
+          setWsStatus('disconnected');
+        }
+      };
+      
+      ws.onerror = () => {
+        setWsStatus('disconnected');
+      };
+      
+      ws.onclose = () => {
+        setWsStatus('disconnected');
+        setTimeout(connectWebSocket, 5000);
+      };
+      
+      return ws;
+    };
+    
+    const ws = connectWebSocket();
+    
+    return () => {
+      clearInterval(interval);
+      ws.close();
+    };
   }, []);
 
   const loadMonitoringStatus = async () => {
@@ -100,17 +140,19 @@ export function MonitoringStatus() {
           <div>
             <h3 className="text-sm font-bold">Strategy Monitoring</h3>
             <p className="text-xs text-muted-foreground">
-              Automated checks every 5 minutes
+              {wsStatus === 'connected' ? 'Real-time monitoring active' : 'Backup mode (5-min checks)'}
             </p>
           </div>
         </div>
-        <Badge variant={monitoringEnabled ? "default" : "secondary"} className="gap-1">
-          <div className={`h-2 w-2 rounded-full ${monitoringEnabled ? "bg-green-500 animate-pulse" : "bg-gray-500"}`} />
-          {monitoringEnabled ? "Active" : "Inactive"}
-        </Badge>
+        <div className="flex gap-2">
+          <Badge variant={wsStatus === 'connected' ? "default" : wsStatus === 'connecting' ? "secondary" : "destructive"} className="gap-1">
+            <div className={`h-2 w-2 rounded-full ${wsStatus === 'connected' ? "bg-green-500 animate-pulse" : "bg-gray-500"}`} />
+            {wsStatus === 'connected' ? '⚡ Real-time' : wsStatus === 'connecting' ? 'Connecting...' : 'Offline'}
+          </Badge>
+        </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-4 mb-4">
+      <div className="grid grid-cols-4 gap-4 mb-4">
         <div className="p-3 rounded-lg bg-secondary/50">
           <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
             <Zap className="h-3 w-3" />
@@ -129,8 +171,18 @@ export function MonitoringStatus() {
 
         <div className="p-3 rounded-lg bg-secondary/50">
           <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
+            <Activity className="h-3 w-3" />
+            Last Update
+          </div>
+          <div className="text-sm font-medium">
+            {wsStatus === 'connected' && lastUpdate ? getTimeAgo(new Date(lastUpdate).toISOString()) : 'N/A'}
+          </div>
+        </div>
+
+        <div className="p-3 rounded-lg bg-secondary/50">
+          <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
             <Clock className="h-3 w-3" />
-            Last Check
+            Backup Check
           </div>
           <div className="text-sm font-medium">
             {lastRun ? getTimeAgo(lastRun) : "Never"}
