@@ -210,6 +210,8 @@ Deno.serve(async (req) => {
       .update({ setting_value: new Date().toISOString() })
       .eq('setting_key', 'last_monitoring_run');
 
+    console.log('[CRON] Starting resource-optimized monitoring...');
+
     // Fetch ALL active strategies from ALL users
     const { data: strategies, error: strategiesError } = await supabase
       .from('strategies')

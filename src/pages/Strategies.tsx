@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { StrategyBuilder } from "@/components/StrategyBuilder";
 import { StrategyCloner } from "@/components/StrategyCloner";
+import { MonitoringStatus } from "@/components/MonitoringStatus";
 
 const Strategies = () => {
   const [strategies, setStrategies] = useState<any[]>([]);
@@ -103,6 +104,8 @@ const Strategies = () => {
           New Strategy
         </Button>
       </div>
+
+      <MonitoringStatus />
 
       {strategies.length === 0 ? (
         <Card className="p-12">
