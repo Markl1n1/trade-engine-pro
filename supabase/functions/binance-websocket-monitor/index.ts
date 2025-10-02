@@ -108,34 +108,62 @@ function calculateIndicator(type: string, candles: Candle[], params: any): numbe
   }
 }
 
-function evaluateCondition(condition: any, candles: Candle[]): boolean {
-  if (candles.length < 2) return false;
+function evaluateCondition(condition: any, candles: Candle[], debug = false): boolean {
+  if (candles.length < 2) {
+    if (debug) console.log('[DEBUG] Not enough candles:', candles.length);
+    return false;
+  }
 
-  const { indicator_type, comparison, value, indicator_params } = condition;
+  const { indicator_type, operator, value, period_1 } = condition;
+  const params = period_1 ? { period: period_1 } : {};
   
-  const currentValue = calculateIndicator(indicator_type, candles, indicator_params || {});
-  if (currentValue === null) return false;
+  const currentValue = calculateIndicator(indicator_type, candles, params);
+  if (currentValue === null) {
+    if (debug) console.log(`[DEBUG] Indicator ${indicator_type} returned null`);
+    return false;
+  }
 
   const previousCandles = candles.slice(0, -1);
-  const previousValue = calculateIndicator(indicator_type, previousCandles, indicator_params || {});
+  const previousValue = calculateIndicator(indicator_type, previousCandles, params);
 
-  switch (comparison) {
+  let result = false;
+  switch (operator) {
     case 'greater_than':
-      return currentValue > parseFloat(value);
+      result = currentValue > parseFloat(value);
+      break;
     case 'less_than':
-      return currentValue < parseFloat(value);
+      result = currentValue < parseFloat(value);
+      break;
     case 'crosses_above':
-      return previousValue !== null && previousValue <= parseFloat(value) && currentValue > parseFloat(value);
+      result = previousValue !== null && previousValue <= parseFloat(value) && currentValue > parseFloat(value);
+      break;
     case 'crosses_below':
-      return previousValue !== null && previousValue >= parseFloat(value) && currentValue < parseFloat(value);
+      result = previousValue !== null && previousValue >= parseFloat(value) && currentValue < parseFloat(value);
+      break;
     default:
-      return false;
+      result = false;
   }
+
+  if (debug) {
+    console.log(`[DEBUG] Condition: ${indicator_type} ${operator} ${value}`);
+    console.log(`[DEBUG] Previous: ${previousValue?.toFixed(2)}, Current: ${currentValue.toFixed(2)}, Result: ${result}`);
+  }
+
+  return result;
 }
 
-function checkConditions(conditions: any[], candles: Candle[]): boolean {
-  if (!conditions || conditions.length === 0) return false;
-  return conditions.every(condition => evaluateCondition(condition, candles));
+function checkConditions(conditions: any[], candles: Candle[], debug = false): boolean {
+  if (!conditions || conditions.length === 0) {
+    if (debug) console.log('[DEBUG] No conditions to check');
+    return false;
+  }
+  
+  if (debug) console.log(`[DEBUG] Checking ${conditions.length} conditions`);
+  const results = conditions.map(condition => evaluateCondition(condition, candles, debug));
+  const allMet = results.every(r => r);
+  
+  if (debug) console.log(`[DEBUG] All conditions met: ${allMet}`);
+  return allMet;
 }
 
 async function sendTelegramSignal(botToken: string, chatId: string, signal: any): Promise<void> {
@@ -228,11 +256,16 @@ async function processKlineUpdate(
       let signalType: 'buy' | 'sell' | null = null;
       let reason = '';
 
+      console.log(`[DEBUG] Evaluating ${strategy.name}: position_open=${liveState.position_open}`);
+      console.log(`[DEBUG] Entry conditions: ${strategy.entry_conditions.length}, Exit conditions: ${strategy.exit_conditions.length}`);
+
       if (!liveState.position_open) {
         // Check entry conditions
-        if (checkConditions(strategy.entry_conditions, buffer)) {
+        console.log(`[DEBUG] Checking ENTRY conditions for ${strategy.name}`);
+        if (checkConditions(strategy.entry_conditions, buffer, true)) {
           signalType = 'buy';
           reason = 'Entry conditions met';
+          console.log(`[DEBUG] ✅ ENTRY SIGNAL GENERATED for ${strategy.name}`);
           
           // Update live state
           await supabase
@@ -246,12 +279,16 @@ async function processKlineUpdate(
             }, { onConflict: 'strategy_id' });
 
           signalGenerated = true;
+        } else {
+          console.log(`[DEBUG] ❌ Entry conditions NOT met for ${strategy.name}`);
         }
       } else {
         // Check exit conditions
-        if (checkConditions(strategy.exit_conditions, buffer)) {
+        console.log(`[DEBUG] Checking EXIT conditions for ${strategy.name}`);
+        if (checkConditions(strategy.exit_conditions, buffer, true)) {
           signalType = 'sell';
           reason = 'Exit conditions met';
+          console.log(`[DEBUG] ✅ EXIT SIGNAL GENERATED for ${strategy.name}`);
           
           // Update live state
           await supabase
@@ -265,6 +302,8 @@ async function processKlineUpdate(
             }, { onConflict: 'strategy_id' });
 
           signalGenerated = true;
+        } else {
+          console.log(`[DEBUG] ❌ Exit conditions NOT met for ${strategy.name}`);
         }
       }
 
@@ -338,10 +377,19 @@ async function loadActiveStrategies(supabase: any): Promise<{ strategies: Active
     name: s.name,
     symbol: s.symbol,
     timeframe: s.timeframe,
-    entry_conditions: s.strategy_conditions?.filter((c: any) => c.condition_group === 'entry') || [],
-    exit_conditions: s.strategy_conditions?.filter((c: any) => c.condition_group === 'exit') || [],
+    entry_conditions: s.strategy_conditions?.filter((c: any) => c.order_type === 'buy') || [],
+    exit_conditions: s.strategy_conditions?.filter((c: any) => c.order_type === 'sell') || [],
     liveState: s.strategy_live_states?.[0] || { position_open: false, entry_price: null, entry_time: null }
   }));
+
+  // Log loaded strategies for debugging
+  console.log('[WEBSOCKET] Strategy details:', activeStrategies.map(s => ({
+    name: s.name,
+    symbol: s.symbol,
+    timeframe: s.timeframe,
+    entryConditions: s.entry_conditions.length,
+    exitConditions: s.exit_conditions.length
+  })));
 
   console.log(`[WEBSOCKET] Loaded ${activeStrategies.length} active strategies`);
   return { strategies: activeStrategies, userSettings };
@@ -391,12 +439,21 @@ Deno.serve(async (req) => {
 
       binanceWs.onopen = () => {
         console.log('[WEBSOCKET] ✅ Connected to Binance WebSocket');
-        socket.send(JSON.stringify({ 
+        const connectionInfo = { 
           type: 'connected', 
           streams: streams.length,
           strategies: strategies.length,
+          strategyDetails: strategies.map(s => ({
+            name: s.name,
+            symbol: s.symbol,
+            timeframe: s.timeframe,
+            hasEntry: s.entry_conditions.length > 0,
+            hasExit: s.exit_conditions.length > 0
+          })),
           timestamp: Date.now()
-        }));
+        };
+        socket.send(JSON.stringify(connectionInfo));
+        console.log('[WEBSOCKET] Connection info sent:', connectionInfo);
 
         // Start heartbeat
         heartbeatInterval = setInterval(() => {

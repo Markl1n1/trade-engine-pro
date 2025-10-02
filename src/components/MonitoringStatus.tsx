@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Activity, Clock, PlayCircle, Zap } from "lucide-react";
+import { Activity, Clock, PlayCircle, Zap, AlertCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
+import { StrategyDebugPanel } from "./StrategyDebugPanel";
 
 export function MonitoringStatus() {
   const [monitoringEnabled, setMonitoringEnabled] = useState(false);
@@ -14,6 +15,9 @@ export function MonitoringStatus() {
   const [checking, setChecking] = useState(false);
   const [wsStatus, setWsStatus] = useState<'connecting' | 'connected' | 'disconnected'>('disconnected');
   const [lastUpdate, setLastUpdate] = useState<number | null>(null);
+  const [debugLogs, setDebugLogs] = useState<any[]>([]);
+  const [connectionInfo, setConnectionInfo] = useState<any>(null);
+  const [showDisconnectBanner, setShowDisconnectBanner] = useState(false);
 
   useEffect(() => {
     loadMonitoringStatus();
@@ -27,24 +31,44 @@ export function MonitoringStatus() {
       ws.onopen = () => {
         console.log('[MONITOR] WebSocket connected');
         setWsStatus('connected');
+        setShowDisconnectBanner(false);
       };
       
       ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
+        console.log('[MONITOR] Received:', data);
+        
         if (data.type === 'heartbeat' || data.type === 'connected') {
           setLastUpdate(data.timestamp);
           setWsStatus('connected');
+          setShowDisconnectBanner(false);
+          
+          if (data.type === 'connected' && data.strategyDetails) {
+            setConnectionInfo(data);
+          }
         } else if (data.type === 'disconnected') {
           setWsStatus('disconnected');
+          setShowDisconnectBanner(true);
+        } else if (data.type === 'debug') {
+          // Add debug log
+          setDebugLogs(prev => [...prev.slice(-99), {
+            timestamp: Date.now(),
+            strategy: data.strategy || 'System',
+            type: data.subtype || 'info',
+            message: data.message,
+            data: data.data
+          }]);
         }
       };
       
       ws.onerror = () => {
         setWsStatus('disconnected');
+        setShowDisconnectBanner(true);
       };
       
       ws.onclose = () => {
         setWsStatus('disconnected');
+        setShowDisconnectBanner(true);
         setTimeout(connectWebSocket, 5000);
       };
       
@@ -131,8 +155,23 @@ export function MonitoringStatus() {
   };
 
   return (
-    <Card className="p-6 bg-card/50 backdrop-blur border-primary/10">
-      <div className="flex items-start justify-between mb-4">
+    <div className="space-y-4">
+      {showDisconnectBanner && wsStatus === 'disconnected' && (
+        <Card className="p-4 bg-destructive/10 border-destructive/20">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="h-5 w-5 text-destructive" />
+            <div className="flex-1">
+              <h4 className="text-sm font-bold text-destructive">WebSocket Disconnected</h4>
+              <p className="text-xs text-muted-foreground">
+                Real-time monitoring is offline. Attempting to reconnect... Backup monitoring still active.
+              </p>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      <Card className="p-6 bg-card/50 backdrop-blur border-primary/10">
+        <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-3">
           <div className="p-2 rounded-lg bg-primary/10">
             <Activity className="h-5 w-5 text-primary" />
@@ -145,9 +184,20 @@ export function MonitoringStatus() {
           </div>
         </div>
         <div className="flex gap-2">
-          <Badge variant={wsStatus === 'connected' ? "default" : wsStatus === 'connecting' ? "secondary" : "destructive"} className="gap-1">
-            <div className={`h-2 w-2 rounded-full ${wsStatus === 'connected' ? "bg-green-500 animate-pulse" : "bg-gray-500"}`} />
-            {wsStatus === 'connected' ? '⚡ Real-time' : wsStatus === 'connecting' ? 'Connecting...' : 'Offline'}
+          <Badge 
+            variant={wsStatus === 'connected' ? "default" : wsStatus === 'connecting' ? "secondary" : "destructive"} 
+            className="gap-2 px-3 py-1"
+          >
+            <div className={`h-3 w-3 rounded-full ${
+              wsStatus === 'connected' ? "bg-green-400 shadow-lg shadow-green-400/50 animate-pulse" : 
+              wsStatus === 'connecting' ? "bg-yellow-400 animate-pulse" :
+              "bg-red-400"
+            }`} />
+            <span className="font-bold">
+              {wsStatus === 'connected' ? '⚡ Real-time Active' : 
+               wsStatus === 'connecting' ? 'Connecting...' : 
+               '⚠️ Offline'}
+            </span>
           </Badge>
         </div>
       </div>
@@ -210,16 +260,19 @@ export function MonitoringStatus() {
         </div>
       )}
 
-      <Button 
-        onClick={runManualCheck} 
-        disabled={checking || activeCount === 0}
-        className="w-full gap-2"
-        size="sm"
-        variant="outline"
-      >
-        <PlayCircle className="h-4 w-4" />
-        {checking ? "Checking..." : "Run Manual Check"}
-      </Button>
-    </Card>
+        <Button 
+          onClick={runManualCheck} 
+          disabled={checking || activeCount === 0}
+          className="w-full gap-2"
+          size="sm"
+          variant="outline"
+        >
+          <PlayCircle className="h-4 w-4" />
+          {checking ? "Checking..." : "Run Manual Check"}
+        </Button>
+      </Card>
+
+      <StrategyDebugPanel logs={debugLogs} connectionInfo={connectionInfo} />
+    </div>
   );
 }
