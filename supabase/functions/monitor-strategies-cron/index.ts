@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
+import * as indicators from "../indicators/all-indicators.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -44,72 +45,136 @@ async function fetchMarketData(symbol: string, timeframe: string, limit = 100): 
   }));
 }
 
-// Calculate technical indicators
+// Calculate technical indicators - comprehensive version supporting all 50+ indicators
 function calculateIndicator(type: string, candles: Candle[], params: any): number | null {
   if (!candles || candles.length === 0) return null;
 
   const closes = candles.map(c => c.close);
-  const highs = candles.map(c => c.high);
-  const lows = candles.map(c => c.low);
-
-  // Normalize indicator type to lowercase for case-insensitive matching
-  switch (type.toLowerCase()) {
-    case 'sma': {
-      const period = params.period_1 || 14;
-      if (closes.length < period) return null;
-      const sum = closes.slice(-period).reduce((a, b) => a + b, 0);
-      return sum / period;
+  
+  try {
+    switch (type.toLowerCase()) {
+      case 'sma':
+        const sma = indicators.calculateSMA(closes, params.period_1 || 20);
+        return sma[sma.length - 1];
+      
+      case 'ema':
+        const ema = indicators.calculateEMA(closes, params.period_1 || 20);
+        return ema[ema.length - 1];
+      
+      case 'rsi':
+        const rsi = indicators.calculateRSI(closes, params.period_1 || 14);
+        return rsi[rsi.length - 1];
+      
+      case 'macd':
+        const macd = indicators.calculateMACD(closes, 12, 26, 9);
+        return macd.macd[macd.macd.length - 1];
+      
+      case 'bollinger_upper':
+        const bb = indicators.calculateBollingerBands(closes, params.period_1 || 20, params.deviation || 2);
+        return bb.upper[bb.upper.length - 1];
+      
+      case 'bollinger_lower':
+        const bbLower = indicators.calculateBollingerBands(closes, params.period_1 || 20, params.deviation || 2);
+        return bbLower.lower[bbLower.lower.length - 1];
+      
+      case 'atr':
+        const atr = indicators.calculateATR(candles, params.period_1 || 14);
+        return atr[atr.length - 1];
+      
+      case 'psar':
+        const psar = indicators.calculateParabolicSAR(candles, params.acceleration || 0.02, 0.2);
+        return psar[psar.length - 1];
+      
+      case 'supertrend':
+        const st = indicators.calculateSuperTrend(candles, params.period_1 || 10, params.multiplier || 3);
+        return st.trend[st.trend.length - 1];
+      
+      case 'kdj_j':
+        const kdj = indicators.calculateKDJ(candles, params.period_1 || 9, params.smoothing || 3, 3);
+        return kdj.j[kdj.j.length - 1];
+      
+      case 'stochastic':
+        const stoch = indicators.calculateStochastic(candles, params.period_1 || 14, 3, 3);
+        return stoch.k[stoch.k.length - 1];
+      
+      case 'adx':
+        const adx = indicators.calculateADX(candles, params.period_1 || 14);
+        return adx.adx[adx.adx.length - 1];
+      
+      case 'cmf':
+        const cmf = indicators.calculateCMF(candles, params.period_1 || 20);
+        return cmf[cmf.length - 1];
+      
+      case 'vwap':
+        const vwap = indicators.calculateVWAP(candles);
+        return vwap[vwap.length - 1];
+      
+      case 'anchored_vwap':
+        const avwap = indicators.calculateAnchoredVWAP(candles, params.anchor || 0);
+        return avwap[avwap.length - 1];
+      
+      case 'obv':
+        const obv = indicators.calculateOBV(candles);
+        return obv[obv.length - 1];
+      
+      case 'cci':
+        const cci = indicators.calculateCCI(candles, params.period_1 || 20);
+        return cci[cci.length - 1];
+      
+      case 'wpr':
+        const wpr = indicators.calculateWPR(candles, params.period_1 || 14);
+        return wpr[wpr.length - 1];
+      
+      case 'mfi':
+        const mfi = indicators.calculateMFI(candles, params.period_1 || 14);
+        return mfi[mfi.length - 1];
+      
+      case 'bb_width':
+        const bbWidth = indicators.calculateBollingerBands(closes, params.period_1 || 20, params.deviation || 2);
+        const width = indicators.calculateBollingerWidth(bbWidth.upper, bbWidth.lower);
+        return width[width.length - 1];
+      
+      case 'percent_b':
+        const bbPercent = indicators.calculateBollingerBands(closes, params.period_1 || 20, params.deviation || 2);
+        const percentB = indicators.calculatePercentB(closes, bbPercent.upper, bbPercent.lower);
+        return percentB[percentB.length - 1];
+      
+      case 'td_sequential':
+        const td = indicators.calculateTDSequential(candles);
+        return td.setup[td.setup.length - 1];
+      
+      case 'ema_crossover':
+        const shortEMA = indicators.calculateEMA(closes, params.period_1 || 10);
+        const longEMA = indicators.calculateEMA(closes, params.period_2 || 21);
+        const crossover = indicators.detectEMACrossover(shortEMA, longEMA);
+        return crossover[crossover.length - 1];
+      
+      case 'ichimoku_tenkan':
+        const ichimoku = indicators.calculateIchimoku(candles, 9, 26, 52);
+        return ichimoku.tenkan[ichimoku.tenkan.length - 1];
+      
+      case 'price':
+        return closes[closes.length - 1];
+      
+      case 'open':
+        return candles[candles.length - 1].open;
+      
+      case 'high':
+        return candles[candles.length - 1].high;
+      
+      case 'low':
+        return candles[candles.length - 1].low;
+      
+      case 'volume':
+        return candles[candles.length - 1].volume;
+      
+      default:
+        console.warn(`[CRON] Unknown indicator type: ${type}`);
+        return null;
     }
-    
-    case 'ema': {
-      const period = params.period_1 || 14;
-      if (closes.length < period) return null;
-      const multiplier = 2 / (period + 1);
-      let ema = closes.slice(0, period).reduce((a, b) => a + b, 0) / period;
-      for (let i = period; i < closes.length; i++) {
-        ema = (closes[i] - ema) * multiplier + ema;
-      }
-      return ema;
-    }
-    
-    case 'rsi': {
-      const period = params.period_1 || 14;
-      if (closes.length < period + 1) return null;
-      
-      let gains = 0;
-      let losses = 0;
-      
-      for (let i = closes.length - period; i < closes.length; i++) {
-        const change = closes[i] - closes[i - 1];
-        if (change > 0) gains += change;
-        else losses -= change;
-      }
-      
-      const avgGain = gains / period;
-      const avgLoss = losses / period;
-      
-      if (avgLoss === 0) return 100;
-      const rs = avgGain / avgLoss;
-      return 100 - (100 / (1 + rs));
-    }
-    
-    case 'price':
-      return closes[closes.length - 1];
-    
-    case 'open':
-      return candles[candles.length - 1].open;
-    
-    case 'high':
-      return candles[candles.length - 1].high;
-    
-    case 'low':
-      return candles[candles.length - 1].low;
-    
-    case 'volume':
-      return candles[candles.length - 1].volume;
-    
-    default:
-      return null;
+  } catch (error) {
+    console.error(`[CRON] Error calculating ${type}:`, error);
+    return null;
   }
 }
 
@@ -122,7 +187,8 @@ function evaluateCondition(condition: any, candles: Candle[]): boolean {
   let value2: number;
   if (condition.indicator_type_2) {
     const calculated = calculateIndicator(condition.indicator_type_2, candles, {
-      period_1: condition.period_2
+      period_1: condition.period_2,
+      deviation: condition.deviation,
     });
     if (calculated === null) return false;
     value2 = calculated;
@@ -130,7 +196,8 @@ function evaluateCondition(condition: any, candles: Candle[]): boolean {
     value2 = condition.value;
   }
   
-  switch (condition.operator) {
+  // Normalize operator to lowercase for case-insensitive matching
+  switch (condition.operator.toLowerCase()) {
     case 'greater_than':
       return value1 > value2;
     case 'less_than':
@@ -139,15 +206,26 @@ function evaluateCondition(condition: any, candles: Candle[]): boolean {
       return Math.abs(value1 - value2) < 0.0001;
     case 'crosses_above':
       if (candles.length < 2) return false;
-      const prevValue1 = calculateIndicator(condition.indicator_type, candles.slice(0, -1), condition);
-      if (prevValue1 === null) return false;
-      return prevValue1 <= value2 && value1 > value2;
+      const prev1 = calculateIndicator(condition.indicator_type, candles.slice(0, -1), condition);
+      const prev2 = condition.indicator_type_2
+        ? calculateIndicator(condition.indicator_type_2, candles.slice(0, -1), {
+            period_1: condition.period_2,
+            deviation: condition.deviation,
+          })
+        : condition.value;
+      return prev1 !== null && prev2 !== null && prev1 <= prev2 && value1 > value2;
     case 'crosses_below':
       if (candles.length < 2) return false;
-      const prevValue1Below = calculateIndicator(condition.indicator_type, candles.slice(0, -1), condition);
-      if (prevValue1Below === null) return false;
-      return prevValue1Below >= value2 && value1 < value2;
+      const prev1Below = calculateIndicator(condition.indicator_type, candles.slice(0, -1), condition);
+      const prev2Below = condition.indicator_type_2
+        ? calculateIndicator(condition.indicator_type_2, candles.slice(0, -1), {
+            period_1: condition.period_2,
+            deviation: condition.deviation,
+          })
+        : condition.value;
+      return prev1Below !== null && prev2Below !== null && prev1Below >= prev2Below && value1 < value2;
     default:
+      console.warn(`[CRON] Unknown operator: ${condition.operator}`);
       return false;
   }
 }

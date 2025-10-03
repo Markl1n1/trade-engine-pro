@@ -14,7 +14,19 @@ export const useAuth = () => {
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
+        console.log('[useAuth] Auth state change:', event);
+        
+        if (event === 'INITIAL_SESSION') {
+          // Handle initial session load
+          setSession(session);
+          setUser(session?.user ?? null);
+          setError(null);
+          setLoading(false);
+        }
+        
         if (event === 'TOKEN_REFRESHED') {
+          setSession(session);
+          setUser(session?.user ?? null);
           setError(null);
         }
         
@@ -22,35 +34,34 @@ export const useAuth = () => {
           setSession(null);
           setUser(null);
           setError(null);
+          setLoading(false);
         }
 
         if (event === 'USER_UPDATED' || event === 'SIGNED_IN') {
           setSession(session);
           setUser(session?.user ?? null);
           setError(null);
+          setLoading(false);
         }
-
-        setLoading(false);
       }
     );
 
-    // THEN check for existing session
+    // THEN check for existing session (fallback for older Supabase versions)
     supabase.auth.getSession().then(({ data: { session }, error }) => {
       if (error) {
         setError(error);
-        toast({
-          variant: 'destructive',
-          title: 'Session Error',
-          description: 'Your session has expired. Please sign in again.'
-        });
+        setLoading(false);
       }
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
+      // Only update if INITIAL_SESSION hasn't fired yet
+      if (loading) {
+        setSession(session);
+        setUser(session?.user ?? null);
+        setLoading(false);
+      }
     });
 
     return () => subscription.unsubscribe();
-  }, []); // Removed toast from dependencies to prevent unnecessary re-renders
+  }, []);
 
   const signUp = async (email: string, password: string) => {
     const redirectUrl = `${window.location.origin}/`;

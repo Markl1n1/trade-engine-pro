@@ -19,9 +19,9 @@ const Auth = () => {
   useEffect(() => {
     if (user) {
       console.log('[Auth] User detected, navigating to dashboard');
-      navigate('/');
+      navigate('/', { replace: true });
     }
-  }, [user]);
+  }, [user, navigate]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
