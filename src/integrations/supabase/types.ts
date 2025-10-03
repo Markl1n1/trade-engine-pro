@@ -163,6 +163,59 @@ export type Database = {
         }
         Relationships: []
       }
+      signal_buffer: {
+        Row: {
+          buffered_at: string | null
+          candle_timestamp: number
+          created_at: string | null
+          id: string
+          price: number
+          processed: boolean | null
+          processed_at: string | null
+          reason: string | null
+          signal_type: string
+          strategy_id: string
+          symbol: string
+          user_id: string
+        }
+        Insert: {
+          buffered_at?: string | null
+          candle_timestamp: number
+          created_at?: string | null
+          id?: string
+          price: number
+          processed?: boolean | null
+          processed_at?: string | null
+          reason?: string | null
+          signal_type: string
+          strategy_id: string
+          symbol: string
+          user_id: string
+        }
+        Update: {
+          buffered_at?: string | null
+          candle_timestamp?: number
+          created_at?: string | null
+          id?: string
+          price?: number
+          processed?: boolean | null
+          processed_at?: string | null
+          reason?: string | null
+          signal_type?: string
+          strategy_id?: string
+          symbol?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "signal_buffer_strategy_id_fkey"
+            columns: ["strategy_id"]
+            isOneToOne: false
+            referencedRelation: "strategies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       strategies: {
         Row: {
           benchmark_symbol: string | null
@@ -712,6 +765,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      cleanup_old_buffered_signals: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
       get_user_api_credentials: {
         Args: { user_uuid: string }
         Returns: {

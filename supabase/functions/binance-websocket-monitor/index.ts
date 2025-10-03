@@ -301,7 +301,8 @@ async function processKlineUpdate(
   supabase: any,
   kline: any,
   strategies: ActiveStrategy[],
-  userSettings: Map<string, any>
+  userSettings: Map<string, any>,
+  binanceWs: WebSocket | null
 ) {
   const symbol = kline.k.s;
   const interval = kline.k.i;
@@ -452,38 +453,45 @@ async function processKlineUpdate(
       if (signalGenerated && signalType) {
         console.log(`[WEBSOCKET] 🚨 SIGNAL DETECTED: ${signalType.toUpperCase()} for ${strategy.name} at ${candle.close} [instant=${!kline.k.x}]`);
 
-        // Insert signal
-        const { data: signalData, error: signalError } = await supabase
-          .from('strategy_signals')
-          .insert({
-            strategy_id: strategy.id,
-            user_id: strategy.user_id,
-            signal_type: signalType,
-            symbol: symbol,
-            price: candle.close.toString(),
-            reason: reason,
-            created_at: new Date().toISOString()
-          })
-          .select()
-          .single();
+        const signalData = {
+          strategy_id: strategy.id,
+          user_id: strategy.user_id,
+          signal_type: signalType,
+          symbol: symbol,
+          price: candle.close.toString(),
+          reason: reason,
+          created_at: new Date().toISOString()
+        };
 
-        if (signalError) {
-          console.error('[WEBSOCKET] Error inserting signal:', signalError);
+        // Check if WebSocket is connected
+        if (binanceWs?.readyState !== WebSocket.OPEN) {
+          console.log('[WEBSOCKET] ⚠️ Disconnected - buffering signal to database');
+          await bufferSignal(supabase, signalData, kline.k.t);
         } else {
-          lastSignalTime.set(strategyKey, now);
-          console.log('[WEBSOCKET] Signal saved to database');
+          // Insert signal with retry logic
+          const result = await insertSignalWithRetry(supabase, signalData);
+          
+          if (result.success) {
+            lastSignalTime.set(strategyKey, now);
+            console.log('[WEBSOCKET] Signal saved to database');
 
-          // Send Telegram notification
-          const settings = userSettings.get(strategy.user_id);
-          if (settings?.telegram_enabled && settings.telegram_bot_token && settings.telegram_chat_id) {
-            await sendTelegramSignal(
-              settings.telegram_bot_token,
-              settings.telegram_chat_id,
-              {
-                ...signalData,
-                strategy_name: strategy.name
-              }
-            );
+            // Send Telegram notification
+            const settings = userSettings.get(strategy.user_id);
+            if (settings?.telegram_enabled && settings.telegram_bot_token && settings.telegram_chat_id) {
+              await sendTelegramSignal(
+                settings.telegram_bot_token,
+                settings.telegram_chat_id,
+                {
+                  ...result.data,
+                  strategy_name: strategy.name
+                }
+              );
+            }
+          } else {
+            console.error(`[WEBSOCKET] ❌ Failed to insert signal after retries: ${result.error}`);
+            // Buffer signal as fallback
+            console.log('[WEBSOCKET] Buffering failed signal to database');
+            await bufferSignal(supabase, signalData, kline.k.t);
           }
         }
       }
@@ -599,6 +607,75 @@ async function initializeCandleBuffer(
   }
 }
 
+// Buffer signal during disconnection (persists to database)
+async function bufferSignal(
+  supabase: any,
+  signalData: any,
+  candleTimestamp: number
+): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from('signal_buffer')
+      .insert({
+        strategy_id: signalData.strategy_id,
+        user_id: signalData.user_id,
+        signal_type: signalData.signal_type,
+        symbol: signalData.symbol,
+        price: signalData.price,
+        reason: signalData.reason,
+        candle_timestamp: candleTimestamp,
+        buffered_at: new Date().toISOString(),
+        processed: false
+      });
+    
+    if (error) {
+      console.error('[BUFFER] Failed to buffer signal:', error);
+    } else {
+      console.log(`[BUFFER] ✅ Signal buffered for ${signalData.symbol} ${signalData.signal_type}`);
+    }
+  } catch (error) {
+    console.error('[BUFFER] Exception buffering signal:', error);
+  }
+}
+
+// Insert signal with retry (exponential backoff)
+async function insertSignalWithRetry(
+  supabase: any,
+  signalData: any,
+  maxRetries = 3
+): Promise<{ success: boolean; data?: any; error?: string }> {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const { data, error } = await supabase
+        .from('strategy_signals')
+        .insert(signalData)
+        .select()
+        .single();
+      
+      if (!error) {
+        console.log(`[SIGNAL] ✅ Signal inserted successfully (attempt ${attempt + 1})`);
+        return { success: true, data };
+      }
+      
+      // Retry with exponential backoff
+      if (attempt < maxRetries - 1) {
+        const delay = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
+        console.log(`[SIGNAL] Retry ${attempt + 1} failed, waiting ${delay}ms before retry...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    } catch (e) {
+      const errorMsg = e instanceof Error ? e.message : 'Unknown error';
+      console.error(`[SIGNAL] Attempt ${attempt + 1} exception:`, errorMsg);
+      
+      if (attempt === maxRetries - 1) {
+        return { success: false, error: errorMsg };
+      }
+    }
+  }
+  
+  return { success: false, error: 'Max retries exceeded' };
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -619,6 +696,8 @@ Deno.serve(async (req) => {
   let binanceWs: WebSocket | null = null;
   let reconnectTimeout: number | null = null;
   let heartbeatInterval: number | null = null;
+  let reconnectAttempts = 0;
+  const MAX_RECONNECT_DELAY = 60000; // 1 minute max delay
 
   const connect = async () => {
     try {
@@ -657,6 +736,8 @@ Deno.serve(async (req) => {
 
       binanceWs.onopen = () => {
         console.log('[WEBSOCKET] ✅ Connected to Binance WebSocket');
+        reconnectAttempts = 0; // Reset counter on successful connection
+        
         const connectionInfo = { 
           type: 'connected', 
           streams: streams.length,
@@ -685,7 +766,7 @@ Deno.serve(async (req) => {
         try {
           const data = JSON.parse(event.data);
           if (data.stream && data.data) {
-            await processKlineUpdate(supabase, data.data, strategies, userSettings);
+            await processKlineUpdate(supabase, data.data, strategies, userSettings, binanceWs);
           }
         } catch (error) {
           console.error('[WEBSOCKET] Error processing message:', error);
@@ -698,16 +779,27 @@ Deno.serve(async (req) => {
       };
 
       binanceWs.onclose = () => {
-        console.log('[WEBSOCKET] Binance WebSocket closed. Reconnecting in 5s...');
-        socket.send(JSON.stringify({ type: 'disconnected', timestamp: Date.now() }));
+        reconnectAttempts++;
+        const delay = Math.min(
+          1000 * Math.pow(2, reconnectAttempts), 
+          MAX_RECONNECT_DELAY
+        );
+        
+        console.log(`[WEBSOCKET] Binance WebSocket closed. Reconnect attempt ${reconnectAttempts} in ${delay}ms...`);
+        socket.send(JSON.stringify({ 
+          type: 'disconnected', 
+          timestamp: Date.now(),
+          reconnectAttempt: reconnectAttempts,
+          nextRetryIn: delay
+        }));
         
         if (heartbeatInterval) {
           clearInterval(heartbeatInterval);
           heartbeatInterval = null;
         }
 
-        // Reconnect after 5 seconds
-        reconnectTimeout = setTimeout(() => connect(), 5000);
+        // Reconnect with exponential backoff
+        reconnectTimeout = setTimeout(() => connect(), delay);
       };
     } catch (error) {
       console.error('[WEBSOCKET] Connection error:', error);
