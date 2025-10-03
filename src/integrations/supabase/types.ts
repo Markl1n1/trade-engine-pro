@@ -610,6 +610,33 @@ export type Database = {
         }
         Relationships: []
       }
+      system_health_logs: {
+        Row: {
+          created_at: string
+          id: string
+          message: string | null
+          metrics: Json | null
+          service_name: string
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          message?: string | null
+          metrics?: Json | null
+          service_name: string
+          status: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          message?: string | null
+          metrics?: Json | null
+          service_name?: string
+          status?: string
+        }
+        Relationships: []
+      }
       system_settings: {
         Row: {
           id: string
@@ -766,6 +793,10 @@ export type Database = {
     }
     Functions: {
       cleanup_old_buffered_signals: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
+      cleanup_old_health_logs: {
         Args: Record<PropertyKey, never>
         Returns: undefined
       }

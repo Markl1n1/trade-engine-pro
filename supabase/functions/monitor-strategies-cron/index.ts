@@ -23,26 +23,107 @@ interface StrategyState {
   range_low: number | null;
 }
 
-// Fetch market data from Binance Futures API
-async function fetchMarketData(symbol: string, timeframe: string, limit = 100): Promise<Candle[]> {
-  const response = await fetch(
-    `https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=${timeframe}&limit=${limit}`
-  );
-  
-  if (!response.ok) {
-    throw new Error(`Failed to fetch market data for ${symbol}`);
+// Fetch market data from Binance Futures API with exponential backoff retry
+async function fetchMarketData(symbol: string, timeframe: string, limit = 100, maxRetries = 3): Promise<Candle[]> {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const response = await fetch(
+        `https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=${timeframe}&limit=${limit}`
+      );
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      
+      return data.map((candle: any) => ({
+        timestamp: candle[0],
+        open: parseFloat(candle[1]),
+        high: parseFloat(candle[2]),
+        low: parseFloat(candle[3]),
+        close: parseFloat(candle[4]),
+        volume: parseFloat(candle[5]),
+      }));
+    } catch (error) {
+      const isLastAttempt = attempt === maxRetries - 1;
+      console.error(`[CRON] Binance API attempt ${attempt + 1}/${maxRetries} failed for ${symbol}:`, error);
+      
+      if (isLastAttempt) {
+        throw new Error(`Failed to fetch market data for ${symbol} after ${maxRetries} attempts`);
+      }
+      
+      // Exponential backoff: 1s, 2s, 4s
+      const delay = Math.pow(2, attempt) * 1000;
+      console.log(`[CRON] Retrying in ${delay}ms...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
   }
   
-  const data = await response.json();
-  
-  return data.map((candle: any) => ({
-    timestamp: candle[0],
-    open: parseFloat(candle[1]),
-    high: parseFloat(candle[2]),
-    low: parseFloat(candle[3]),
-    close: parseFloat(candle[4]),
-    volume: parseFloat(candle[5]),
+  throw new Error(`Failed to fetch market data for ${symbol}`);
+}
+
+// Load historical candles from database
+async function loadCandlesFromDatabase(
+  supabase: any,
+  symbol: string,
+  timeframe: string,
+  limit = 500
+): Promise<Candle[]> {
+  const { data, error } = await supabase
+    .from('market_data')
+    .select('*')
+    .eq('symbol', symbol)
+    .eq('timeframe', timeframe)
+    .order('close_time', { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    console.error(`[CRON] Error loading candles from DB for ${symbol}:`, error);
+    return [];
+  }
+
+  if (!data || data.length === 0) {
+    console.log(`[CRON] No historical data in DB for ${symbol} ${timeframe}`);
+    return [];
+  }
+
+  // Convert to Candle format and reverse to ascending order
+  return data.reverse().map((row: any) => ({
+    timestamp: row.open_time,
+    open: parseFloat(row.open),
+    high: parseFloat(row.high),
+    low: parseFloat(row.low),
+    close: parseFloat(row.close),
+    volume: parseFloat(row.volume),
   }));
+}
+
+// Merge database candles with fresh API candles
+async function getCandlesWithHistory(
+  supabase: any,
+  symbol: string,
+  timeframe: string
+): Promise<Candle[]> {
+  // Try to load from database first
+  const dbCandles = await loadCandlesFromDatabase(supabase, symbol, timeframe, 500);
+  
+  // Fetch fresh candles from API (last 100)
+  const apiCandles = await fetchMarketData(symbol, timeframe, 100);
+  
+  if (dbCandles.length === 0) {
+    console.log(`[CRON] Using only API candles for ${symbol} (${apiCandles.length} candles)`);
+    return apiCandles;
+  }
+  
+  // Merge: keep DB candles that are older than API candles, then add API candles
+  const oldestApiTime = apiCandles[0].timestamp;
+  const olderDbCandles = dbCandles.filter(c => c.timestamp < oldestApiTime);
+  
+  const merged = [...olderDbCandles, ...apiCandles];
+  console.log(`[CRON] Merged ${olderDbCandles.length} DB + ${apiCandles.length} API = ${merged.length} total candles for ${symbol}`);
+  
+  return merged;
 }
 
 // Calculate technical indicators - comprehensive version supporting all 50+ indicators
@@ -361,13 +442,19 @@ Deno.serve(async (req) => {
           liveState = newState;
         }
 
-        // Fetch market data for this strategy's symbol
-        const candles = await fetchMarketData(strategy.symbol, strategy.timeframe, 100);
+        // Fetch market data with history from database + fresh API data
+        const candles = await getCandlesWithHistory(supabase, strategy.symbol, strategy.timeframe);
+        
+        if (candles.length === 0) {
+          console.log(`[CRON] ⚠️ No candle data available for ${strategy.name}`);
+          continue;
+        }
+        
         const currentPrice = candles[candles.length - 1].close;
         const lastCandleTime = candles[candles.length - 1].timestamp;
         const lastCandleTimeISO = new Date(lastCandleTime).toISOString();
 
-        console.log(`[CRON] ${strategy.name}: Current price ${currentPrice}, Last candle ${lastCandleTimeISO}`);
+        console.log(`[CRON] ${strategy.name}: Current price ${currentPrice}, Last candle ${lastCandleTimeISO}, Total candles: ${candles.length}`);
 
         // Skip if this candle was already processed (prevents duplicates from WebSocket)
         if (liveState?.last_processed_candle_time && liveState.last_processed_candle_time >= lastCandleTime) {
