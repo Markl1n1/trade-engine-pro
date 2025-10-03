@@ -482,7 +482,7 @@ Deno.serve(async (req) => {
           
           if (exitMet) {
             signal = {
-              signal_type: 'sell',
+              signal_type: 'SELL',
               price: currentPrice,
               reason: 'Exit conditions met',
               strategy_id: strategy.id,
@@ -513,7 +513,7 @@ Deno.serve(async (req) => {
           
           if (entryMet) {
             signal = {
-              signal_type: 'buy',
+              signal_type: 'BUY',
               price: currentPrice,
               reason: 'Entry conditions met',
               strategy_id: strategy.id,

@@ -456,7 +456,7 @@ async function processKlineUpdate(
         const signalData = {
           strategy_id: strategy.id,
           user_id: strategy.user_id,
-          signal_type: signalType,
+          signal_type: signalType.toUpperCase(),
           symbol: symbol,
           price: candle.close.toString(),
           reason: reason,

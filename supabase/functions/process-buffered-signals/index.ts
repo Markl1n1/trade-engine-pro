@@ -28,7 +28,7 @@ async function insertSignalWithRetry(
           user_id: signal.user_id,
           strategy_id: signal.strategy_id,
           symbol: signal.symbol,
-          signal_type: signal.signal_type,
+          signal_type: signal.signal_type.toUpperCase(),
           price: signal.price,
           reason: signal.reason,
           status: 'pending',
