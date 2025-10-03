@@ -108,7 +108,14 @@ function calculateIndicator(type: string, candles: Candle[], params: any): numbe
   }
 }
 
-function evaluateCondition(condition: any, candles: Candle[], debug = false): boolean {
+async function evaluateCondition(
+  condition: any, 
+  candles: Candle[], 
+  supabase: any,
+  strategyId: string,
+  liveState: any,
+  debug = false
+): Promise<boolean> {
   if (candles.length < 2) {
     if (debug) console.log('[DEBUG] Not enough candles:', candles.length);
     return false;
@@ -127,19 +134,105 @@ function evaluateCondition(condition: any, candles: Candle[], debug = false): bo
   const previousValue = calculateIndicator(indicator_type, previousCandles, params);
 
   let result = false;
+  const threshold = parseFloat(value);
+  
   switch (operator) {
     case 'greater_than':
-      result = currentValue > parseFloat(value);
+      result = currentValue > threshold;
       break;
     case 'less_than':
-      result = currentValue < parseFloat(value);
+      result = currentValue < threshold;
       break;
-    case 'crosses_above':
-      result = previousValue !== null && previousValue <= parseFloat(value) && currentValue > parseFloat(value);
+    case 'crosses_above': {
+      // Check if we have an actual cross
+      const crossed = previousValue !== null && previousValue <= threshold && currentValue > threshold;
+      
+      if (crossed) {
+        // Check if we haven't already signaled this cross
+        const lastDirection = liveState?.last_cross_direction;
+        if (lastDirection !== 'up') {
+          // Update state to prevent duplicate signals (with optimistic locking)
+          const { error } = await supabase
+            .from('strategy_live_states')
+            .update({ 
+              last_cross_direction: 'up',
+              updated_at: new Date().toISOString()
+            })
+            .eq('strategy_id', strategyId)
+            .eq('version', liveState?.version || 1);
+          
+          if (error && debug) {
+            console.log(`[DEBUG] Failed to update cross direction (possible race condition):`, error);
+          }
+          
+          result = true;
+          if (debug) console.log(`[DEBUG] ✅ CROSS ABOVE detected and state updated`);
+        } else {
+          result = false;
+          if (debug) console.log(`[DEBUG] ❌ CROSS ABOVE already signaled (last_direction=${lastDirection})`);
+        }
+      } else if (currentValue <= threshold && liveState?.last_cross_direction === 'up') {
+        // Reset when crossing back down
+        await supabase
+          .from('strategy_live_states')
+          .update({ 
+            last_cross_direction: 'none',
+            updated_at: new Date().toISOString()
+          })
+          .eq('strategy_id', strategyId);
+        
+        result = false;
+        if (debug) console.log(`[DEBUG] Reset cross direction to 'none'`);
+      } else {
+        result = false;
+      }
       break;
-    case 'crosses_below':
-      result = previousValue !== null && previousValue >= parseFloat(value) && currentValue < parseFloat(value);
+    }
+    case 'crosses_below': {
+      // Check if we have an actual cross
+      const crossed = previousValue !== null && previousValue >= threshold && currentValue < threshold;
+      
+      if (crossed) {
+        // Check if we haven't already signaled this cross
+        const lastDirection = liveState?.last_cross_direction;
+        if (lastDirection !== 'down') {
+          // Update state to prevent duplicate signals (with optimistic locking)
+          const { error } = await supabase
+            .from('strategy_live_states')
+            .update({ 
+              last_cross_direction: 'down',
+              updated_at: new Date().toISOString()
+            })
+            .eq('strategy_id', strategyId)
+            .eq('version', liveState?.version || 1);
+          
+          if (error && debug) {
+            console.log(`[DEBUG] Failed to update cross direction (possible race condition):`, error);
+          }
+          
+          result = true;
+          if (debug) console.log(`[DEBUG] ✅ CROSS BELOW detected and state updated`);
+        } else {
+          result = false;
+          if (debug) console.log(`[DEBUG] ❌ CROSS BELOW already signaled (last_direction=${lastDirection})`);
+        }
+      } else if (currentValue >= threshold && liveState?.last_cross_direction === 'down') {
+        // Reset when crossing back up
+        await supabase
+          .from('strategy_live_states')
+          .update({ 
+            last_cross_direction: 'none',
+            updated_at: new Date().toISOString()
+          })
+          .eq('strategy_id', strategyId);
+        
+        result = false;
+        if (debug) console.log(`[DEBUG] Reset cross direction to 'none'`);
+      } else {
+        result = false;
+      }
       break;
+    }
     default:
       result = false;
   }
@@ -152,14 +245,23 @@ function evaluateCondition(condition: any, candles: Candle[], debug = false): bo
   return result;
 }
 
-function checkConditions(conditions: any[], candles: Candle[], debug = false): boolean {
+async function checkConditions(
+  conditions: any[], 
+  candles: Candle[], 
+  supabase: any,
+  strategyId: string,
+  liveState: any,
+  debug = false
+): Promise<boolean> {
   if (!conditions || conditions.length === 0) {
     if (debug) console.log('[DEBUG] No conditions to check');
     return false;
   }
   
   if (debug) console.log(`[DEBUG] Checking ${conditions.length} conditions`);
-  const results = conditions.map(condition => evaluateCondition(condition, candles, debug));
+  const results = await Promise.all(
+    conditions.map(condition => evaluateCondition(condition, candles, supabase, strategyId, liveState, debug))
+  );
   const allMet = results.every(r => r);
   
   if (debug) console.log(`[DEBUG] All conditions met: ${allMet}`);
@@ -265,14 +367,27 @@ async function processKlineUpdate(
       continue;
     }
 
-    const liveState = strategy.liveState || { position_open: false, entry_price: null, entry_time: null };
+    // Fetch latest live state with new fields
+    const { data: liveStateData } = await supabase
+      .from('strategy_live_states')
+      .select('*')
+      .eq('strategy_id', strategy.id)
+      .maybeSingle();
+
+    const liveState = liveStateData || { 
+      position_open: false, 
+      entry_price: null, 
+      entry_time: null,
+      version: 1,
+      last_cross_direction: 'none'
+    };
 
     try {
       let signalGenerated = false;
       let signalType: 'buy' | 'sell' | null = null;
       let reason = '';
 
-      console.log(`[DEBUG] Evaluating ${strategy.name}: position_open=${liveState.position_open}, tick=${!kline.k.x}, priceOnly=${entryPriceOnly}/${exitPriceOnly}`);
+      console.log(`[DEBUG] Evaluating ${strategy.name}: position_open=${liveState.position_open}, cross_dir=${liveState.last_cross_direction}, tick=${!kline.k.x}, priceOnly=${entryPriceOnly}/${exitPriceOnly}`);
       console.log(`[DEBUG] Entry conditions: ${strategy.entry_conditions.length}, Exit conditions: ${strategy.exit_conditions.length}`);
 
       // For price-only strategies on live ticks, include current candle
@@ -282,7 +397,7 @@ async function processKlineUpdate(
       if (!liveState.position_open) {
         // Check entry conditions
         console.log(`[DEBUG] Checking ENTRY conditions for ${strategy.name} (tick=${!kline.k.x})`);
-        if (checkConditions(strategy.entry_conditions, evalBuffer, true)) {
+        if (await checkConditions(strategy.entry_conditions, evalBuffer, supabase, strategy.id, liveState, true)) {
           signalType = 'buy';
           reason = 'Entry conditions met';
           console.log(`[DEBUG] ✅ ENTRY SIGNAL GENERATED for ${strategy.name}`);
@@ -305,7 +420,7 @@ async function processKlineUpdate(
       } else {
         // Check exit conditions
         console.log(`[DEBUG] Checking EXIT conditions for ${strategy.name} (tick=${!kline.k.x})`);
-        if (checkConditions(strategy.exit_conditions, evalBuffer, true)) {
+        if (await checkConditions(strategy.exit_conditions, evalBuffer, supabase, strategy.id, liveState, true)) {
           signalType = 'sell';
           reason = 'Exit conditions met';
           console.log(`[DEBUG] ✅ EXIT SIGNAL GENERATED for ${strategy.name}`);
