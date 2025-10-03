@@ -269,7 +269,10 @@ serve(async (req) => {
       const validTsRaw = tsRaw.filter(v => !isNaN(v));
       console.log(`[MSTG Debug] TS Raw calculated, ${validTsRaw.length} valid values out of ${tsRaw.length}`);
       if (validTsRaw.length > 0) {
-        console.log(`[MSTG Debug] TS Raw range: ${Math.min(...validTsRaw).toFixed(2)} to ${Math.max(...validTsRaw).toFixed(2)}`);
+        const minRaw = Math.min(...validTsRaw);
+        const maxRaw = Math.max(...validTsRaw);
+        const avgRaw = validTsRaw.reduce((a, b) => a + b, 0) / validTsRaw.length;
+        console.log(`[MSTG Debug] TS Raw range: ${minRaw.toFixed(2)} to ${maxRaw.toFixed(2)}, avg: ${avgRaw.toFixed(2)}`);
         console.log(`[MSTG Debug] First valid TS Raw values: ${tsRaw.slice(20, 30).filter(v => !isNaN(v)).map(v => v.toFixed(2)).join(', ')}`);
       }
       
@@ -278,13 +281,18 @@ serve(async (req) => {
       const validTs = tsScore.filter(v => !isNaN(v));
       console.log(`[MSTG Debug] TS Score (smoothed) calculated, ${validTs.length} valid values`);
       if (validTs.length > 0) {
-        console.log(`[MSTG Debug] TS Score range: ${Math.min(...validTs).toFixed(2)} to ${Math.max(...validTs).toFixed(2)}`);
+        const minTs = Math.min(...validTs);
+        const maxTs = Math.max(...validTs);
+        const avgTs = validTs.reduce((a, b) => a + b, 0) / validTs.length;
+        console.log(`[MSTG Debug] TS Score range: ${minTs.toFixed(2)} to ${maxTs.toFixed(2)}, avg: ${avgTs.toFixed(2)}`);
         console.log(`[MSTG Debug] First valid TS Scores: ${tsScore.slice(50, 60).filter(v => !isNaN(v)).map(v => v.toFixed(2)).join(', ')}`);
+        console.log(`[MSTG Debug] Values above longThreshold (20): ${validTs.filter(v => v > 20).length} (${(validTs.filter(v => v > 20).length / validTs.length * 100).toFixed(1)}%)`);
+        console.log(`[MSTG Debug] Values below shortThreshold (-20): ${validTs.filter(v => v < -20).length} (${(validTs.filter(v => v < -20).length / validTs.length * 100).toFixed(1)}%)`);
       }
       
-      // Generate signals based on TS thresholds
-      const longThreshold = 30;
-      const shortThreshold = -30;
+      // Generate signals based on TS thresholds (ADJUSTED FOR MORE TRADES)
+      const longThreshold = 20;  // Lowered from 30 to generate more signals
+      const shortThreshold = -20; // Raised from -30 to generate more signals
       const exitThreshold = 0;
       
       console.log(`[MSTG Debug] Using thresholds: Long=${longThreshold}, Short=${shortThreshold}, Exit=${exitThreshold}`);
