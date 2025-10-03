@@ -364,9 +364,16 @@ Deno.serve(async (req) => {
         // Fetch market data for this strategy's symbol
         const candles = await fetchMarketData(strategy.symbol, strategy.timeframe, 100);
         const currentPrice = candles[candles.length - 1].close;
-        const lastCandleTime = new Date(candles[candles.length - 1].timestamp).toISOString();
+        const lastCandleTime = candles[candles.length - 1].timestamp;
+        const lastCandleTimeISO = new Date(lastCandleTime).toISOString();
 
-        console.log(`[CRON] ${strategy.name}: Current price ${currentPrice}, Last candle ${lastCandleTime}`);
+        console.log(`[CRON] ${strategy.name}: Current price ${currentPrice}, Last candle ${lastCandleTimeISO}`);
+
+        // Skip if this candle was already processed (prevents duplicates from WebSocket)
+        if (liveState?.last_processed_candle_time && liveState.last_processed_candle_time >= lastCandleTime) {
+          console.log(`[CRON] ⏭️ Skipping ${strategy.name} - candle ${lastCandleTime} already processed at ${liveState.last_processed_candle_time}`);
+          continue;
+        }
 
         // Get entry and exit conditions (use 'buy' and 'sell' not 'entry' and 'exit')
         const entryConditions = strategy.strategy_conditions?.filter(
@@ -474,6 +481,17 @@ Deno.serve(async (req) => {
             }
           }
         }
+
+        // Update last_processed_candle_time to prevent duplicate processing
+        await supabase
+          .from('strategy_live_states')
+          .update({ 
+            last_processed_candle_time: lastCandleTime,
+            updated_at: new Date().toISOString()
+          })
+          .eq('strategy_id', strategy.id);
+
+        console.log(`[CRON] ✅ Updated last_processed_candle_time to ${lastCandleTime} for ${strategy.name}`);
 
       } catch (strategyError) {
         console.error(`[CRON] Error processing strategy ${strategy.id}:`, strategyError);

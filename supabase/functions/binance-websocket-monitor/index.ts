@@ -379,8 +379,15 @@ async function processKlineUpdate(
       entry_price: null, 
       entry_time: null,
       version: 1,
-      last_cross_direction: 'none'
+      last_cross_direction: 'none',
+      last_processed_candle_time: null
     };
+
+    // Skip if this closed candle was already processed (prevents duplicates from cron + WebSocket)
+    if (kline.k.x && liveState.last_processed_candle_time && liveState.last_processed_candle_time >= kline.k.t) {
+      console.log(`[WEBSOCKET] ⏭️ Skipping ${strategy.name} - candle ${kline.k.t} already processed at ${liveState.last_processed_candle_time}`);
+      continue;
+    }
 
     try {
       let signalGenerated = false;
@@ -478,6 +485,23 @@ async function processKlineUpdate(
               }
             );
           }
+        }
+      }
+
+      // Update last_processed_candle_time for closed candles (prevents duplicate processing)
+      if (kline.k.x) {
+        const { error: updateError } = await supabase
+          .from('strategy_live_states')
+          .update({ 
+            last_processed_candle_time: kline.k.t,
+            updated_at: new Date().toISOString()
+          })
+          .eq('strategy_id', strategy.id);
+
+        if (updateError) {
+          console.error(`[WEBSOCKET] Failed to update last_processed_candle_time:`, updateError);
+        } else {
+          console.log(`[WEBSOCKET] ✅ Updated last_processed_candle_time to ${kline.k.t} for ${strategy.name}`);
         }
       }
     } catch (error) {
