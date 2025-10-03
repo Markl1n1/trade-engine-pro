@@ -33,7 +33,7 @@ interface ActiveStrategy {
 
 // Rolling candle buffer for each symbol-timeframe pair
 const candleBuffers = new Map<string, Candle[]>();
-const MAX_CANDLES = 200;
+const MAX_CANDLES = 500; // Increased for accurate indicator calculations (EMA200, Ichimoku, etc.)
 
 // Last signal time tracker (rate limiting)
 const lastSignalTime = new Map<string, number>();
@@ -554,6 +554,51 @@ async function loadActiveStrategies(supabase: any): Promise<{ strategies: Active
   return { strategies: activeStrategies, userSettings };
 }
 
+// Initialize candle buffer from database (warm-up for accurate indicator calculations)
+async function initializeCandleBuffer(
+  supabase: any,
+  symbol: string,
+  timeframe: string
+): Promise<Candle[]> {
+  try {
+    console.log(`[WEBSOCKET] Loading initial candle buffer for ${symbol} ${timeframe}...`);
+    
+    const { data, error } = await supabase
+      .from('market_data')
+      .select('*')
+      .eq('symbol', symbol)
+      .eq('timeframe', timeframe)
+      .order('open_time', { ascending: false })
+      .limit(MAX_CANDLES);
+    
+    if (error) {
+      console.error(`[WEBSOCKET] Error loading initial candles for ${symbol} ${timeframe}:`, error);
+      return [];
+    }
+    
+    if (!data || data.length === 0) {
+      console.log(`[WEBSOCKET] No historical data found for ${symbol} ${timeframe}, starting fresh`);
+      return [];
+    }
+    
+    // Reverse to get chronological order (oldest first)
+    const candles = data.reverse().map((d: any) => ({
+      open: parseFloat(d.open),
+      high: parseFloat(d.high),
+      low: parseFloat(d.low),
+      close: parseFloat(d.close),
+      volume: parseFloat(d.volume),
+      timestamp: d.open_time
+    }));
+    
+    console.log(`[WEBSOCKET] ✅ Loaded ${candles.length} historical candles for ${symbol} ${timeframe}`);
+    return candles;
+  } catch (error) {
+    console.error(`[WEBSOCKET] Exception loading initial candles:`, error);
+    return [];
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -592,6 +637,20 @@ Deno.serve(async (req) => {
       )];
 
       console.log(`[WEBSOCKET] Subscribing to ${streams.length} streams:`, streams);
+
+      // Initialize candle buffers from database before connecting to WebSocket
+      console.log('[WEBSOCKET] Initializing candle buffers from database...');
+      const uniquePairs = [...new Set(strategies.map(s => `${s.symbol}_${s.timeframe}`))];
+      
+      for (const pair of uniquePairs) {
+        const [symbol, timeframe] = pair.split('_');
+        const bufferKey = `${symbol}_${timeframe}`;
+        const initialCandles = await initializeCandleBuffer(supabase, symbol, timeframe);
+        candleBuffers.set(bufferKey, initialCandles);
+        console.log(`[WEBSOCKET] Buffer initialized: ${bufferKey} with ${initialCandles.length} candles`);
+      }
+      
+      console.log('[WEBSOCKET] ✅ All candle buffers initialized, connecting to Binance...');
 
       const wsUrl = `wss://stream.binance.com:9443/stream?streams=${streams.join('/')}`;
       binanceWs = new WebSocket(wsUrl);
