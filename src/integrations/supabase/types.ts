@@ -394,6 +394,8 @@ export type Database = {
           entry_price: number | null
           entry_time: string | null
           id: string
+          last_cross_direction: string | null
+          last_processed_candle_time: number | null
           last_signal_time: string | null
           position_open: boolean
           range_high: number | null
@@ -401,12 +403,15 @@ export type Database = {
           strategy_id: string
           updated_at: string
           user_id: string
+          version: number
         }
         Insert: {
           created_at?: string
           entry_price?: number | null
           entry_time?: string | null
           id?: string
+          last_cross_direction?: string | null
+          last_processed_candle_time?: number | null
           last_signal_time?: string | null
           position_open?: boolean
           range_high?: number | null
@@ -414,12 +419,15 @@ export type Database = {
           strategy_id: string
           updated_at?: string
           user_id: string
+          version?: number
         }
         Update: {
           created_at?: string
           entry_price?: number | null
           entry_time?: string | null
           id?: string
+          last_cross_direction?: string | null
+          last_processed_candle_time?: number | null
           last_signal_time?: string | null
           position_open?: boolean
           range_high?: number | null
@@ -427,6 +435,7 @@ export type Database = {
           strategy_id?: string
           updated_at?: string
           user_id?: string
+          version?: number
         }
         Relationships: [
           {
@@ -441,30 +450,42 @@ export type Database = {
       strategy_signals: {
         Row: {
           created_at: string
+          delivery_attempts: number | null
+          error_message: string | null
           id: string
+          last_attempt_at: string | null
           price: number
           reason: string | null
           signal_type: string
+          status: string | null
           strategy_id: string
           symbol: string
           user_id: string
         }
         Insert: {
           created_at?: string
+          delivery_attempts?: number | null
+          error_message?: string | null
           id?: string
+          last_attempt_at?: string | null
           price: number
           reason?: string | null
           signal_type: string
+          status?: string | null
           strategy_id: string
           symbol: string
           user_id: string
         }
         Update: {
           created_at?: string
+          delivery_attempts?: number | null
+          error_message?: string | null
           id?: string
+          last_attempt_at?: string | null
           price?: number
           reason?: string | null
           signal_type?: string
+          status?: string | null
           strategy_id?: string
           symbol?: string
           user_id?: string
@@ -705,6 +726,10 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      immutable_date_trunc_minute: {
+        Args: { "": string }
+        Returns: string
       }
     }
     Enums: {
