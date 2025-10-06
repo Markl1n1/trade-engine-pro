@@ -318,6 +318,56 @@ function checkConditions(conditions: any[], candles: Candle[]): boolean {
   return conditions.every(condition => evaluateCondition(condition, candles));
 }
 
+async function checkBinancePosition(apiKey: string, apiSecret: string, useTestnet: boolean, symbol: string): Promise<boolean> {
+  try {
+    const baseUrl = useTestnet 
+      ? 'https://testnet.binancefuture.com'
+      : 'https://fapi.binance.com';
+    
+    const timestamp = Date.now();
+    const queryString = `symbol=${symbol}&timestamp=${timestamp}`;
+    
+    const encoder = new TextEncoder();
+    const keyData = encoder.encode(apiSecret);
+    const messageData = encoder.encode(queryString);
+    
+    const cryptoKey = await crypto.subtle.importKey(
+      'raw',
+      keyData,
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign']
+    );
+    
+    const signature = await crypto.subtle.sign('HMAC', cryptoKey, messageData);
+    const signatureHex = Array.from(new Uint8Array(signature))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+    
+    const response = await fetch(
+      `${baseUrl}/fapi/v2/positionRisk?${queryString}&signature=${signatureHex}`,
+      {
+        headers: {
+          'X-MBX-APIKEY': apiKey
+        }
+      }
+    );
+    
+    if (!response.ok) {
+      console.error(`[BINANCE] Failed to fetch position: ${response.status}`);
+      return false;
+    }
+    
+    const positions = await response.json();
+    const position = positions.find((p: any) => p.symbol === symbol);
+    
+    return position && parseFloat(position.positionAmt) !== 0;
+  } catch (error) {
+    console.error('[BINANCE] Error checking position:', error);
+    return false;
+  }
+}
+
 // Send Telegram notification
 async function sendTelegramSignal(botToken: string, chatId: string, signal: any): Promise<void> {
   const message = `
@@ -508,6 +558,22 @@ Deno.serve(async (req) => {
         // Check for entry conditions if no position is open
         if (!liveState?.position_open && entryConditions.length > 0) {
           console.log(`[CRON] ${strategy.name}: Checking ENTRY conditions (no position)`);
+          
+          // Check if position already exists on Binance before generating entry signal
+          if (userSettings?.binance_api_key && userSettings?.binance_api_secret) {
+            const positionExists = await checkBinancePosition(
+              userSettings.binance_api_key,
+              userSettings.binance_api_secret,
+              userSettings.use_testnet,
+              strategy.symbol
+            );
+            
+            if (positionExists) {
+              console.log(`[CRON] ⚠️ Skipping entry signal for ${strategy.name} - position already open on Binance`);
+              continue;
+            }
+          }
+          
           const entryMet = checkConditions(entryConditions, candles);
           console.log(`[CRON] ${strategy.name}: ENTRY conditions result=${entryMet}`);
           
@@ -539,7 +605,7 @@ Deno.serve(async (req) => {
         // If signal was generated, save it and send notification
         if (signal) {
           // Insert signal into database
-          await supabase
+          const { data: insertedSignal } = await supabase
             .from('strategy_signals')
             .insert({
               strategy_id: signal.strategy_id,
@@ -548,7 +614,9 @@ Deno.serve(async (req) => {
               symbol: signal.symbol,
               price: signal.price,
               reason: signal.reason
-            });
+            })
+            .select()
+            .single();
 
           allSignals.push(signal);
 
@@ -562,7 +630,16 @@ Deno.serve(async (req) => {
                 userSettings.telegram_chat_id,
                 signal
               );
-              console.log(`[CRON] Telegram notification sent for ${strategy.name}`);
+              
+              // Update signal status to 'delivered' after successful send
+              if (insertedSignal?.id) {
+                await supabase
+                  .from('strategy_signals')
+                  .update({ status: 'delivered' })
+                  .eq('id', insertedSignal.id);
+              }
+              
+              console.log(`[CRON] Telegram notification sent and signal marked as delivered for ${strategy.name}`);
             } catch (telegramError) {
               console.error('[CRON] Telegram notification failed:', telegramError);
             }

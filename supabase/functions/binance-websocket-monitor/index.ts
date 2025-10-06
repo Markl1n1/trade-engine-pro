@@ -268,6 +268,56 @@ async function checkConditions(
   return allMet;
 }
 
+async function checkBinancePosition(apiKey: string, apiSecret: string, useTestnet: boolean, symbol: string): Promise<boolean> {
+  try {
+    const baseUrl = useTestnet 
+      ? 'https://testnet.binancefuture.com'
+      : 'https://fapi.binance.com';
+    
+    const timestamp = Date.now();
+    const queryString = `symbol=${symbol}&timestamp=${timestamp}`;
+    
+    const encoder = new TextEncoder();
+    const keyData = encoder.encode(apiSecret);
+    const messageData = encoder.encode(queryString);
+    
+    const cryptoKey = await crypto.subtle.importKey(
+      'raw',
+      keyData,
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign']
+    );
+    
+    const signature = await crypto.subtle.sign('HMAC', cryptoKey, messageData);
+    const signatureHex = Array.from(new Uint8Array(signature))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+    
+    const response = await fetch(
+      `${baseUrl}/fapi/v2/positionRisk?${queryString}&signature=${signatureHex}`,
+      {
+        headers: {
+          'X-MBX-APIKEY': apiKey
+        }
+      }
+    );
+    
+    if (!response.ok) {
+      console.error(`[BINANCE] Failed to fetch position: ${response.status}`);
+      return false;
+    }
+    
+    const positions = await response.json();
+    const position = positions.find((p: any) => p.symbol === symbol);
+    
+    return position && parseFloat(position.positionAmt) !== 0;
+  } catch (error) {
+    console.error('[BINANCE] Error checking position:', error);
+    return false;
+  }
+}
+
 async function sendTelegramSignal(botToken: string, chatId: string, signal: any): Promise<void> {
   try {
     const message = `🔔 *${signal.signal_type.toUpperCase()} Signal*\n\n` +
@@ -403,6 +453,22 @@ async function processKlineUpdate(
       const evalBuffer = (entryPriceOnly || exitPriceOnly) && !kline.k.x ? [...buffer, candle] : buffer;
 
       if (!liveState.position_open) {
+        // Check if position already exists on Binance before generating entry signal
+        const userSettingsForCheck = userSettings.get(strategy.user_id);
+        if (userSettingsForCheck?.binance_api_key && userSettingsForCheck?.binance_api_secret) {
+          const positionExists = await checkBinancePosition(
+            userSettingsForCheck.binance_api_key,
+            userSettingsForCheck.binance_api_secret,
+            userSettingsForCheck.use_testnet,
+            symbol
+          );
+          
+          if (positionExists) {
+            console.log(`[WEBSOCKET] ⚠️ Skipping entry signal for ${strategy.name} - position already open on Binance`);
+            continue;
+          }
+        }
+        
         // Check entry conditions
         console.log(`[DEBUG] Checking ENTRY conditions for ${strategy.name} (tick=${!kline.k.x})`);
         if (await checkConditions(strategy.entry_conditions, evalBuffer, supabase, strategy.id, liveState, true)) {
@@ -478,14 +544,26 @@ async function processKlineUpdate(
             // Send Telegram notification
             const settings = userSettings.get(strategy.user_id);
             if (settings?.telegram_enabled && settings.telegram_bot_token && settings.telegram_chat_id) {
-              await sendTelegramSignal(
-                settings.telegram_bot_token,
-                settings.telegram_chat_id,
-                {
-                  ...result.data,
-                  strategy_name: strategy.name
-                }
-              );
+              try {
+                await sendTelegramSignal(
+                  settings.telegram_bot_token,
+                  settings.telegram_chat_id,
+                  {
+                    ...result.data,
+                    strategy_name: strategy.name
+                  }
+                );
+                
+                // Update signal status to 'delivered' after successful send
+                await supabase
+                  .from('strategy_signals')
+                  .update({ status: 'delivered' })
+                  .eq('id', result.data.id);
+                
+                console.log('[WEBSOCKET] Telegram notification sent and signal marked as delivered');
+              } catch (telegramError) {
+                console.error('[WEBSOCKET] Telegram notification failed:', telegramError);
+              }
             }
           } else {
             console.error(`[WEBSOCKET] ❌ Failed to insert signal after retries: ${result.error}`);

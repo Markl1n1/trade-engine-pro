@@ -148,6 +148,12 @@ Deno.serve(async (req) => {
         .single();
 
       if (liveState) {
+        const { data: entryPriceData } = await supabaseClient
+          .from('strategy_live_states')
+          .select('entry_price')
+          .eq('id', liveState.id)
+          .single();
+        
         await supabaseClient
           .from('strategy_live_states')
           .update({
@@ -158,6 +164,50 @@ Deno.serve(async (req) => {
           .eq('id', liveState.id);
 
         console.log(`Updated strategy live state for ${position.symbol}`);
+        
+        // Send "Position Closed" Telegram notification
+        const { data: userSettingsData } = await supabaseClient
+          .from('user_settings')
+          .select('telegram_enabled, telegram_bot_token, telegram_chat_id')
+          .eq('user_id', user.id)
+          .single();
+        
+        const { data: strategyData } = await supabaseClient
+          .from('strategies')
+          .select('name')
+          .eq('id', liveState.strategy_id)
+          .single();
+        
+        if (userSettingsData?.telegram_enabled && userSettingsData.telegram_bot_token && userSettingsData.telegram_chat_id) {
+          try {
+            const pnlPercent = entryPriceData?.entry_price 
+              ? (((parseFloat(position.markPrice) - parseFloat(entryPriceData.entry_price)) / parseFloat(entryPriceData.entry_price)) * 100).toFixed(2)
+              : 'N/A';
+            
+            const message = `🔴 *Position Closed*\n\n` +
+              `📊 Strategy: ${strategyData?.name || 'Unknown'}\n` +
+              `💹 Pair: ${position.symbol}\n` +
+              `⏰ Time: ${new Date().toISOString()}\n` +
+              `📝 Reason: Manual Close\n` +
+              `💰 Entry: ${entryPriceData?.entry_price || 'N/A'}\n` +
+              `💰 Exit: ${position.markPrice}\n` +
+              `📈 P&L: ${pnlPercent}%`;
+            
+            await fetch(`https://api.telegram.org/bot${userSettingsData.telegram_bot_token}/sendMessage`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                chat_id: userSettingsData.telegram_chat_id,
+                text: message,
+                parse_mode: 'Markdown'
+              })
+            });
+            
+            console.log(`Sent position closed notification for ${position.symbol}`);
+          } catch (telegramError) {
+            console.error('Failed to send Telegram notification:', telegramError);
+          }
+        }
       }
     }
 
