@@ -130,6 +130,60 @@ export type Database = {
         }
         Relationships: []
       }
+      position_events: {
+        Row: {
+          created_at: string | null
+          entry_price: number | null
+          event_type: string
+          exit_price: number | null
+          id: string
+          pnl_amount: number | null
+          pnl_percent: number | null
+          position_size: number | null
+          reason: string | null
+          strategy_id: string
+          symbol: string
+          telegram_sent: boolean | null
+          telegram_sent_at: string | null
+          timestamp: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          entry_price?: number | null
+          event_type: string
+          exit_price?: number | null
+          id?: string
+          pnl_amount?: number | null
+          pnl_percent?: number | null
+          position_size?: number | null
+          reason?: string | null
+          strategy_id: string
+          symbol: string
+          telegram_sent?: boolean | null
+          telegram_sent_at?: string | null
+          timestamp?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          entry_price?: number | null
+          event_type?: string
+          exit_price?: number | null
+          id?: string
+          pnl_amount?: number | null
+          pnl_percent?: number | null
+          position_size?: number | null
+          reason?: string | null
+          strategy_id?: string
+          symbol?: string
+          telegram_sent?: boolean | null
+          telegram_sent_at?: string | null
+          timestamp?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       security_audit_log: {
         Row: {
           action: string
@@ -502,6 +556,7 @@ export type Database = {
       }
       strategy_signals: {
         Row: {
+          candle_close_time: number | null
           created_at: string
           delivery_attempts: number | null
           error_message: string | null
@@ -509,6 +564,9 @@ export type Database = {
           last_attempt_at: string | null
           price: number
           reason: string | null
+          signal_delivered_at: string | null
+          signal_generated_at: string | null
+          signal_hash: string | null
           signal_type: string
           status: string | null
           strategy_id: string
@@ -516,6 +574,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          candle_close_time?: number | null
           created_at?: string
           delivery_attempts?: number | null
           error_message?: string | null
@@ -523,6 +582,9 @@ export type Database = {
           last_attempt_at?: string | null
           price: number
           reason?: string | null
+          signal_delivered_at?: string | null
+          signal_generated_at?: string | null
+          signal_hash?: string | null
           signal_type: string
           status?: string | null
           strategy_id: string
@@ -530,6 +592,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          candle_close_time?: number | null
           created_at?: string
           delivery_attempts?: number | null
           error_message?: string | null
@@ -537,6 +600,9 @@ export type Database = {
           last_attempt_at?: string | null
           price?: number
           reason?: string | null
+          signal_delivered_at?: string | null
+          signal_generated_at?: string | null
+          signal_hash?: string | null
           signal_type?: string
           status?: string | null
           strategy_id?: string

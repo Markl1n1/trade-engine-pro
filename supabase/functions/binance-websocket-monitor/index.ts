@@ -1,4 +1,9 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
+import { 
+  insertSignalWithRetry, 
+  sendTelegramSignal as sendTelegramUtil,
+  markSignalAsDelivered 
+} from '../helpers/signal-utils.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -144,14 +149,11 @@ async function evaluateCondition(
       result = currentValue < threshold;
       break;
     case 'crosses_above': {
-      // Check if we have an actual cross
       const crossed = previousValue !== null && previousValue <= threshold && currentValue > threshold;
       
       if (crossed) {
-        // Check if we haven't already signaled this cross
         const lastDirection = liveState?.last_cross_direction;
         if (lastDirection !== 'up') {
-          // Update state to prevent duplicate signals (with optimistic locking)
           const { error } = await supabase
             .from('strategy_live_states')
             .update({ 
@@ -172,7 +174,6 @@ async function evaluateCondition(
           if (debug) console.log(`[DEBUG] ❌ CROSS ABOVE already signaled (last_direction=${lastDirection})`);
         }
       } else if (currentValue <= threshold && liveState?.last_cross_direction === 'up') {
-        // Reset when crossing back down
         await supabase
           .from('strategy_live_states')
           .update({ 
@@ -189,14 +190,11 @@ async function evaluateCondition(
       break;
     }
     case 'crosses_below': {
-      // Check if we have an actual cross
       const crossed = previousValue !== null && previousValue >= threshold && currentValue < threshold;
       
       if (crossed) {
-        // Check if we haven't already signaled this cross
         const lastDirection = liveState?.last_cross_direction;
         if (lastDirection !== 'down') {
-          // Update state to prevent duplicate signals (with optimistic locking)
           const { error } = await supabase
             .from('strategy_live_states')
             .update({ 
@@ -217,7 +215,6 @@ async function evaluateCondition(
           if (debug) console.log(`[DEBUG] ❌ CROSS BELOW already signaled (last_direction=${lastDirection})`);
         }
       } else if (currentValue >= threshold && liveState?.last_cross_direction === 'down') {
-        // Reset when crossing back up
         await supabase
           .from('strategy_live_states')
           .update({ 
@@ -318,32 +315,13 @@ async function checkBinancePosition(apiKey: string, apiSecret: string, useTestne
   }
 }
 
-async function sendTelegramSignal(botToken: string, chatId: string, signal: any): Promise<void> {
-  try {
-    const message = `🔔 *${signal.signal_type.toUpperCase()} Signal*\n\n` +
-      `Strategy: ${signal.strategy_name}\n` +
-      `Symbol: ${signal.symbol}\n` +
-      `Price: $${signal.price}\n` +
-      `Time: ${new Date(signal.created_at).toLocaleString()}\n` +
-      `Reason: ${signal.reason || 'Conditions met'}`;
-
-    const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text: message,
-        parse_mode: 'Markdown'
-      })
-    });
-
-    if (!response.ok) {
-      console.error('[WEBSOCKET] Telegram notification failed:', await response.text());
-    } else {
-      console.log('[WEBSOCKET] Telegram notification sent successfully');
-    }
-  } catch (error) {
-    console.error('[WEBSOCKET] Error sending Telegram notification:', error);
+async function bufferSignal(supabase: any, signal: any): Promise<void> {
+  const { error } = await supabase
+    .from('signal_buffer')
+    .insert(signal);
+    
+  if (error) {
+    console.error('[BUFFER] Failed to buffer signal:', error);
   }
 }
 
@@ -376,18 +354,15 @@ async function processKlineUpdate(
 
   const buffer = candleBuffers.get(bufferKey)!;
   
-  // Update or append candle
   if (buffer.length > 0 && buffer[buffer.length - 1].timestamp === candle.timestamp) {
     buffer[buffer.length - 1] = candle;
   } else if (kline.k.x) {
-    // Only append to historical buffer when candle closes
     buffer.push(candle);
     if (buffer.length > MAX_CANDLES) {
       buffer.shift();
     }
   }
 
-  // Helper to check if conditions only use price-based indicators
   const isPriceOnlyConditions = (conditions: any[]): boolean => {
     if (!conditions || conditions.length === 0) return false;
     const priceIndicators = ['price', 'open', 'high', 'low', 'volume'];
@@ -396,15 +371,12 @@ async function processKlineUpdate(
 
   console.log(`[WEBSOCKET] Processing ${kline.k.x ? 'closed' : 'live'} candle for ${symbol} ${interval} at price ${candle.close}`);
 
-  // Evaluate all strategies for this symbol/timeframe
   for (const strategy of strategies) {
     if (strategy.symbol !== symbol || strategy.timeframe !== interval) continue;
 
-    // Check if this strategy uses only price-based indicators
     const entryPriceOnly = isPriceOnlyConditions(strategy.entry_conditions);
     const exitPriceOnly = isPriceOnlyConditions(strategy.exit_conditions);
     
-    // Skip if not a closed candle and strategy doesn't use price-only conditions
     if (!kline.k.x && !entryPriceOnly && !exitPriceOnly) {
       continue;
     }
@@ -418,7 +390,6 @@ async function processKlineUpdate(
       continue;
     }
 
-    // Fetch latest live state with new fields
     const { data: liveStateData } = await supabase
       .from('strategy_live_states')
       .select('*')
@@ -434,26 +405,22 @@ async function processKlineUpdate(
       last_processed_candle_time: null
     };
 
-    // Skip if this closed candle was already processed (prevents duplicates from cron + WebSocket)
     if (kline.k.x && liveState.last_processed_candle_time && liveState.last_processed_candle_time >= kline.k.t) {
       console.log(`[WEBSOCKET] ⏭️ Skipping ${strategy.name} - candle ${kline.k.t} already processed at ${liveState.last_processed_candle_time}`);
       continue;
     }
 
     try {
-      let signalGenerated = false;
-      let signalType: 'buy' | 'sell' | null = null;
+      let signalType: 'BUY' | 'SELL' | null = null;
       let reason = '';
 
       console.log(`[DEBUG] Evaluating ${strategy.name}: position_open=${liveState.position_open}, cross_dir=${liveState.last_cross_direction}, tick=${!kline.k.x}, priceOnly=${entryPriceOnly}/${exitPriceOnly}`);
       console.log(`[DEBUG] Entry conditions: ${strategy.entry_conditions.length}, Exit conditions: ${strategy.exit_conditions.length}`);
 
-      // For price-only strategies on live ticks, include current candle
-      // For technical indicators, only use closed candles
       const evalBuffer = (entryPriceOnly || exitPriceOnly) && !kline.k.x ? [...buffer, candle] : buffer;
+      const currentPrice = candle.close;
 
       if (!liveState.position_open) {
-        // Check if position already exists on Binance before generating entry signal
         const userSettingsForCheck = userSettings.get(strategy.user_id);
         if (userSettingsForCheck?.binance_api_key && userSettingsForCheck?.binance_api_secret) {
           const positionExists = await checkBinancePosition(
@@ -469,289 +436,171 @@ async function processKlineUpdate(
           }
         }
         
-        // Check entry conditions
         console.log(`[DEBUG] Checking ENTRY conditions for ${strategy.name} (tick=${!kline.k.x})`);
         if (await checkConditions(strategy.entry_conditions, evalBuffer, supabase, strategy.id, liveState, true)) {
-          signalType = 'buy';
+          signalType = 'BUY';
           reason = 'Entry conditions met';
           console.log(`[DEBUG] ✅ ENTRY SIGNAL GENERATED for ${strategy.name}`);
           
-          // Update live state
           await supabase
             .from('strategy_live_states')
             .upsert({
               strategy_id: strategy.id,
               position_open: true,
-              entry_price: candle.close,
+              entry_price: currentPrice,
               entry_time: new Date().toISOString(),
               updated_at: new Date().toISOString()
             }, { onConflict: 'strategy_id' });
-
-          signalGenerated = true;
         } else {
           console.log(`[DEBUG] ❌ Entry conditions NOT met for ${strategy.name}`);
         }
       } else {
-        // Check exit conditions
         console.log(`[DEBUG] Checking EXIT conditions for ${strategy.name} (tick=${!kline.k.x})`);
         if (await checkConditions(strategy.exit_conditions, evalBuffer, supabase, strategy.id, liveState, true)) {
-          signalType = 'sell';
+          signalType = 'SELL';
           reason = 'Exit conditions met';
           console.log(`[DEBUG] ✅ EXIT SIGNAL GENERATED for ${strategy.name}`);
           
-          // Update live state
           await supabase
             .from('strategy_live_states')
-            .upsert({
-              strategy_id: strategy.id,
+            .update({
               position_open: false,
               entry_price: null,
               entry_time: null,
               updated_at: new Date().toISOString()
-            }, { onConflict: 'strategy_id' });
-
-          signalGenerated = true;
+            })
+            .eq('strategy_id', strategy.id);
         } else {
           console.log(`[DEBUG] ❌ Exit conditions NOT met for ${strategy.name}`);
         }
       }
 
-      if (signalGenerated && signalType) {
-        console.log(`[WEBSOCKET] 🚨 SIGNAL DETECTED: ${signalType.toUpperCase()} for ${strategy.name} at ${candle.close} [instant=${!kline.k.x}]`);
-
-        const signalData = {
-          strategy_id: strategy.id,
+      if (signalType) {
+        const signalReason = reason;
+        
+        // Insert signal with deduplication hash and latency tracking
+        const insertResult = await insertSignalWithRetry(supabase, {
           user_id: strategy.user_id,
-          signal_type: signalType.toUpperCase(),
-          symbol: symbol,
-          price: candle.close.toString(),
-          reason: reason,
-          created_at: new Date().toISOString()
-        };
+          strategy_id: strategy.id,
+          signal_type: signalType,
+          symbol: strategy.symbol,
+          price: currentPrice,
+          reason: signalReason,
+          candle_close_time: candle.timestamp,
+        });
 
-        // Check if WebSocket is connected
-        if (binanceWs?.readyState !== WebSocket.OPEN) {
-          console.log('[WEBSOCKET] ⚠️ Disconnected - buffering signal to database');
-          await bufferSignal(supabase, signalData, kline.k.t);
-        } else {
-          // Insert signal with retry logic
-          const result = await insertSignalWithRetry(supabase, signalData);
-          
-          if (result.success) {
-            lastSignalTime.set(strategyKey, now);
-            console.log('[WEBSOCKET] Signal saved to database');
+        if (!insertResult.success) {
+          console.error(`[SIGNAL] Failed to insert ${signalType} signal after retries`);
+          await bufferSignal(supabase, {
+            user_id: strategy.user_id,
+            strategy_id: strategy.id,
+            signal_type: signalType,
+            symbol: strategy.symbol,
+            price: currentPrice,
+            reason: signalReason,
+            candle_timestamp: candle.timestamp,
+          });
+          continue;
+        }
 
-            // Send Telegram notification
-            const settings = userSettings.get(strategy.user_id);
-            if (settings?.telegram_enabled && settings.telegram_bot_token && settings.telegram_chat_id) {
-              try {
-                await sendTelegramSignal(
-                  settings.telegram_bot_token,
-                  settings.telegram_chat_id,
-                  {
-                    ...result.data,
-                    strategy_name: strategy.name
-                  }
-                );
-                
-                // Update signal status to 'delivered' after successful send
-                await supabase
-                  .from('strategy_signals')
-                  .update({ status: 'delivered' })
-                  .eq('id', result.data.id);
-                
-                console.log('[WEBSOCKET] Telegram notification sent and signal marked as delivered');
-              } catch (telegramError) {
-                console.error('[WEBSOCKET] Telegram notification failed:', telegramError);
+        if (!insertResult.data) {
+          console.log(`[SIGNAL] Skipped duplicate ${signalType} signal`);
+          continue;
+        }
+
+        lastSignalTime.set(strategyKey, now);
+
+        if (kline.k.x) {
+          await supabase
+            .from('strategy_live_states')
+            .update({ 
+              last_processed_candle_time: kline.k.t,
+              updated_at: new Date().toISOString()
+            })
+            .eq('strategy_id', strategy.id);
+        }
+
+        const userSettingsData = userSettings.get(strategy.user_id);
+        if (userSettingsData?.telegram_enabled && userSettingsData.telegram_bot_token && userSettingsData.telegram_chat_id) {
+          try {
+            const telegramSent = await sendTelegramUtil(
+              userSettingsData.telegram_bot_token,
+              userSettingsData.telegram_chat_id,
+              {
+                strategy_name: strategy.name,
+                signal_type: signalType,
+                symbol: strategy.symbol,
+                price: currentPrice,
+                reason: signalReason,
               }
+            );
+            
+            if (telegramSent) {
+              console.log(`[TELEGRAM] ${signalType} signal sent for ${strategy.name}`);
+              await markSignalAsDelivered(supabase, insertResult.data.id);
+            } else {
+              console.error('[TELEGRAM] Failed to send signal');
             }
-          } else {
-            console.error(`[WEBSOCKET] ❌ Failed to insert signal after retries: ${result.error}`);
-            // Buffer signal as fallback
-            console.log('[WEBSOCKET] Buffering failed signal to database');
-            await bufferSignal(supabase, signalData, kline.k.t);
+          } catch (error) {
+            console.error('[TELEGRAM] Error sending signal:', error);
           }
         }
       }
-
-      // Update last_processed_candle_time for closed candles (prevents duplicate processing)
-      if (kline.k.x) {
-        const { error: updateError } = await supabase
-          .from('strategy_live_states')
-          .update({ 
-            last_processed_candle_time: kline.k.t,
-            updated_at: new Date().toISOString()
-          })
-          .eq('strategy_id', strategy.id);
-
-        if (updateError) {
-          console.error(`[WEBSOCKET] Failed to update last_processed_candle_time:`, updateError);
-        } else {
-          console.log(`[WEBSOCKET] ✅ Updated last_processed_candle_time to ${kline.k.t} for ${strategy.name}`);
-        }
-      }
     } catch (error) {
-      console.error(`[WEBSOCKET] Error processing strategy ${strategy.name}:`, error);
+      console.error(`[WEBSOCKET] Error processing ${strategy.name}:`, error);
     }
   }
 }
 
-async function loadActiveStrategies(supabase: any): Promise<{ strategies: ActiveStrategy[], userSettings: Map<string, any> }> {
-  const { data: strategies, error: strategiesError } = await supabase
+async function loadActiveStrategies(supabase: any): Promise<ActiveStrategy[]> {
+  const { data, error } = await supabase
     .from('strategies')
-    .select('*, strategy_conditions(*), strategy_live_states(*)')
+    .select(`
+      *,
+      strategy_conditions (*)
+    `)
     .eq('status', 'active');
 
-  if (strategiesError) {
-    console.error('[WEBSOCKET] Error loading strategies:', strategiesError);
-    return { strategies: [], userSettings: new Map() };
-  }
-
-  const userIds = [...new Set(strategies.map((s: any) => s.user_id))];
-  const { data: settings } = await supabase
-    .from('user_settings')
-    .select('*')
-    .in('user_id', userIds);
-
-  const userSettings = new Map();
-  settings?.forEach((s: any) => userSettings.set(s.user_id, s));
-
-  const activeStrategies: ActiveStrategy[] = strategies.map((s: any) => ({
-    id: s.id,
-    user_id: s.user_id,
-    name: s.name,
-    symbol: s.symbol,
-    timeframe: s.timeframe,
-    entry_conditions: s.strategy_conditions?.filter((c: any) => c.order_type === 'buy') || [],
-    exit_conditions: s.strategy_conditions?.filter((c: any) => c.order_type === 'sell') || [],
-    liveState: s.strategy_live_states?.[0] || { position_open: false, entry_price: null, entry_time: null }
-  }));
-
-  // Log loaded strategies for debugging
-  console.log('[WEBSOCKET] Strategy details:', activeStrategies.map(s => ({
-    name: s.name,
-    symbol: s.symbol,
-    timeframe: s.timeframe,
-    entryConditions: s.entry_conditions.length,
-    exitConditions: s.exit_conditions.length
-  })));
-
-  console.log(`[WEBSOCKET] Loaded ${activeStrategies.length} active strategies`);
-  return { strategies: activeStrategies, userSettings };
-}
-
-// Initialize candle buffer from database (warm-up for accurate indicator calculations)
-async function initializeCandleBuffer(
-  supabase: any,
-  symbol: string,
-  timeframe: string
-): Promise<Candle[]> {
-  try {
-    console.log(`[WEBSOCKET] Loading initial candle buffer for ${symbol} ${timeframe}...`);
-    
-    const { data, error } = await supabase
-      .from('market_data')
-      .select('*')
-      .eq('symbol', symbol)
-      .eq('timeframe', timeframe)
-      .order('open_time', { ascending: false })
-      .limit(MAX_CANDLES);
-    
-    if (error) {
-      console.error(`[WEBSOCKET] Error loading initial candles for ${symbol} ${timeframe}:`, error);
-      return [];
-    }
-    
-    if (!data || data.length === 0) {
-      console.log(`[WEBSOCKET] No historical data found for ${symbol} ${timeframe}, starting fresh`);
-      return [];
-    }
-    
-    // Reverse to get chronological order (oldest first)
-    const candles = data.reverse().map((d: any) => ({
-      open: parseFloat(d.open),
-      high: parseFloat(d.high),
-      low: parseFloat(d.low),
-      close: parseFloat(d.close),
-      volume: parseFloat(d.volume),
-      timestamp: d.open_time
-    }));
-    
-    console.log(`[WEBSOCKET] ✅ Loaded ${candles.length} historical candles for ${symbol} ${timeframe}`);
-    return candles;
-  } catch (error) {
-    console.error(`[WEBSOCKET] Exception loading initial candles:`, error);
+  if (error) {
+    console.error('[WEBSOCKET] Error loading strategies:', error);
     return [];
   }
+
+  return data.map((strategy: any) => ({
+    id: strategy.id,
+    user_id: strategy.user_id,
+    name: strategy.name,
+    symbol: strategy.symbol,
+    timeframe: strategy.timeframe,
+    entry_conditions: strategy.strategy_conditions.filter((c: any) => c.order_type === 'entry'),
+    exit_conditions: strategy.strategy_conditions.filter((c: any) => c.order_type === 'exit'),
+  }));
 }
 
-// Buffer signal during disconnection (persists to database)
-async function bufferSignal(
-  supabase: any,
-  signalData: any,
-  candleTimestamp: number
-): Promise<void> {
-  try {
-    const { error } = await supabase
-      .from('signal_buffer')
-      .insert({
-        strategy_id: signalData.strategy_id,
-        user_id: signalData.user_id,
-        signal_type: signalData.signal_type,
-        symbol: signalData.symbol,
-        price: signalData.price,
-        reason: signalData.reason,
-        candle_timestamp: candleTimestamp,
-        buffered_at: new Date().toISOString(),
-        processed: false
-      });
-    
-    if (error) {
-      console.error('[BUFFER] Failed to buffer signal:', error);
-    } else {
-      console.log(`[BUFFER] ✅ Signal buffered for ${signalData.symbol} ${signalData.signal_type}`);
-    }
-  } catch (error) {
-    console.error('[BUFFER] Exception buffering signal:', error);
-  }
-}
-
-// Insert signal with retry (exponential backoff)
-async function insertSignalWithRetry(
-  supabase: any,
-  signalData: any,
-  maxRetries = 3
-): Promise<{ success: boolean; data?: any; error?: string }> {
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      const { data, error } = await supabase
-        .from('strategy_signals')
-        .insert(signalData)
-        .select()
-        .single();
-      
-      if (!error) {
-        console.log(`[SIGNAL] ✅ Signal inserted successfully (attempt ${attempt + 1})`);
-        return { success: true, data };
-      }
-      
-      // Retry with exponential backoff
-      if (attempt < maxRetries - 1) {
-        const delay = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
-        console.log(`[SIGNAL] Retry ${attempt + 1} failed, waiting ${delay}ms before retry...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
-    } catch (e) {
-      const errorMsg = e instanceof Error ? e.message : 'Unknown error';
-      console.error(`[SIGNAL] Attempt ${attempt + 1} exception:`, errorMsg);
-      
-      if (attempt === maxRetries - 1) {
-        return { success: false, error: errorMsg };
-      }
-    }
-  }
+async function initializeCandleBuffer(supabase: any, symbol: string, timeframe: string): Promise<void> {
+  const bufferKey = `${symbol}_${timeframe}`;
   
-  return { success: false, error: 'Max retries exceeded' };
+  const { data: dbCandles } = await supabase
+    .from('market_data')
+    .select('*')
+    .eq('symbol', symbol)
+    .eq('timeframe', timeframe)
+    .order('close_time', { ascending: false })
+    .limit(MAX_CANDLES);
+
+  if (dbCandles && dbCandles.length > 0) {
+    const candles = dbCandles.reverse().map((row: any) => ({
+      timestamp: row.open_time,
+      open: parseFloat(row.open),
+      high: parseFloat(row.high),
+      low: parseFloat(row.low),
+      close: parseFloat(row.close),
+      volume: parseFloat(row.volume),
+    }));
+    
+    candleBuffers.set(bufferKey, candles);
+    console.log(`[WEBSOCKET] Initialized buffer for ${bufferKey} with ${candles.length} candles`);
+  }
 }
 
 Deno.serve(async (req) => {
@@ -759,66 +608,66 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  const upgradeHeader = req.headers.get('upgrade') || '';
-  if (upgradeHeader.toLowerCase() !== 'websocket') {
-    return new Response('Expected WebSocket connection', { status: 400 });
+  const upgradeHeader = req.headers.get('Upgrade');
+  if (upgradeHeader !== 'websocket') {
+    return new Response('Expected WebSocket upgrade', { status: 426 });
   }
 
-  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-  const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  const supabase = createClient(supabaseUrl, supabaseKey);
-
-  console.log('[WEBSOCKET] Client connecting...');
-
   const { socket, response } = Deno.upgradeWebSocket(req);
+  
   let binanceWs: WebSocket | null = null;
-  let reconnectTimeout: number | null = null;
   let heartbeatInterval: number | null = null;
-  let reconnectAttempts = 0;
-  const MAX_RECONNECT_DELAY = 60000; // 1 minute max delay
+  let reconnectTimeout: number | null = null;
+  let isConnecting = false;
 
-  const connect = async () => {
-    try {
-      console.log('[WEBSOCKET] Loading active strategies...');
-      const { strategies, userSettings } = await loadActiveStrategies(supabase);
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+  );
 
-      if (strategies.length === 0) {
-        console.log('[WEBSOCKET] No active strategies found');
-        socket.send(JSON.stringify({ type: 'status', message: 'No active strategies to monitor' }));
-        return;
-      }
+  socket.onopen = async () => {
+    console.log('[MONITOR] WebSocket connected');
+    
+    const strategies = await loadActiveStrategies(supabase);
+    console.log(`[MONITOR] Loaded ${strategies.length} active strategies`);
 
-      // Build stream subscriptions
-      const streams = [...new Set(
-        strategies.map(s => `${s.symbol.toLowerCase()}@kline_${s.timeframe}`)
-      )];
-
-      console.log(`[WEBSOCKET] Subscribing to ${streams.length} streams:`, streams);
-
-      // Initialize candle buffers from database before connecting to WebSocket
-      console.log('[WEBSOCKET] Initializing candle buffers from database...');
-      const uniquePairs = [...new Set(strategies.map(s => `${s.symbol}_${s.timeframe}`))];
+    const userSettings = new Map();
+    const uniqueUsers = [...new Set(strategies.map(s => s.user_id))];
+    
+    for (const userId of uniqueUsers) {
+      const { data } = await supabase
+        .from('user_settings')
+        .select('*')
+        .eq('user_id', userId)
+        .single();
       
-      for (const pair of uniquePairs) {
-        const [symbol, timeframe] = pair.split('_');
-        const bufferKey = `${symbol}_${timeframe}`;
-        const initialCandles = await initializeCandleBuffer(supabase, symbol, timeframe);
-        candleBuffers.set(bufferKey, initialCandles);
-        console.log(`[WEBSOCKET] Buffer initialized: ${bufferKey} with ${initialCandles.length} candles`);
+      if (data) {
+        userSettings.set(userId, data);
       }
-      
-      console.log('[WEBSOCKET] ✅ All candle buffers initialized, connecting to Binance...');
+    }
 
-      const wsUrl = `wss://stream.binance.com:9443/stream?streams=${streams.join('/')}`;
-      binanceWs = new WebSocket(wsUrl);
+    const uniqueStreams = new Set(strategies.map(s => `${s.symbol.toLowerCase()}@kline_${s.timeframe}`));
+    
+    for (const stream of uniqueStreams) {
+      const [symbol, klineData] = stream.split('@');
+      const timeframe = klineData.split('_')[1];
+      await initializeCandleBuffer(supabase, symbol.toUpperCase(), timeframe);
+    }
+
+    const connectBinance = () => {
+      if (isConnecting || binanceWs?.readyState === WebSocket.OPEN) return;
+      
+      isConnecting = true;
+      const streams = Array.from(uniqueStreams).join('/');
+      binanceWs = new WebSocket(`wss://fstream.binance.com/stream?streams=${streams}`);
 
       binanceWs.onopen = () => {
-        console.log('[WEBSOCKET] ✅ Connected to Binance WebSocket');
-        reconnectAttempts = 0; // Reset counter on successful connection
+        console.log('[BINANCE-WS] Connected to Binance');
+        isConnecting = false;
         
-        const connectionInfo = { 
-          type: 'connected', 
-          streams: streams.length,
+        socket.send(JSON.stringify({
+          type: 'connected',
+          streams: uniqueStreams.size,
           strategies: strategies.length,
           strategyDetails: strategies.map(s => ({
             name: s.name,
@@ -828,13 +677,11 @@ Deno.serve(async (req) => {
             hasExit: s.exit_conditions.length > 0
           })),
           timestamp: Date.now()
-        };
-        socket.send(JSON.stringify(connectionInfo));
-        console.log('[WEBSOCKET] Connection info sent:', connectionInfo);
+        }));
 
-        // Start heartbeat
+        if (heartbeatInterval) clearInterval(heartbeatInterval);
         heartbeatInterval = setInterval(() => {
-          if (binanceWs?.readyState === WebSocket.OPEN) {
+          if (socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify({ type: 'heartbeat', timestamp: Date.now() }));
           }
         }, 30000);
@@ -847,62 +694,33 @@ Deno.serve(async (req) => {
             await processKlineUpdate(supabase, data.data, strategies, userSettings, binanceWs);
           }
         } catch (error) {
-          console.error('[WEBSOCKET] Error processing message:', error);
+          console.error('[BINANCE-WS] Error processing message:', error);
         }
       };
 
       binanceWs.onerror = (error) => {
-        console.error('[WEBSOCKET] Binance WebSocket error:', error);
-        socket.send(JSON.stringify({ type: 'error', message: 'Connection error' }));
+        console.error('[BINANCE-WS] Error:', error);
+        isConnecting = false;
       };
 
       binanceWs.onclose = () => {
-        reconnectAttempts++;
-        const delay = Math.min(
-          1000 * Math.pow(2, reconnectAttempts), 
-          MAX_RECONNECT_DELAY
-        );
-        
-        console.log(`[WEBSOCKET] Binance WebSocket closed. Reconnect attempt ${reconnectAttempts} in ${delay}ms...`);
-        socket.send(JSON.stringify({ 
-          type: 'disconnected', 
-          timestamp: Date.now(),
-          reconnectAttempt: reconnectAttempts,
-          nextRetryIn: delay
-        }));
-        
-        if (heartbeatInterval) {
-          clearInterval(heartbeatInterval);
-          heartbeatInterval = null;
-        }
-
-        // Reconnect with exponential backoff
-        reconnectTimeout = setTimeout(() => connect(), delay);
+        console.log('[BINANCE-WS] Disconnected, reconnecting in 5s...');
+        isConnecting = false;
+        if (reconnectTimeout) clearTimeout(reconnectTimeout);
+        reconnectTimeout = setTimeout(connectBinance, 5000);
       };
-    } catch (error) {
-      console.error('[WEBSOCKET] Connection error:', error);
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      socket.send(JSON.stringify({ type: 'error', message }));
-    }
-  };
+    };
 
-  socket.onopen = () => {
-    console.log('[WEBSOCKET] Client connected');
-    connect();
+    connectBinance();
   };
 
   socket.onclose = () => {
-    console.log('[WEBSOCKET] Client disconnected');
-    if (binanceWs) {
-      binanceWs.close();
-    }
-    if (reconnectTimeout) {
-      clearTimeout(reconnectTimeout);
-    }
-    if (heartbeatInterval) {
-      clearInterval(heartbeatInterval);
-    }
+    console.log('[MONITOR] Client disconnected');
+    if (binanceWs) binanceWs.close();
+    if (heartbeatInterval) clearInterval(heartbeatInterval);
+    if (reconnectTimeout) clearTimeout(reconnectTimeout);
   };
 
   return response;
 });
+

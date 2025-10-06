@@ -1,4 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
+import { getExponentialBackoffDelay } from '../helpers/signal-utils.ts';
+import { getExponentialBackoffDelay } from '../helpers/signal-utils.ts';
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -109,6 +111,17 @@ Deno.serve(async (req) => {
         
         expiredCount++;
         continue;
+      }
+
+      // Exponential backoff - check if enough time has passed
+      if (signal.last_attempt_at && signal.delivery_attempts > 0) {
+        const lastAttempt = new Date(signal.last_attempt_at).getTime();
+        const requiredDelay = getExponentialBackoffDelay(signal.delivery_attempts);
+        const timeSinceLastAttempt = Date.now() - lastAttempt;
+
+        if (timeSinceLastAttempt < requiredDelay) {
+          continue;
+        }
       }
 
       // Get strategy and user settings

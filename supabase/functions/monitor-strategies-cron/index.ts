@@ -1,5 +1,10 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 import * as indicators from "../indicators/all-indicators.ts";
+import { 
+  insertSignalWithRetry, 
+  sendTelegramSignal as sendTelegramUtil,
+  markSignalAsDelivered 
+} from '../helpers/signal-utils.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -53,7 +58,6 @@ async function fetchMarketData(symbol: string, timeframe: string, limit = 100, m
         throw new Error(`Failed to fetch market data for ${symbol} after ${maxRetries} attempts`);
       }
       
-      // Exponential backoff: 1s, 2s, 4s
       const delay = Math.pow(2, attempt) * 1000;
       console.log(`[CRON] Retrying in ${delay}ms...`);
       await new Promise(resolve => setTimeout(resolve, delay));
@@ -63,7 +67,6 @@ async function fetchMarketData(symbol: string, timeframe: string, limit = 100, m
   throw new Error(`Failed to fetch market data for ${symbol}`);
 }
 
-// Load historical candles from database
 async function loadCandlesFromDatabase(
   supabase: any,
   symbol: string,
@@ -88,7 +91,6 @@ async function loadCandlesFromDatabase(
     return [];
   }
 
-  // Convert to Candle format and reverse to ascending order
   return data.reverse().map((row: any) => ({
     timestamp: row.open_time,
     open: parseFloat(row.open),
@@ -99,16 +101,12 @@ async function loadCandlesFromDatabase(
   }));
 }
 
-// Merge database candles with fresh API candles
 async function getCandlesWithHistory(
   supabase: any,
   symbol: string,
   timeframe: string
 ): Promise<Candle[]> {
-  // Try to load from database first
   const dbCandles = await loadCandlesFromDatabase(supabase, symbol, timeframe, 500);
-  
-  // Fetch fresh candles from API (last 100)
   const apiCandles = await fetchMarketData(symbol, timeframe, 100);
   
   if (dbCandles.length === 0) {
@@ -116,7 +114,6 @@ async function getCandlesWithHistory(
     return apiCandles;
   }
   
-  // Merge: keep DB candles that are older than API candles, then add API candles
   const oldestApiTime = apiCandles[0].timestamp;
   const olderDbCandles = dbCandles.filter(c => c.timestamp < oldestApiTime);
   
@@ -126,7 +123,6 @@ async function getCandlesWithHistory(
   return merged;
 }
 
-// Calculate technical indicators - comprehensive version supporting all 50+ indicators
 function calculateIndicator(type: string, candles: Candle[], params: any): number | null {
   if (!candles || candles.length === 0) return null;
 
@@ -158,82 +154,6 @@ function calculateIndicator(type: string, candles: Candle[], params: any): numbe
         const bbLower = indicators.calculateBollingerBands(closes, params.period_1 || 20, params.deviation || 2);
         return bbLower.lower[bbLower.lower.length - 1];
       
-      case 'atr':
-        const atr = indicators.calculateATR(candles, params.period_1 || 14);
-        return atr[atr.length - 1];
-      
-      case 'psar':
-        const psar = indicators.calculateParabolicSAR(candles, params.acceleration || 0.02, 0.2);
-        return psar[psar.length - 1];
-      
-      case 'supertrend':
-        const st = indicators.calculateSuperTrend(candles, params.period_1 || 10, params.multiplier || 3);
-        return st.trend[st.trend.length - 1];
-      
-      case 'kdj_j':
-        const kdj = indicators.calculateKDJ(candles, params.period_1 || 9, params.smoothing || 3, 3);
-        return kdj.j[kdj.j.length - 1];
-      
-      case 'stochastic':
-        const stoch = indicators.calculateStochastic(candles, params.period_1 || 14, 3, 3);
-        return stoch.k[stoch.k.length - 1];
-      
-      case 'adx':
-        const adx = indicators.calculateADX(candles, params.period_1 || 14);
-        return adx.adx[adx.adx.length - 1];
-      
-      case 'cmf':
-        const cmf = indicators.calculateCMF(candles, params.period_1 || 20);
-        return cmf[cmf.length - 1];
-      
-      case 'vwap':
-        const vwap = indicators.calculateVWAP(candles);
-        return vwap[vwap.length - 1];
-      
-      case 'anchored_vwap':
-        const avwap = indicators.calculateAnchoredVWAP(candles, params.anchor || 0);
-        return avwap[avwap.length - 1];
-      
-      case 'obv':
-        const obv = indicators.calculateOBV(candles);
-        return obv[obv.length - 1];
-      
-      case 'cci':
-        const cci = indicators.calculateCCI(candles, params.period_1 || 20);
-        return cci[cci.length - 1];
-      
-      case 'wpr':
-        const wpr = indicators.calculateWPR(candles, params.period_1 || 14);
-        return wpr[wpr.length - 1];
-      
-      case 'mfi':
-        const mfi = indicators.calculateMFI(candles, params.period_1 || 14);
-        return mfi[mfi.length - 1];
-      
-      case 'bb_width':
-        const bbWidth = indicators.calculateBollingerBands(closes, params.period_1 || 20, params.deviation || 2);
-        const width = indicators.calculateBollingerWidth(bbWidth.upper, bbWidth.lower);
-        return width[width.length - 1];
-      
-      case 'percent_b':
-        const bbPercent = indicators.calculateBollingerBands(closes, params.period_1 || 20, params.deviation || 2);
-        const percentB = indicators.calculatePercentB(closes, bbPercent.upper, bbPercent.lower);
-        return percentB[percentB.length - 1];
-      
-      case 'td_sequential':
-        const td = indicators.calculateTDSequential(candles);
-        return td.setup[td.setup.length - 1];
-      
-      case 'ema_crossover':
-        const shortEMA = indicators.calculateEMA(closes, params.period_1 || 10);
-        const longEMA = indicators.calculateEMA(closes, params.period_2 || 21);
-        const crossover = indicators.detectEMACrossover(shortEMA, longEMA);
-        return crossover[crossover.length - 1];
-      
-      case 'ichimoku_tenkan':
-        const ichimoku = indicators.calculateIchimoku(candles, 9, 26, 52);
-        return ichimoku.tenkan[ichimoku.tenkan.length - 1];
-      
       case 'price':
         return closes[closes.length - 1];
       
@@ -259,7 +179,6 @@ function calculateIndicator(type: string, candles: Candle[], params: any): numbe
   }
 }
 
-// Evaluate a single condition
 function evaluateCondition(condition: any, candles: Candle[]): boolean {
   const value1 = calculateIndicator(condition.indicator_type, candles, condition);
   
@@ -277,7 +196,6 @@ function evaluateCondition(condition: any, candles: Candle[]): boolean {
     value2 = condition.value;
   }
   
-  // Normalize operator to lowercase for case-insensitive matching
   switch (condition.operator.toLowerCase()) {
     case 'greater_than':
       return value1 > value2;
@@ -311,7 +229,6 @@ function evaluateCondition(condition: any, candles: Candle[]): boolean {
   }
 }
 
-// Check all conditions for a strategy
 function checkConditions(conditions: any[], candles: Candle[]): boolean {
   if (!conditions || conditions.length === 0) return false;
   
@@ -368,47 +285,18 @@ async function checkBinancePosition(apiKey: string, apiSecret: string, useTestne
   }
 }
 
-// Send Telegram notification
-async function sendTelegramSignal(botToken: string, chatId: string, signal: any): Promise<void> {
-  const message = `
-🤖 *Trading Signal*
-
-Strategy: ${signal.strategy_name}
-Symbol: ${signal.symbol}
-Signal: ${signal.signal_type.toUpperCase()}
-Price: ${signal.price}
-${signal.reason ? `\nReason: ${signal.reason}` : ''}
-
-Time: ${new Date().toISOString()}
-  `.trim();
-
-  const telegramUrl = `https://api.telegram.org/bot${botToken}/sendMessage`;
-  
-  await fetch(telegramUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text: message,
-      parse_mode: 'Markdown'
-    })
-  });
-}
-
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    // Initialize Supabase client with service role for global access
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     console.log('[CRON] Starting global strategy monitoring...');
 
-    // Check if monitoring is enabled
     const { data: monitoringSetting } = await supabase
       .from('system_settings')
       .select('setting_value')
@@ -423,15 +311,11 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Update last monitoring run timestamp
     await supabase
       .from('system_settings')
       .update({ setting_value: new Date().toISOString() })
       .eq('setting_key', 'last_monitoring_run');
 
-    console.log('[CRON] Starting resource-optimized monitoring...');
-
-    // Fetch ALL active strategies from ALL users
     const { data: strategies, error: strategiesError } = await supabase
       .from('strategies')
       .select(`
@@ -459,19 +343,16 @@ Deno.serve(async (req) => {
 
     const allSignals: any[] = [];
 
-    // Process each strategy
     for (const strategy of strategies) {
       try {
         console.log(`[CRON] Processing strategy: ${strategy.name} (User: ${strategy.user_id})`);
 
-        // Fetch user's settings for this strategy
         const { data: userSettings } = await supabase
           .from('user_settings')
-          .select('telegram_enabled, telegram_bot_token, telegram_chat_id')
+          .select('telegram_enabled, telegram_bot_token, telegram_chat_id, binance_api_key, binance_api_secret, use_testnet')
           .eq('user_id', strategy.user_id)
           .single();
 
-        // Get or create strategy live state
         let { data: liveState } = await supabase
           .from('strategy_live_states')
           .select('*')
@@ -492,73 +373,21 @@ Deno.serve(async (req) => {
           liveState = newState;
         }
 
-        // Fetch market data with history from database + fresh API data
         const candles = await getCandlesWithHistory(supabase, strategy.symbol, strategy.timeframe);
         
         if (candles.length === 0) {
           console.log(`[CRON] ⚠️ No candle data available for ${strategy.name}`);
           continue;
         }
-        
+
+        const entryConditions = strategy.strategy_conditions.filter((c: any) => c.order_type === 'entry');
+        const exitConditions = strategy.strategy_conditions.filter((c: any) => c.order_type === 'exit');
         const currentPrice = candles[candles.length - 1].close;
-        const lastCandleTime = candles[candles.length - 1].timestamp;
-        const lastCandleTimeISO = new Date(lastCandleTime).toISOString();
 
-        console.log(`[CRON] ${strategy.name}: Current price ${currentPrice}, Last candle ${lastCandleTimeISO}, Total candles: ${candles.length}`);
+        let signalType: string | null = null;
+        let signalReason = '';
 
-        // Skip if this candle was already processed (prevents duplicates from WebSocket)
-        if (liveState?.last_processed_candle_time && liveState.last_processed_candle_time >= lastCandleTime) {
-          console.log(`[CRON] ⏭️ Skipping ${strategy.name} - candle ${lastCandleTime} already processed at ${liveState.last_processed_candle_time}`);
-          continue;
-        }
-
-        // Get entry and exit conditions (use 'buy' and 'sell' not 'entry' and 'exit')
-        const entryConditions = strategy.strategy_conditions?.filter(
-          (c: any) => c.order_type === 'buy'
-        ) || [];
-        const exitConditions = strategy.strategy_conditions?.filter(
-          (c: any) => c.order_type === 'sell'
-        ) || [];
-
-        console.log(`[CRON] ${strategy.name}: Entry conditions=${entryConditions.length}, Exit conditions=${exitConditions.length}`);
-
-        let signal = null;
-
-        // Check for exit conditions if position is open
-        if (liveState?.position_open && exitConditions.length > 0) {
-          console.log(`[CRON] ${strategy.name}: Checking EXIT conditions (position open)`);
-          const exitMet = checkConditions(exitConditions, candles);
-          console.log(`[CRON] ${strategy.name}: EXIT conditions result=${exitMet}`);
-          
-          if (exitMet) {
-            signal = {
-              signal_type: 'SELL',
-              price: currentPrice,
-              reason: 'Exit conditions met',
-              strategy_id: strategy.id,
-              user_id: strategy.user_id,
-              symbol: strategy.symbol,
-              strategy_name: strategy.name
-            };
-
-            // Update live state
-            await supabase
-              .from('strategy_live_states')
-              .update({
-                position_open: false,
-                entry_price: null,
-                entry_time: null
-              })
-              .eq('id', liveState.id);
-
-            console.log(`[CRON] EXIT signal generated for ${strategy.name}`);
-          }
-        }
-
-        // Check for entry conditions if no position is open
-        if (!liveState?.position_open && entryConditions.length > 0) {
-          console.log(`[CRON] ${strategy.name}: Checking ENTRY conditions (no position)`);
-          
+        if (!liveState.position_open) {
           // Check if position already exists on Binance before generating entry signal
           if (userSettings?.binance_api_key && userSettings?.binance_api_secret) {
             const positionExists = await checkBinancePosition(
@@ -573,116 +402,106 @@ Deno.serve(async (req) => {
               continue;
             }
           }
-          
-          const entryMet = checkConditions(entryConditions, candles);
-          console.log(`[CRON] ${strategy.name}: ENTRY conditions result=${entryMet}`);
-          
-          if (entryMet) {
-            signal = {
-              signal_type: 'BUY',
-              price: currentPrice,
-              reason: 'Entry conditions met',
-              strategy_id: strategy.id,
-              user_id: strategy.user_id,
-              symbol: strategy.symbol,
-              strategy_name: strategy.name
-            };
 
-            // Update live state
+          if (checkConditions(entryConditions, candles)) {
+            signalType = 'BUY';
+            signalReason = 'Entry conditions met';
+            
             await supabase
               .from('strategy_live_states')
               .update({
                 position_open: true,
                 entry_price: currentPrice,
-                entry_time: new Date().toISOString()
+                entry_time: new Date().toISOString(),
+                updated_at: new Date().toISOString()
               })
-              .eq('id', liveState.id);
-
-            console.log(`[CRON] ENTRY signal generated for ${strategy.name}`);
+              .eq('strategy_id', strategy.id);
+          }
+        } else {
+          if (checkConditions(exitConditions, candles)) {
+            signalType = 'SELL';
+            signalReason = 'Exit conditions met';
+            
+            await supabase
+              .from('strategy_live_states')
+              .update({
+                position_open: false,
+                entry_price: null,
+                entry_time: null,
+                updated_at: new Date().toISOString()
+              })
+              .eq('strategy_id', strategy.id);
           }
         }
 
-        // If signal was generated, save it and send notification
-        if (signal) {
-          // Insert signal into database
-          const { data: insertedSignal } = await supabase
-            .from('strategy_signals')
-            .insert({
-              strategy_id: signal.strategy_id,
-              user_id: signal.user_id,
-              signal_type: signal.signal_type,
-              symbol: signal.symbol,
-              price: signal.price,
-              reason: signal.reason
-            })
-            .select()
-            .single();
+        if (signalType) {
+          // Save signal with deduplication and latency tracking
+          const insertResult = await insertSignalWithRetry(supabase, {
+            user_id: strategy.user_id,
+            strategy_id: strategy.id,
+            signal_type: signalType,
+            symbol: strategy.symbol,
+            price: currentPrice,
+            reason: signalReason,
+            candle_close_time: candles[candles.length - 1].timestamp,
+          });
 
+          if (!insertResult.success || !insertResult.data) {
+            if (insertResult.data === null) {
+              console.log(`[SIGNAL] Skipped duplicate ${signalType} signal`);
+            } else {
+              console.error(`[ERROR] Failed to save ${signalType} signal:`, insertResult.error);
+            }
+            continue;
+          }
+
+          const signal = insertResult.data;
           allSignals.push(signal);
 
-          // Send Telegram notification if enabled
-          if (userSettings?.telegram_enabled && 
-              userSettings?.telegram_bot_token && 
-              userSettings?.telegram_chat_id) {
+          // Send Telegram notification
+          if (userSettings?.telegram_enabled && userSettings.telegram_bot_token && userSettings.telegram_chat_id) {
             try {
-              await sendTelegramSignal(
+              const telegramSent = await sendTelegramUtil(
                 userSettings.telegram_bot_token,
                 userSettings.telegram_chat_id,
-                signal
+                {
+                  strategy_name: strategy.name,
+                  signal_type: signalType,
+                  symbol: strategy.symbol,
+                  price: currentPrice,
+                  reason: signalReason,
+                }
               );
               
-              // Update signal status to 'delivered' after successful send
-              if (insertedSignal?.id) {
-                await supabase
-                  .from('strategy_signals')
-                  .update({ status: 'delivered' })
-                  .eq('id', insertedSignal.id);
+              if (telegramSent) {
+                await markSignalAsDelivered(supabase, signal.id);
+                console.log(`[SUCCESS] ${signalType} signal sent for ${strategy.name}`);
               }
-              
-              console.log(`[CRON] Telegram notification sent and signal marked as delivered for ${strategy.name}`);
             } catch (telegramError) {
-              console.error('[CRON] Telegram notification failed:', telegramError);
+              console.error('[ERROR] Failed to send Telegram notification:', telegramError);
             }
           }
         }
-
-        // Update last_processed_candle_time to prevent duplicate processing
-        await supabase
-          .from('strategy_live_states')
-          .update({ 
-            last_processed_candle_time: lastCandleTime,
-            updated_at: new Date().toISOString()
-          })
-          .eq('strategy_id', strategy.id);
-
-        console.log(`[CRON] ✅ Updated last_processed_candle_time to ${lastCandleTime} for ${strategy.name}`);
-
-      } catch (strategyError) {
-        console.error(`[CRON] Error processing strategy ${strategy.id}:`, strategyError);
-        // Continue processing other strategies
+      } catch (error) {
+        console.error(`[ERROR] Failed to process strategy ${strategy.name}:`, error);
       }
     }
 
-    console.log(`[CRON] Monitoring complete. Generated ${allSignals.length} signals`);
+    console.log(`[CRON] ✅ Generated ${allSignals.length} signals`);
 
     return new Response(
-      JSON.stringify({
+      JSON.stringify({ 
         success: true,
-        message: `Processed ${strategies.length} strategies`,
-        signals_generated: allSignals.length,
-        signals: allSignals
+        signals: allSignals,
+        strategiesProcessed: strategies.length 
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
-
-  } catch (error) {
-    console.error('[CRON] Global error:', error);
+  } catch (error: any) {
+    console.error('[CRON] ❌ Fatal error:', error);
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
-      { 
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      }
+      JSON.stringify({ error: error.message }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });
