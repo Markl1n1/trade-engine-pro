@@ -146,6 +146,8 @@ const Strategies = () => {
                           ? "4h Reentry" 
                           : strategy.strategy_type === "market_sentiment_trend_gauge"
                           ? "MSTG"
+                          : strategy.strategy_type === "ath_guard_scalping"
+                          ? "ATH Guard - 1min Scalping"
                           : strategy.strategy_type || "Standard"}
                       </div>
                     </div>
@@ -163,10 +165,10 @@ const Strategies = () => {
                     </div>
                     <div>
                       <div className="text-muted-foreground">
-                        {(strategy.strategy_type === "4h_reentry" || strategy.strategy_type === "market_sentiment_trend_gauge") ? "Logic" : "Conditions"}
+                        {(strategy.strategy_type === "4h_reentry" || strategy.strategy_type === "market_sentiment_trend_gauge" || strategy.strategy_type === "ath_guard_scalping") ? "Logic" : "Conditions"}
                       </div>
                       <div className="font-medium">
-                        {(strategy.strategy_type === "4h_reentry" || strategy.strategy_type === "market_sentiment_trend_gauge")
+                        {(strategy.strategy_type === "4h_reentry" || strategy.strategy_type === "market_sentiment_trend_gauge" || strategy.strategy_type === "ath_guard_scalping")
                           ? "Custom" 
                           : strategy.strategy_conditions?.length || 0}
                       </div>
