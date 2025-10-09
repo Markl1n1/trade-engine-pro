@@ -4,6 +4,7 @@ import {
   sendTelegramSignal as sendTelegramUtil,
   markSignalAsDelivered 
 } from '../helpers/signal-utils.ts';
+import { evaluateATHGuardStrategy } from '../helpers/ath-guard-strategy.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -31,9 +32,20 @@ interface ActiveStrategy {
   name: string;
   symbol: string;
   timeframe: string;
+  strategy_type?: string;
   entry_conditions: any;
   exit_conditions: any;
   liveState?: StrategyState;
+  ath_guard_ema_slope_threshold?: number;
+  ath_guard_pullback_tolerance?: number;
+  ath_guard_volume_multiplier?: number;
+  ath_guard_stoch_oversold?: number;
+  ath_guard_stoch_overbought?: number;
+  ath_guard_atr_sl_multiplier?: number;
+  ath_guard_atr_tp1_multiplier?: number;
+  ath_guard_atr_tp2_multiplier?: number;
+  ath_guard_ath_safety_distance?: number;
+  ath_guard_rsi_threshold?: number;
 }
 
 // Rolling candle buffer for each symbol-timeframe pair
@@ -425,7 +437,59 @@ async function processKlineUpdate(
       const evalBuffer = (entryPriceOnly || exitPriceOnly) && !kline.k.x ? [...buffer, candle] : buffer;
       const currentPrice = candle.close;
 
-      if (!liveState.position_open) {
+      // Check if this is an ATH Guard Scalping strategy
+      if (strategy.strategy_type === 'ath_guard_scalping') {
+        // For ATH Guard, we need enough candles
+        if (evalBuffer.length >= 150) {
+          const athGuardConfig = {
+            ema_slope_threshold: strategy.ath_guard_ema_slope_threshold || 0.15,
+            pullback_tolerance: strategy.ath_guard_pullback_tolerance || 0.15,
+            volume_multiplier: strategy.ath_guard_volume_multiplier || 1.8,
+            stoch_oversold: strategy.ath_guard_stoch_oversold || 25,
+            stoch_overbought: strategy.ath_guard_stoch_overbought || 75,
+            atr_sl_multiplier: strategy.ath_guard_atr_sl_multiplier || 1.5,
+            atr_tp1_multiplier: strategy.ath_guard_atr_tp1_multiplier || 1.0,
+            atr_tp2_multiplier: strategy.ath_guard_atr_tp2_multiplier || 2.0,
+            ath_safety_distance: strategy.ath_guard_ath_safety_distance || 0.2,
+            rsi_threshold: strategy.ath_guard_rsi_threshold || 70,
+          };
+
+          const athGuardSignal = evaluateATHGuardStrategy(
+            evalBuffer,
+            athGuardConfig,
+            liveState.position_open
+          );
+
+          if (athGuardSignal.signal_type) {
+            signalType = athGuardSignal.signal_type;
+            reason = athGuardSignal.reason;
+            console.log(`[WEBSOCKET] ATH Guard signal: ${signalType} - ${reason}`);
+            
+            // Update position state based on signal
+            if (signalType === 'BUY' && !liveState.position_open) {
+              await supabase
+                .from('strategy_live_states')
+                .upsert({
+                  strategy_id: strategy.id,
+                  position_open: true,
+                  entry_price: currentPrice,
+                  entry_time: new Date().toISOString(),
+                  updated_at: new Date().toISOString()
+                }, { onConflict: 'strategy_id' });
+            } else if (signalType === 'SELL' && liveState.position_open) {
+              await supabase
+                .from('strategy_live_states')
+                .update({
+                  position_open: false,
+                  entry_price: null,
+                  entry_time: null,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('strategy_id', strategy.id);
+            }
+          }
+        }
+      } else if (!liveState.position_open) {
         const userSettingsForCheck = userSettings.get(strategy.user_id);
         if (userSettingsForCheck?.binance_api_key && userSettingsForCheck?.binance_api_secret) {
           const positionExists = await checkBinancePosition(

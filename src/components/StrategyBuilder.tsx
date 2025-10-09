@@ -178,13 +178,20 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
     { value: "1d", label: "1 Day" },
   ];
 
-  // Auto-update timeframe when 4h_reentry strategy is selected
+  // Auto-update timeframe when 4h_reentry or ath_guard_scalping strategy is selected
   useEffect(() => {
     if (strategyType === "4h_reentry" && timeframe !== "5m") {
       setTimeframe("5m");
       toast({
         title: "Timeframe Updated",
         description: "4h Reentry strategy requires 5-minute timeframe",
+      });
+    }
+    if (strategyType === "ath_guard_scalping" && timeframe !== "1m") {
+      setTimeframe("1m");
+      toast({
+        title: "Timeframe Updated",
+        description: "ATH Guard Mode requires 1-minute timeframe for optimal scalping",
       });
     }
   }, [strategyType]);
@@ -676,6 +683,7 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
                   <SelectItem value="standard">Standard (Indicator-Based)</SelectItem>
                   <SelectItem value="4h_reentry">4h Reentry Breakout</SelectItem>
                   <SelectItem value="market_sentiment_trend_gauge">Market Sentiment Trend Gauge</SelectItem>
+                  <SelectItem value="ath_guard_scalping">ATH Guard Mode - 1min Scalping</SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
@@ -683,7 +691,11 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
                   ? "Build custom strategies using technical indicators and conditions" 
                   : strategyType === "4h_reentry"
                   ? "Pre-configured strategy with specialized logic for 4h range re-entry trading"
-                  : "Multi-factor composite score combining momentum, trend, volatility, and relative strength"}
+                  : strategyType === "market_sentiment_trend_gauge"
+                  ? "Multi-factor composite score combining momentum, trend, volatility, and relative strength"
+                  : strategyType === "ath_guard_scalping"
+                  ? "Advanced 1-minute scalping system with EMA bias filter, VWAP pullbacks, MACD+Stochastic momentum triggers, volume validation, and ATR-based risk management"
+                  : ""}
               </p>
             </div>
 

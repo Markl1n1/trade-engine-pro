@@ -272,6 +272,16 @@ export type Database = {
       }
       strategies: {
         Row: {
+          ath_guard_ath_safety_distance: number | null
+          ath_guard_atr_sl_multiplier: number | null
+          ath_guard_atr_tp1_multiplier: number | null
+          ath_guard_atr_tp2_multiplier: number | null
+          ath_guard_ema_slope_threshold: number | null
+          ath_guard_pullback_tolerance: number | null
+          ath_guard_rsi_threshold: number | null
+          ath_guard_stoch_overbought: number | null
+          ath_guard_stoch_oversold: number | null
+          ath_guard_volume_multiplier: number | null
           benchmark_symbol: string | null
           created_at: string
           description: string | null
@@ -297,6 +307,16 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          ath_guard_ath_safety_distance?: number | null
+          ath_guard_atr_sl_multiplier?: number | null
+          ath_guard_atr_tp1_multiplier?: number | null
+          ath_guard_atr_tp2_multiplier?: number | null
+          ath_guard_ema_slope_threshold?: number | null
+          ath_guard_pullback_tolerance?: number | null
+          ath_guard_rsi_threshold?: number | null
+          ath_guard_stoch_overbought?: number | null
+          ath_guard_stoch_oversold?: number | null
+          ath_guard_volume_multiplier?: number | null
           benchmark_symbol?: string | null
           created_at?: string
           description?: string | null
@@ -322,6 +342,16 @@ export type Database = {
           user_id: string
         }
         Update: {
+          ath_guard_ath_safety_distance?: number | null
+          ath_guard_atr_sl_multiplier?: number | null
+          ath_guard_atr_tp1_multiplier?: number | null
+          ath_guard_atr_tp2_multiplier?: number | null
+          ath_guard_ema_slope_threshold?: number | null
+          ath_guard_pullback_tolerance?: number | null
+          ath_guard_rsi_threshold?: number | null
+          ath_guard_stoch_overbought?: number | null
+          ath_guard_stoch_oversold?: number | null
+          ath_guard_volume_multiplier?: number | null
           benchmark_symbol?: string | null
           created_at?: string
           description?: string | null

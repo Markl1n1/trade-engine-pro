@@ -66,6 +66,61 @@ export const StrategyTypeConfig = ({
     );
   }
 
+  if (strategyType === "ath_guard_scalping") {
+    return (
+      <Card className="p-4 space-y-4 bg-secondary/30 border-primary/20">
+        <div className="flex items-center gap-2 mb-2">
+          <h3 className="text-sm font-semibold">ATH Guard Mode - 1-Minute Scalping Configuration</h3>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+              </TooltipTrigger>
+              <TooltipContent className="max-w-md">
+                <p className="text-xs">
+                  Professional 1-minute scalping system with multiple confirmations:
+                </p>
+                <ul className="text-xs mt-2 space-y-1">
+                  <li>• <strong>Bias Filter:</strong> EMA50/100/150 alignment + slope</li>
+                  <li>• <strong>Pullback:</strong> VWAP/EMA retest detection</li>
+                  <li>• <strong>Momentum:</strong> MACD + Stochastic crossovers</li>
+                  <li>• <strong>Volume:</strong> 1.8× average volume requirement</li>
+                  <li>• <strong>Risk:</strong> ATR-based SL/TP (1.5×/1×/2×)</li>
+                  <li>• <strong>Safety:</strong> ATH proximity detection</li>
+                </ul>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+
+        <div className="text-xs text-muted-foreground space-y-1 pt-2 border-t bg-info/5 p-3 rounded">
+          <p className="font-semibold">⚠️ Important: Use 1-Minute Timeframe</p>
+          <p>This strategy is optimized for 1-minute charts. Make sure to select "1 Minute" in Basic Settings.</p>
+        </div>
+
+        <div className="text-xs text-muted-foreground space-y-1 pt-2 border-t">
+          <p><strong>Entry Logic (Long):</strong></p>
+          <p>1. Price &gt; EMA150, EMA50 &gt; EMA100 &gt; EMA150, EMA150 slope &gt; +0.15%</p>
+          <p>2. Price retraces to VWAP/EMA50 (within ±0.15%), then reclaims</p>
+          <p>3. MACD line crosses above signal + histogram &gt; 0</p>
+          <p>4. Stochastic %K crosses above %D from below 25</p>
+          <p>5. Current volume ≥ 1.8× 20-bar average</p>
+          
+          <p className="mt-2"><strong>Exit Logic:</strong></p>
+          <p>• SL: Entry - (1.5 × ATR14)</p>
+          <p>• TP1: Entry + (1.0 × ATR14) - Exit 50%</p>
+          <p>• TP2: Entry + (2.0 × ATR14) - Exit remaining 50%</p>
+          <p>• Early exit if price closes below EMA50</p>
+        </div>
+
+        <div className="text-xs text-info bg-info/10 p-3 rounded mt-2">
+          <p className="font-semibold">💡 Configuration Note:</p>
+          <p>All parameters are pre-configured for optimal performance. Advanced users can adjust these in future versions.</p>
+        </div>
+      </Card>
+    );
+  }
+
   if (strategyType !== "4h_reentry") {
     return null;
   }

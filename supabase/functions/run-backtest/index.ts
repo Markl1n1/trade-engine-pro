@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as indicators from "../indicators/all-indicators.ts";
+import { evaluateATHGuardStrategy } from '../helpers/ath-guard-strategy.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -70,6 +71,46 @@ function isInNYSession(timestamp: number, sessionStart: string, sessionEnd: stri
   const endMinutes = endHours * 60 + endMins;
   
   return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
+}
+
+async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBalance: number, productType: string, leverage: number, makerFee: number, takerFee: number, slippage: number, executionTiming: string, supabaseClient: any, strategyId: string, startDate: string, endDate: string, corsHeaders: any) {
+  let balance = initialBalance;
+  let position: Trade | null = null;
+  const trades: Trade[] = [];
+  let maxBalance = balance;
+  let maxDrawdown = 0;
+
+  const athGuardConfig = { ema_slope_threshold: strategy.ath_guard_ema_slope_threshold || 0.15, pullback_tolerance: strategy.ath_guard_pullback_tolerance || 0.15, volume_multiplier: strategy.ath_guard_volume_multiplier || 1.8, stoch_oversold: strategy.ath_guard_stoch_oversold || 25, stoch_overbought: strategy.ath_guard_stoch_overbought || 75, atr_sl_multiplier: 1.5, atr_tp1_multiplier: 1.0, atr_tp2_multiplier: 2.0, ath_safety_distance: 0.2, rsi_threshold: 70 };
+
+  for (let i = 150; i < candles.length; i++) {
+    const historicalCandles = candles.slice(i - 150, i + 1).map(c => ({ open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume, timestamp: c.open_time }));
+    const signal = evaluateATHGuardStrategy(historicalCandles, athGuardConfig, position !== null);
+    const currentCandle = candles[i];
+    const executionPrice = currentCandle.close;
+
+    if (signal.signal_type === 'BUY' && !position) {
+      const quantity = (balance * 0.95) / executionPrice;
+      position = { entry_price: executionPrice, entry_time: currentCandle.open_time, type: 'buy', quantity };
+      trades.push(position);
+    } else if (signal.signal_type === 'SELL' && position) {
+      const profit = (executionPrice - position.entry_price) * position.quantity;
+      position.exit_price = executionPrice;
+      position.exit_time = currentCandle.open_time;
+      position.profit = profit;
+      balance += profit;
+      position = null;
+    }
+    if (balance > maxBalance) maxBalance = balance;
+    maxDrawdown = Math.max(maxDrawdown, ((maxBalance - balance) / maxBalance) * 100);
+  }
+
+  const totalReturn = ((balance - initialBalance) / initialBalance) * 100;
+  const winningTrades = trades.filter(t => t.profit && t.profit > 0).length;
+  const winRate = trades.length > 0 ? (winningTrades / trades.length) * 100 : 0;
+
+  await supabaseClient.from('strategy_backtest_results').insert({ strategy_id: strategyId, start_date: startDate, end_date: endDate, initial_balance: initialBalance, final_balance: balance, total_return: totalReturn, total_trades: trades.length, winning_trades: winningTrades, losing_trades: trades.length - winningTrades, win_rate: winRate, max_drawdown: maxDrawdown, sharpe_ratio: 0 });
+
+  return new Response(JSON.stringify({ success: true, balance, totalReturn, trades: trades.length, winRate, maxDrawdown }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 }
 
 serve(async (req) => {
@@ -278,6 +319,29 @@ serve(async (req) => {
     if (isMSTG) {
       console.log('Running MSTG strategy backtest...');
       return await runMSTGBacktest(
+        strategy,
+        candles,
+        initialBalance,
+        productType,
+        leverage,
+        makerFee,
+        takerFee,
+        slippage,
+        executionTiming,
+        supabaseClient,
+        strategyId,
+        startDate,
+        endDate,
+        corsHeaders
+      );
+    }
+
+    // Check if this is ATH Guard Scalping strategy
+    const isATHGuard = strategy.strategy_type === 'ath_guard_scalping';
+    
+    if (isATHGuard) {
+      console.log('Running ATH Guard Mode (1-min Scalping) backtest...');
+      return await runATHGuardBacktest(
         strategy,
         candles,
         initialBalance,

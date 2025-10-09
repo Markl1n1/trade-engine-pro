@@ -5,6 +5,7 @@ import {
   sendTelegramSignal as sendTelegramUtil,
   markSignalAsDelivered 
 } from '../helpers/signal-utils.ts';
+import { evaluateATHGuardStrategy } from '../helpers/ath-guard-strategy.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -392,7 +393,40 @@ Deno.serve(async (req) => {
         let signalType: string | null = null;
         let signalReason = '';
 
-        if (!liveState.position_open) {
+        // Check if this is an ATH Guard Scalping strategy
+        if (strategy.strategy_type === 'ath_guard_scalping') {
+          const athGuardConfig = {
+            ema_slope_threshold: strategy.ath_guard_ema_slope_threshold || 0.15,
+            pullback_tolerance: strategy.ath_guard_pullback_tolerance || 0.15,
+            volume_multiplier: strategy.ath_guard_volume_multiplier || 1.8,
+            stoch_oversold: strategy.ath_guard_stoch_oversold || 25,
+            stoch_overbought: strategy.ath_guard_stoch_overbought || 75,
+            atr_sl_multiplier: strategy.ath_guard_atr_sl_multiplier || 1.5,
+            atr_tp1_multiplier: strategy.ath_guard_atr_tp1_multiplier || 1.0,
+            atr_tp2_multiplier: strategy.ath_guard_atr_tp2_multiplier || 2.0,
+            ath_safety_distance: strategy.ath_guard_ath_safety_distance || 0.2,
+            rsi_threshold: strategy.ath_guard_rsi_threshold || 70,
+          };
+
+          const athGuardSignal = evaluateATHGuardStrategy(
+            candles.map(c => ({
+              open: c.open,
+              high: c.high,
+              low: c.low,
+              close: c.close,
+              volume: c.volume,
+              timestamp: c.timestamp,
+            })),
+            athGuardConfig,
+            liveState?.position_open || false
+          );
+
+          if (athGuardSignal.signal_type) {
+            signalType = athGuardSignal.signal_type;
+            signalReason = athGuardSignal.reason;
+            console.log(`[CRON] ATH Guard signal: ${signalType} - ${signalReason}`);
+          }
+        } else if (!liveState.position_open) {
           // Check if position already exists on Binance before generating entry signal
           if (userSettings?.binance_api_key && userSettings?.binance_api_secret) {
             const positionExists = await checkBinancePosition(
