@@ -265,7 +265,7 @@ async function checkConditions(
   return allMet;
 }
 
-async function checkBinancePosition(apiKey: string, apiSecret: string, useTestnet: boolean, symbol: string): Promise<boolean> {
+async function checkBinancePosition(apiKey: string, apiSecret: string, useTestnet: boolean, symbol: string): Promise<boolean | null> {
   try {
     const baseUrl = useTestnet 
       ? 'https://testnet.binancefuture.com'
@@ -301,17 +301,22 @@ async function checkBinancePosition(apiKey: string, apiSecret: string, useTestne
     );
     
     if (!response.ok) {
-      console.error(`[BINANCE] Failed to fetch position: ${response.status}`);
-      return false;
+      const errorText = await response.text();
+      console.warn(`[BINANCE] ⚠️ Position check failed (${response.status}): ${errorText.substring(0, 200)}`);
+      console.warn(`[BINANCE] API keys may be expired/invalid. Continuing with signal generation...`);
+      return null; // Unknown state - can't confirm position status
     }
     
     const positions = await response.json();
     const position = positions.find((p: any) => p.symbol === symbol);
+    const hasPosition = position && parseFloat(position.positionAmt) !== 0;
     
-    return position && parseFloat(position.positionAmt) !== 0;
+    console.log(`[BINANCE] ✅ Position check successful for ${symbol}: ${hasPosition ? 'OPEN' : 'CLOSED'}`);
+    return hasPosition;
   } catch (error) {
-    console.error('[BINANCE] Error checking position:', error);
-    return false;
+    console.warn('[BINANCE] ⚠️ Position check error:', error);
+    console.warn('[BINANCE] Network/API issue detected. Continuing with signal generation...');
+    return null; // Unknown state - can't confirm position status
   }
 }
 
@@ -430,9 +435,13 @@ async function processKlineUpdate(
             symbol
           );
           
-          if (positionExists) {
-            console.log(`[WEBSOCKET] ⚠️ Skipping entry signal for ${strategy.name} - position already open on Binance`);
+          // Only skip if we CONFIRMED position exists (true)
+          // If null (API error), continue with signal generation
+          if (positionExists === true) {
+            console.log(`[WEBSOCKET] ⚠️ Skipping entry signal for ${strategy.name} - position confirmed open on Binance`);
             continue;
+          } else if (positionExists === null) {
+            console.log(`[WEBSOCKET] ⚠️ Could not verify Binance position for ${strategy.name} - continuing with signal generation`);
           }
         }
         
@@ -523,6 +532,9 @@ async function processKlineUpdate(
         const userSettingsData = userSettings.get(strategy.user_id);
         if (userSettingsData?.telegram_enabled && userSettingsData.telegram_bot_token && userSettingsData.telegram_chat_id) {
           try {
+            console.log(`[TELEGRAM] Attempting to send ${signalType} signal for ${strategy.name}...`);
+            const telegramStartTime = Date.now();
+            
             const telegramSent = await sendTelegramUtil(
               userSettingsData.telegram_bot_token,
               userSettingsData.telegram_chat_id,
@@ -535,15 +547,19 @@ async function processKlineUpdate(
               }
             );
             
+            const telegramLatency = Date.now() - telegramStartTime;
+            
             if (telegramSent) {
-              console.log(`[TELEGRAM] ${signalType} signal sent for ${strategy.name}`);
+              console.log(`[TELEGRAM] ✅ ${signalType} signal sent for ${strategy.name} (${telegramLatency}ms)`);
               await markSignalAsDelivered(supabase, insertResult.data.id);
             } else {
-              console.error('[TELEGRAM] Failed to send signal');
+              console.error(`[TELEGRAM] ❌ Failed to send ${signalType} signal for ${strategy.name} (${telegramLatency}ms)`);
             }
           } catch (error) {
-            console.error('[TELEGRAM] Error sending signal:', error);
+            console.error(`[TELEGRAM] ❌ Error sending ${signalType} signal for ${strategy.name}:`, error);
           }
+        } else {
+          console.log(`[TELEGRAM] Telegram disabled or not configured for ${strategy.name}`);
         }
       }
     } catch (error) {
