@@ -408,6 +408,10 @@ Deno.serve(async (req) => {
             rsi_threshold: strategy.ath_guard_rsi_threshold || 70,
           };
 
+          console.log(`[CRON] 🎯 Evaluating ATH Guard strategy for ${strategy.symbol}`);
+          console.log(`[CRON] Config:`, athGuardConfig);
+          console.log(`[CRON] Position open: ${liveState?.position_open || false}`);
+          
           const athGuardSignal = evaluateATHGuardStrategy(
             candles.map(c => ({
               open: c.open,
@@ -424,7 +428,9 @@ Deno.serve(async (req) => {
           if (athGuardSignal.signal_type) {
             signalType = athGuardSignal.signal_type;
             signalReason = athGuardSignal.reason;
-            console.log(`[CRON] ATH Guard signal: ${signalType} - ${signalReason}`);
+            console.log(`[CRON] ✅ ATH Guard signal generated: ${signalType} - ${signalReason}`);
+          } else {
+            console.log(`[CRON] ⏸️ ATH Guard: ${athGuardSignal.reason}`);
           }
         } else if (!liveState.position_open) {
           // Check if position already exists on Binance before generating entry signal

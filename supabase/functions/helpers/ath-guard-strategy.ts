@@ -327,8 +327,11 @@ export function evaluateATHGuardStrategy(
   config: ATHGuardConfig,
   positionOpen: boolean
 ): ATHGuardSignal {
+  console.log('[ATH-GUARD] 🔍 Starting evaluation...');
+  
   // Need minimum candles for all indicators
   if (candles.length < 150) {
+    console.log(`[ATH-GUARD] ❌ Insufficient data: ${candles.length} candles (need 150)`);
     return { signal_type: null, reason: 'Insufficient candle data' };
   }
   
@@ -354,8 +357,26 @@ export function evaluateATHGuardStrategy(
   
   const ema150Slope = calculateEMASlope(ema150);
   
+  console.log(`[ATH-GUARD] 📊 Current State:`, {
+    price: currentPrice.toFixed(2),
+    ema50: currentEMA50.toFixed(2),
+    ema100: currentEMA100.toFixed(2),
+    ema150: currentEMA150.toFixed(2),
+    vwap: currentVWAP.toFixed(2),
+    ema150Slope: ema150Slope.toFixed(4),
+    rsi: currentRSI.toFixed(2),
+    positionOpen
+  });
+  
   // Step 1: Check bias filter
   const bias = checkBiasFilter(currentPrice, currentEMA50, currentEMA100, currentEMA150, ema150Slope, config);
+  
+  console.log(`[ATH-GUARD] 🎯 Step 1 - Bias Filter: ${bias}`, {
+    priceVsEMA150: currentPrice > currentEMA150 ? 'ABOVE' : 'BELOW',
+    emaAlignment: `EMA50(${currentEMA50.toFixed(2)}) ${currentEMA50 > currentEMA100 ? '>' : '<'} EMA100(${currentEMA100.toFixed(2)}) ${currentEMA100 > currentEMA150 ? '>' : '<'} EMA150(${currentEMA150.toFixed(2)})`,
+    slope: `${ema150Slope.toFixed(4)}% (threshold: ${config.ema_slope_threshold}%)`,
+    passed: bias !== 'NEUTRAL'
+  });
   
   if (bias === 'NEUTRAL') {
     return { signal_type: null, reason: 'No clear bias - EMA alignment not met' };
@@ -364,12 +385,45 @@ export function evaluateATHGuardStrategy(
   // Step 2: Check pullback
   const hasPullback = checkPullback(candles, currentVWAP, currentEMA50, bias, config);
   
+  const prevPrice = candles[candles.length - 2]?.close || currentPrice;
+  console.log(`[ATH-GUARD] 🔄 Step 2 - Pullback Check: ${hasPullback ? '✅ PASS' : '❌ FAIL'}`, {
+    bias,
+    prevPrice: prevPrice.toFixed(2),
+    currentPrice: currentPrice.toFixed(2),
+    vwap: currentVWAP.toFixed(2),
+    ema50: currentEMA50.toFixed(2),
+    tolerance: `${config.pullback_tolerance}%`
+  });
+  
   if (!hasPullback) {
     return { signal_type: null, reason: 'Waiting for pullback to VWAP/EMA50' };
   }
   
   // Step 3: Check momentum triggers
   const hasMomentum = checkMomentum(macd, stoch, bias, config);
+  
+  const idx = macd.macd.length - 1;
+  const currentMACD = macd.macd[idx];
+  const currentSignal = macd.signal[idx];
+  const currentHistogram = macd.histogram[idx];
+  const currentK = stoch.k[idx];
+  const currentD = stoch.d[idx];
+  
+  console.log(`[ATH-GUARD] ⚡ Step 3 - Momentum Check: ${hasMomentum ? '✅ PASS' : '❌ FAIL'}`, {
+    bias,
+    macd: {
+      line: currentMACD.toFixed(4),
+      signal: currentSignal.toFixed(4),
+      histogram: currentHistogram.toFixed(4),
+      crossover: currentMACD > currentSignal ? 'ABOVE' : 'BELOW'
+    },
+    stochastic: {
+      k: currentK.toFixed(2),
+      d: currentD.toFixed(2),
+      crossover: currentK > currentD ? 'ABOVE' : 'BELOW',
+      zone: bias === 'LONG' ? `oversold(<${config.stoch_oversold})` : `overbought(>${config.stoch_overbought})`
+    }
+  });
   
   if (!hasMomentum) {
     return { signal_type: null, reason: 'Momentum triggers not aligned (MACD + Stochastic)' };
@@ -378,6 +432,17 @@ export function evaluateATHGuardStrategy(
   // Step 4: Check volume
   const hasVolume = checkVolume(candles, config);
   
+  const currentVolume = candles[candles.length - 1].volume;
+  const last20Volumes = candles.slice(-21, -1).map(c => c.volume);
+  const avgVolume = last20Volumes.reduce((a, b) => a + b, 0) / 20;
+  const volumeRatio = currentVolume / avgVolume;
+  
+  console.log(`[ATH-GUARD] 📈 Step 4 - Volume Check: ${hasVolume ? '✅ PASS' : '❌ FAIL'}`, {
+    currentVolume: currentVolume.toFixed(0),
+    avgVolume: avgVolume.toFixed(0),
+    ratio: `${volumeRatio.toFixed(2)}x (need ${config.volume_multiplier}x)`
+  });
+  
   if (!hasVolume) {
     return { signal_type: null, reason: `Volume too low (< ${config.volume_multiplier}x average)` };
   }
@@ -385,15 +450,38 @@ export function evaluateATHGuardStrategy(
   // Step 5: Check ATH safety
   const athSafe = checkATHSafety(candles, currentRSI, bias, config);
   
+  const lookback = Math.min(100, candles.length);
+  const recentCandles = candles.slice(-lookback);
+  const recentHigh = Math.max(...recentCandles.map(c => c.high));
+  const distanceToATH = ((currentPrice - recentHigh) / recentHigh) * 100;
+  
+  console.log(`[ATH-GUARD] 🛡️ Step 5 - ATH Safety Check: ${athSafe ? '✅ PASS' : '❌ FAIL'}`, {
+    bias,
+    currentPrice: currentPrice.toFixed(2),
+    recentHigh: recentHigh.toFixed(2),
+    distanceToATH: `${distanceToATH.toFixed(2)}% (threshold: ${config.ath_safety_distance}%)`,
+    rsi: `${currentRSI.toFixed(2)} (threshold: ${config.rsi_threshold})`
+  });
+  
   if (!athSafe) {
     return { signal_type: null, reason: 'Near ATH with high RSI - skipping aggressive entry' };
   }
   
   // All conditions met - generate signal
+  console.log('[ATH-GUARD] ✅ ALL CONDITIONS PASSED!');
+  
   if (!positionOpen && bias === 'LONG') {
     const stopLoss = currentPrice - (config.atr_sl_multiplier * currentATR);
     const takeProfit1 = currentPrice + (config.atr_tp1_multiplier * currentATR);
     const takeProfit2 = currentPrice + (config.atr_tp2_multiplier * currentATR);
+    
+    console.log('[ATH-GUARD] 🚀 GENERATING BUY SIGNAL', {
+      entry: currentPrice.toFixed(2),
+      stopLoss: stopLoss.toFixed(2),
+      tp1: takeProfit1.toFixed(2),
+      tp2: takeProfit2.toFixed(2),
+      atr: currentATR.toFixed(2)
+    });
     
     return {
       signal_type: 'BUY',
@@ -409,6 +497,14 @@ export function evaluateATHGuardStrategy(
     const takeProfit1 = currentPrice - (config.atr_tp1_multiplier * currentATR);
     const takeProfit2 = currentPrice - (config.atr_tp2_multiplier * currentATR);
     
+    console.log('[ATH-GUARD] 🚀 GENERATING SELL SIGNAL', {
+      entry: currentPrice.toFixed(2),
+      stopLoss: stopLoss.toFixed(2),
+      tp1: takeProfit1.toFixed(2),
+      tp2: takeProfit2.toFixed(2),
+      atr: currentATR.toFixed(2)
+    });
+    
     return {
       signal_type: 'SELL',
       reason: 'ATH Guard SHORT: Bias filter + Rejection + MACD cross + Stoch cross + Volume spike',
@@ -422,7 +518,14 @@ export function evaluateATHGuardStrategy(
   if (positionOpen) {
     const positionType = currentPrice > currentEMA50 ? 'LONG' : 'SHORT';
     
+    console.log('[ATH-GUARD] 🔄 Checking exit conditions for open position', {
+      positionType,
+      currentPrice: currentPrice.toFixed(2),
+      ema50: currentEMA50.toFixed(2)
+    });
+    
     if (positionType === 'LONG' && currentPrice < currentEMA50) {
+      console.log('[ATH-GUARD] 🛑 EXIT LONG: Price closed below EMA50');
       return {
         signal_type: 'SELL',
         reason: 'Exit LONG: Price closed below EMA50',
@@ -430,6 +533,7 @@ export function evaluateATHGuardStrategy(
     }
     
     if (positionType === 'SHORT' && currentPrice > currentEMA50) {
+      console.log('[ATH-GUARD] 🛑 EXIT SHORT: Price closed above EMA50');
       return {
         signal_type: 'BUY',
         reason: 'Exit SHORT: Price closed above EMA50',
@@ -437,5 +541,6 @@ export function evaluateATHGuardStrategy(
     }
   }
   
+  console.log('[ATH-GUARD] ⏸️ No signal generated (position already open or bias not aligned)');
   return { signal_type: null, reason: 'No signal' };
 }
