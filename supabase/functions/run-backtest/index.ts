@@ -74,17 +74,59 @@ function isInNYSession(timestamp: number, sessionStart: string, sessionEnd: stri
 }
 
 async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBalance: number, productType: string, leverage: number, makerFee: number, takerFee: number, slippage: number, executionTiming: string, supabaseClient: any, strategyId: string, startDate: string, endDate: string, corsHeaders: any) {
+  console.log(`[ATH-GUARD] Starting optimized backtest for ${candles.length} candles`);
+  
   let balance = initialBalance;
   let position: Trade | null = null;
   const trades: Trade[] = [];
   let maxBalance = balance;
   let maxDrawdown = 0;
 
-  const athGuardConfig = { ema_slope_threshold: strategy.ath_guard_ema_slope_threshold || 0.15, pullback_tolerance: strategy.ath_guard_pullback_tolerance || 0.15, volume_multiplier: strategy.ath_guard_volume_multiplier || 1.8, stoch_oversold: strategy.ath_guard_stoch_oversold || 25, stoch_overbought: strategy.ath_guard_stoch_overbought || 75, atr_sl_multiplier: 1.5, atr_tp1_multiplier: 1.0, atr_tp2_multiplier: 2.0, ath_safety_distance: 0.2, rsi_threshold: 70 };
+  const athGuardConfig = { 
+    ema_slope_threshold: strategy.ath_guard_ema_slope_threshold || 0.15, 
+    pullback_tolerance: strategy.ath_guard_pullback_tolerance || 0.15, 
+    volume_multiplier: strategy.ath_guard_volume_multiplier || 1.8, 
+    stoch_oversold: strategy.ath_guard_stoch_oversold || 25, 
+    stoch_overbought: strategy.ath_guard_stoch_overbought || 75, 
+    atr_sl_multiplier: 1.5, 
+    atr_tp1_multiplier: 1.0, 
+    atr_tp2_multiplier: 2.0, 
+    ath_safety_distance: 0.2, 
+    rsi_threshold: 70 
+  };
 
+  // Pre-calculate all indicators once
+  console.log(`[ATH-GUARD] Pre-calculating indicators...`);
+  const closes = candles.map(c => c.close);
+  
+  const ema50Array = calculateEMA(closes, 50);
+  const ema100Array = calculateEMA(closes, 100);
+  const ema150Array = calculateEMA(closes, 150);
+  const vwapArray = calculateVWAP(candles);
+  const macdData = calculateMACD(closes);
+  const stochData = calculateStochastic(candles, 14);
+  const rsiArray = calculateRSI(closes, 14);
+  const atrArray = calculateATR(candles, 14);
+  
+  console.log(`[ATH-GUARD] Indicators calculated, starting simulation...`);
+
+  // Main backtest loop - now just evaluates conditions
   for (let i = 150; i < candles.length; i++) {
-    const historicalCandles = candles.slice(i - 150, i + 1).map(c => ({ open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume, timestamp: c.open_time }));
-    const signal = evaluateATHGuardStrategy(historicalCandles, athGuardConfig, position !== null);
+    const signal = evaluateATHGuardStrategyOptimized(
+      candles, 
+      i, 
+      athGuardConfig, 
+      position !== null,
+      ema50Array,
+      ema100Array,
+      ema150Array,
+      vwapArray,
+      macdData,
+      stochData,
+      rsiArray,
+      atrArray
+    );
+    
     const currentCandle = candles[i];
     const executionPrice = currentCandle.close;
 
@@ -104,13 +146,319 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
     maxDrawdown = Math.max(maxDrawdown, ((maxBalance - balance) / maxBalance) * 100);
   }
 
+  console.log(`[ATH-GUARD] Backtest complete: ${trades.length} trades, ${balance.toFixed(2)} final balance`);
+
   const totalReturn = ((balance - initialBalance) / initialBalance) * 100;
   const winningTrades = trades.filter(t => t.profit && t.profit > 0).length;
   const winRate = trades.length > 0 ? (winningTrades / trades.length) * 100 : 0;
 
-  await supabaseClient.from('strategy_backtest_results').insert({ strategy_id: strategyId, start_date: startDate, end_date: endDate, initial_balance: initialBalance, final_balance: balance, total_return: totalReturn, total_trades: trades.length, winning_trades: winningTrades, losing_trades: trades.length - winningTrades, win_rate: winRate, max_drawdown: maxDrawdown, sharpe_ratio: 0 });
+  await supabaseClient.from('strategy_backtest_results').insert({ 
+    strategy_id: strategyId, 
+    start_date: startDate, 
+    end_date: endDate, 
+    initial_balance: initialBalance, 
+    final_balance: balance, 
+    total_return: totalReturn, 
+    total_trades: trades.length, 
+    winning_trades: winningTrades, 
+    losing_trades: trades.length - winningTrades, 
+    win_rate: winRate, 
+    max_drawdown: maxDrawdown, 
+    sharpe_ratio: 0 
+  });
 
   return new Response(JSON.stringify({ success: true, balance, totalReturn, trades: trades.length, winRate, maxDrawdown }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+}
+
+// Helper functions for ATH Guard (imported from helper but duplicated here for performance)
+function calculateEMA(data: number[], period: number): number[] {
+  const result: number[] = [];
+  const multiplier = 2 / (period + 1);
+  let sma = data.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  result.push(sma);
+  for (let i = period; i < data.length; i++) {
+    const ema = (data[i] - result[result.length - 1]) * multiplier + result[result.length - 1];
+    result.push(ema);
+  }
+  return result;
+}
+
+function calculateVWAP(candles: Candle[]): number[] {
+  const result: number[] = [];
+  let cumulativePV = 0;
+  let cumulativeVolume = 0;
+  for (const candle of candles) {
+    const typicalPrice = (candle.high + candle.low + candle.close) / 3;
+    cumulativePV += typicalPrice * candle.volume;
+    cumulativeVolume += candle.volume;
+    result.push(cumulativeVolume === 0 ? 0 : cumulativePV / cumulativeVolume);
+  }
+  return result;
+}
+
+function calculateMACD(data: number[]): { macd: number[], signal: number[], histogram: number[] } {
+  const fastEMA = calculateEMA(data, 12);
+  const slowEMA = calculateEMA(data, 26);
+  const macd = fastEMA.map((v, i) => v - slowEMA[i]);
+  const signal = calculateEMA(macd.slice(26), 9);
+  const paddedSignal = new Array(26).fill(0).concat(signal);
+  const histogram = macd.map((v, i) => v - paddedSignal[i]);
+  return { macd, signal: paddedSignal, histogram };
+}
+
+function calculateStochastic(candles: Candle[], period: number = 14): { k: number[], d: number[] } {
+  const k: number[] = [];
+  for (let i = 0; i < candles.length; i++) {
+    if (i < period - 1) {
+      k.push(0);
+    } else {
+      const slice = candles.slice(i - period + 1, i + 1);
+      const low = Math.min(...slice.map(c => c.low));
+      const high = Math.max(...slice.map(c => c.high));
+      const close = candles[i].close;
+      if (high === low) {
+        k.push(50);
+      } else {
+        k.push(((close - low) / (high - low)) * 100);
+      }
+    }
+  }
+  const smoothedK = calculateSMA(k, 3);
+  const d = calculateSMA(smoothedK, 3);
+  return { k: smoothedK, d };
+}
+
+function calculateSMA(data: number[], period: number): number[] {
+  const result: number[] = [];
+  for (let i = 0; i < data.length; i++) {
+    if (i < period - 1) {
+      result.push(0);
+    } else {
+      const sum = data.slice(i - period + 1, i + 1).reduce((a, b) => a + b, 0);
+      result.push(sum / period);
+    }
+  }
+  return result;
+}
+
+function calculateRSI(data: number[], period: number = 14): number[] {
+  const result: number[] = [];
+  const gains: number[] = [];
+  const losses: number[] = [];
+  for (let i = 1; i < data.length; i++) {
+    const change = data[i] - data[i - 1];
+    gains.push(change > 0 ? change : 0);
+    losses.push(change < 0 ? -change : 0);
+  }
+  for (let i = 0; i < gains.length; i++) {
+    if (i < period - 1) {
+      result.push(50);
+    } else {
+      const avgGain = gains.slice(i - period + 1, i + 1).reduce((a, b) => a + b, 0) / period;
+      const avgLoss = losses.slice(i - period + 1, i + 1).reduce((a, b) => a + b, 0) / period;
+      if (avgLoss === 0) {
+        result.push(100);
+      } else {
+        const rs = avgGain / avgLoss;
+        result.push(100 - (100 / (1 + rs)));
+      }
+    }
+  }
+  return [50, ...result];
+}
+
+function calculateATR(candles: Candle[], period: number = 14): number[] {
+  const tr: number[] = [];
+  for (let i = 1; i < candles.length; i++) {
+    const high = candles[i].high;
+    const low = candles[i].low;
+    const prevClose = candles[i - 1].close;
+    tr.push(Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose)));
+  }
+  return [0, ...calculateEMA(tr, period)];
+}
+
+// Optimized evaluation function that uses pre-calculated indicators
+function evaluateATHGuardStrategyOptimized(
+  candles: Candle[],
+  index: number,
+  config: any,
+  positionOpen: boolean,
+  ema50Array: number[],
+  ema100Array: number[],
+  ema150Array: number[],
+  vwapArray: number[],
+  macdData: { macd: number[], signal: number[], histogram: number[] },
+  stochData: { k: number[], d: number[] },
+  rsiArray: number[],
+  atrArray: number[]
+): { signal_type: 'BUY' | 'SELL' | null; reason: string; stop_loss?: number; take_profit_1?: number; take_profit_2?: number } {
+  
+  if (index < 150) {
+    return { signal_type: null, reason: 'Insufficient candle data' };
+  }
+  
+  const currentPrice = candles[index].close;
+  const currentEMA50 = ema50Array[index];
+  const currentEMA100 = ema100Array[index];
+  const currentEMA150 = ema150Array[index];
+  const currentVWAP = vwapArray[index];
+  const currentRSI = rsiArray[index];
+  const currentATR = atrArray[index];
+  
+  const prevEMA150 = ema150Array[index - 1];
+  const ema150Slope = ((currentEMA150 - prevEMA150) / prevEMA150) * 100;
+  
+  // Step 1: Check bias filter
+  let bias: 'LONG' | 'SHORT' | 'NEUTRAL' = 'NEUTRAL';
+  
+  if (
+    currentPrice > currentEMA150 &&
+    currentEMA50 > currentEMA100 &&
+    currentEMA100 > currentEMA150 &&
+    ema150Slope > config.ema_slope_threshold
+  ) {
+    bias = 'LONG';
+  } else if (
+    currentPrice < currentEMA150 &&
+    currentEMA50 < currentEMA100 &&
+    currentEMA100 < currentEMA150 &&
+    ema150Slope < -config.ema_slope_threshold
+  ) {
+    bias = 'SHORT';
+  }
+  
+  if (bias === 'NEUTRAL') {
+    return { signal_type: null, reason: 'No clear bias - EMA alignment not met' };
+  }
+  
+  // Step 2: Check pullback
+  const previousPrice = candles[index - 1].close;
+  const tolerance = config.pullback_tolerance / 100;
+  
+  let hasPullback = false;
+  if (bias === 'LONG') {
+    const distanceToVWAP = Math.abs(previousPrice - currentVWAP) / currentVWAP;
+    const distanceToEMA = Math.abs(previousPrice - currentEMA50) / currentEMA50;
+    const wasNearSupport = distanceToVWAP <= tolerance || distanceToEMA <= tolerance;
+    const reclaimedSupport = currentPrice > currentVWAP || currentPrice > currentEMA50;
+    hasPullback = wasNearSupport && reclaimedSupport;
+  } else {
+    const distanceToVWAP = Math.abs(previousPrice - currentVWAP) / currentVWAP;
+    const distanceToEMA = Math.abs(previousPrice - currentEMA50) / currentEMA50;
+    const wasNearResistance = distanceToVWAP <= tolerance || distanceToEMA <= tolerance;
+    const rejectedResistance = currentPrice < currentVWAP || currentPrice < currentEMA50;
+    hasPullback = wasNearResistance && rejectedResistance;
+  }
+  
+  if (!hasPullback) {
+    return { signal_type: null, reason: 'Waiting for pullback to VWAP/EMA50' };
+  }
+  
+  // Step 3: Check momentum triggers
+  const prevIdx = index - 1;
+  const currentMACD = macdData.macd[index];
+  const currentSignal = macdData.signal[index];
+  const currentHistogram = macdData.histogram[index];
+  const prevMACD = macdData.macd[prevIdx];
+  const prevSignal = macdData.signal[prevIdx];
+  const currentK = stochData.k[index];
+  const currentD = stochData.d[index];
+  const prevK = stochData.k[prevIdx];
+  const prevD = stochData.d[prevIdx];
+  
+  let hasMomentum = false;
+  if (bias === 'LONG') {
+    const macdCross = prevMACD <= prevSignal && currentMACD > currentSignal && currentHistogram > 0;
+    const stochCross = prevK <= prevD && currentK > currentD && prevK < config.stoch_oversold;
+    hasMomentum = macdCross && stochCross;
+  } else {
+    const macdCross = prevMACD >= prevSignal && currentMACD < currentSignal && currentHistogram < 0;
+    const stochCross = prevK >= prevD && currentK < currentD && prevK > config.stoch_overbought;
+    hasMomentum = macdCross && stochCross;
+  }
+  
+  if (!hasMomentum) {
+    return { signal_type: null, reason: 'Momentum triggers not aligned (MACD + Stochastic)' };
+  }
+  
+  // Step 4: Check volume
+  if (index < 21) {
+    return { signal_type: null, reason: 'Insufficient volume data' };
+  }
+  const currentVolume = candles[index].volume;
+  const last20Volumes = candles.slice(index - 20, index).map(c => c.volume);
+  const avgVolume = last20Volumes.reduce((a, b) => a + b, 0) / 20;
+  const hasVolume = currentVolume >= avgVolume * config.volume_multiplier;
+  
+  if (!hasVolume) {
+    return { signal_type: null, reason: `Volume too low (< ${config.volume_multiplier}x average)` };
+  }
+  
+  // Step 5: Check ATH safety
+  const lookback = Math.min(100, index);
+  const recentCandles = candles.slice(index - lookback, index + 1);
+  const recentHigh = Math.max(...recentCandles.map(c => c.high));
+  const distanceToATH = ((currentPrice - recentHigh) / recentHigh) * 100;
+  
+  let athSafe = true;
+  if (bias === 'LONG' && Math.abs(distanceToATH) < config.ath_safety_distance && currentRSI > config.rsi_threshold) {
+    athSafe = false;
+  }
+  
+  if (!athSafe) {
+    return { signal_type: null, reason: 'Near ATH with high RSI - skipping aggressive entry' };
+  }
+  
+  // All conditions met - generate signal
+  if (!positionOpen && bias === 'LONG') {
+    const stopLoss = currentPrice - (config.atr_sl_multiplier * currentATR);
+    const takeProfit1 = currentPrice + (config.atr_tp1_multiplier * currentATR);
+    const takeProfit2 = currentPrice + (config.atr_tp2_multiplier * currentATR);
+    
+    return {
+      signal_type: 'BUY',
+      reason: 'ATH Guard LONG: Bias filter + Pullback + MACD cross + Stoch cross + Volume spike',
+      stop_loss: stopLoss,
+      take_profit_1: takeProfit1,
+      take_profit_2: takeProfit2,
+    };
+  }
+  
+  if (!positionOpen && bias === 'SHORT') {
+    const stopLoss = currentPrice + (config.atr_sl_multiplier * currentATR);
+    const takeProfit1 = currentPrice - (config.atr_tp1_multiplier * currentATR);
+    const takeProfit2 = currentPrice - (config.atr_tp2_multiplier * currentATR);
+    
+    return {
+      signal_type: 'SELL',
+      reason: 'ATH Guard SHORT: Bias filter + Rejection + MACD cross + Stoch cross + Volume spike',
+      stop_loss: stopLoss,
+      take_profit_1: takeProfit1,
+      take_profit_2: takeProfit2,
+    };
+  }
+  
+  // Exit logic
+  if (positionOpen) {
+    const positionType = currentPrice > currentEMA50 ? 'LONG' : 'SHORT';
+    
+    if (positionType === 'LONG' && currentPrice < currentEMA50) {
+      return {
+        signal_type: 'SELL',
+        reason: 'Exit LONG: Price closed below EMA50',
+      };
+    }
+    
+    if (positionType === 'SHORT' && currentPrice > currentEMA50) {
+      return {
+        signal_type: 'BUY',
+        reason: 'Exit SHORT: Price closed above EMA50',
+      };
+    }
+  }
+  
+  return { signal_type: null, reason: 'No signal' };
 }
 
 serve(async (req) => {
