@@ -388,9 +388,16 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        const entryConditions = strategy.strategy_conditions.filter((c: any) => c.order_type === 'entry');
-        const exitConditions = strategy.strategy_conditions.filter((c: any) => c.order_type === 'exit');
+        // Fix: Support both 'buy'/'sell' (DB values) and 'entry'/'exit' (legacy)
+        const buyConditions = strategy.strategy_conditions.filter((c: any) => 
+          c.order_type === 'buy' || c.order_type === 'entry'
+        );
+        const sellConditions = strategy.strategy_conditions.filter((c: any) => 
+          c.order_type === 'sell' || c.order_type === 'exit'
+        );
         const currentPrice = candles[candles.length - 1].close;
+        
+        console.log(`[CRON] Strategy conditions for ${strategy.name}: ${buyConditions.length} buy, ${sellConditions.length} sell`);
 
         let signalType: string | null = null;
         let signalReason = '';
@@ -550,9 +557,13 @@ Deno.serve(async (req) => {
             }
           }
 
-          if (checkConditions(entryConditions, candles)) {
+          const buyConditionsMet = checkConditions(buyConditions, candles);
+          console.log(`[CRON] Buy conditions check for ${strategy.name}: ${buyConditionsMet}`);
+          
+          if (buyConditionsMet) {
             signalType = 'BUY';
             signalReason = 'Entry conditions met';
+            console.log(`[CRON] ✅ BUY signal generated for ${strategy.name}`);
             
             await supabase
               .from('strategy_live_states')
@@ -565,9 +576,13 @@ Deno.serve(async (req) => {
               .eq('strategy_id', strategy.id);
           }
         } else {
-          if (checkConditions(exitConditions, candles)) {
+          const sellConditionsMet = checkConditions(sellConditions, candles);
+          console.log(`[CRON] Sell conditions check for ${strategy.name}: ${sellConditionsMet}`);
+          
+          if (sellConditionsMet) {
             signalType = 'SELL';
             signalReason = 'Exit conditions met';
+            console.log(`[CRON] ✅ SELL signal generated for ${strategy.name}`);
             
             await supabase
               .from('strategy_live_states')

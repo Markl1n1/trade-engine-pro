@@ -142,6 +142,34 @@ export function evaluate4hReentry(
     }
   } else {
     console.log(`[4H-REENTRY] ⏸️ Outside NY session (current time: ${nyTimeStr})`);
+    
+    // If range is missing and we're outside the session, try to reconstruct from history
+    if ((!rangeHigh || !rangeLow) && candles.length >= 4) {
+      console.log(`[4H-REENTRY] 🔍 Attempting to reconstruct range from historical candles...`);
+      
+      // Find candles from today's NY session (00:00-03:59)
+      const sessionCandles = candles.filter(c => {
+        const candleTimestamp = c.timestamp || c.open_time || 0;
+        if (!candleTimestamp) return false;
+        
+        const candleNyTime = convertToNYTime(candleTimestamp);
+        const candleDate = candleNyTime.toISOString().split('T')[0];
+        
+        // Only use candles from today
+        if (candleDate !== currentDate) return false;
+        
+        // Check if candle is within session hours
+        return isInNYSession(candleTimestamp, sessionStart, sessionEnd);
+      });
+      
+      if (sessionCandles.length > 0) {
+        rangeHigh = Math.max(...sessionCandles.map(c => c.high));
+        rangeLow = Math.min(...sessionCandles.map(c => c.low));
+        console.log(`[4H-REENTRY] ✅ Reconstructed range from ${sessionCandles.length} historical candles: H_4h=${rangeHigh.toFixed(2)}, L_4h=${rangeLow.toFixed(2)}`);
+      } else {
+        console.log(`[4H-REENTRY] ⚠️ No session candles found for today to reconstruct range`);
+      }
+    }
   }
 
   // Need established range to generate signals
