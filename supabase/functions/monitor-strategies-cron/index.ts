@@ -6,6 +6,7 @@ import {
   markSignalAsDelivered 
 } from '../helpers/signal-utils.ts';
 import { evaluateATHGuardStrategy } from '../helpers/ath-guard-strategy.ts';
+import { evaluate4hReentry } from '../helpers/4h-reentry-strategy.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -432,7 +433,61 @@ Deno.serve(async (req) => {
           } else {
             console.log(`[CRON] ⏸️ ATH Guard: ${athGuardSignal.reason}`);
           }
-        } else if (!liveState.position_open) {
+        } 
+        // Check if this is a 4h Reentry strategy
+        else if (strategy.strategy_type === '4h_reentry') {
+          console.log(`[CRON] 🎯 Evaluating 4h Reentry strategy for ${strategy.symbol}`);
+          console.log(`[CRON] Current position state: ${liveState?.position_open ? 'OPEN' : 'CLOSED'}`);
+          console.log(`[CRON] Current range: H_4h=${liveState?.range_high || 'N/A'}, L_4h=${liveState?.range_low || 'N/A'}`);
+          
+          const reentrySignal = evaluate4hReentry(
+            candles.map(c => ({
+              open: c.open,
+              high: c.high,
+              low: c.low,
+              close: c.close,
+              volume: c.volume,
+              timestamp: c.timestamp,
+            })),
+            liveState,
+            strategy
+          );
+
+          if (reentrySignal.signal_type) {
+            signalType = reentrySignal.signal_type;
+            signalReason = reentrySignal.reason;
+            console.log(`[CRON] ✅ 4h Reentry signal generated: ${signalType} - ${signalReason}`);
+            
+            // Update live state with range data
+            if (reentrySignal.range_high !== undefined && reentrySignal.range_low !== undefined) {
+              await supabase
+                .from('strategy_live_states')
+                .update({
+                  range_high: reentrySignal.range_high,
+                  range_low: reentrySignal.range_low,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('strategy_id', strategy.id);
+              
+              console.log(`[CRON] 📊 Updated range state: H_4h=${reentrySignal.range_high.toFixed(2)}, L_4h=${reentrySignal.range_low.toFixed(2)}`);
+            }
+          } else {
+            console.log(`[CRON] ⏸️ 4h Reentry: ${reentrySignal.reason}`);
+            
+            // Still update range even if no signal
+            if (reentrySignal.range_high !== undefined && reentrySignal.range_low !== undefined) {
+              await supabase
+                .from('strategy_live_states')
+                .update({
+                  range_high: reentrySignal.range_high,
+                  range_low: reentrySignal.range_low,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('strategy_id', strategy.id);
+            }
+          }
+        } 
+        else if (!liveState.position_open) {
           // Check if position already exists on Binance before generating entry signal
           if (userSettings?.binance_api_key && userSettings?.binance_api_secret) {
             const positionExists = await checkBinancePosition(
