@@ -89,15 +89,75 @@ export async function sendTelegramSignal(
     symbol: string;
     price: number;
     reason?: string;
+    stop_loss?: number;
+    take_profit?: number;
+    take_profit_1?: number;
+    take_profit_2?: number;
+    stop_loss_percent?: number;
+    take_profit_percent?: number;
+    timestamp?: number;
   }
 ): Promise<boolean> {
-  const emoji = signal.signal_type === 'BUY' ? '🟢' : '🔴';
-  const message = `${emoji} *${signal.signal_type} SIGNAL*\n\n` +
-    `Strategy: ${signal.strategy_name}\n` +
-    `Symbol: ${signal.symbol}\n` +
-    `Price: $${Number(signal.price).toLocaleString()}\n` +
-    (signal.reason ? `Reason: ${signal.reason}\n` : '') +
-    `Time: ${new Date().toLocaleString()}`;
+  // Determine signal direction
+  const isLong = signal.signal_type === 'BUY' || signal.signal_type === 'LONG';
+  const emoji = isLong ? '🟢' : '🔴';
+  const signalLabel = isLong ? 'LONG SIGNAL' : 'SHORT SIGNAL';
+  
+  // Calculate TP and SL percentages
+  let tpPercent = 0;
+  let slPercent = 0;
+  
+  // First try to use provided percentages
+  if (signal.take_profit_percent !== undefined && signal.stop_loss_percent !== undefined) {
+    tpPercent = signal.take_profit_percent;
+    slPercent = signal.stop_loss_percent;
+  } 
+  // Then try to calculate from absolute prices
+  else if (signal.price) {
+    // Use take_profit_1 if available (for ATH Guard), otherwise take_profit
+    const takeProfitPrice = signal.take_profit_1 || signal.take_profit;
+    const stopLossPrice = signal.stop_loss;
+    
+    if (takeProfitPrice) {
+      if (isLong) {
+        tpPercent = ((takeProfitPrice - signal.price) / signal.price) * 100;
+      } else {
+        tpPercent = ((signal.price - takeProfitPrice) / signal.price) * 100;
+      }
+    }
+    
+    if (stopLossPrice) {
+      if (isLong) {
+        slPercent = ((signal.price - stopLossPrice) / signal.price) * 100;
+      } else {
+        slPercent = ((stopLossPrice - signal.price) / signal.price) * 100;
+      }
+    }
+  }
+  
+  // Format timestamp
+  const signalTime = signal.timestamp ? new Date(signal.timestamp) : new Date();
+  const formattedTime = signalTime.toLocaleString('en-US', {
+    month: '2-digit',
+    day: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true
+  });
+  
+  // Build the message
+  const tpSlLine = (tpPercent > 0 || slPercent > 0) 
+    ? `TP | SL: ${tpPercent.toFixed(1)}%|${slPercent.toFixed(1)}%\n`
+    : '';
+  
+  const message = `${emoji} *${signalLabel}*\n\n` +
+    `📊 Strategy: ${signal.strategy_name}\n` +
+    `💱 Symbol: ${signal.symbol}\n` +
+    `💰 Price: $${Number(signal.price).toLocaleString()}\n` +
+    tpSlLine +
+    `🕐 Time: ${formattedTime}`;
 
   try {
     const response = await fetch(

@@ -401,6 +401,12 @@ Deno.serve(async (req) => {
 
         let signalType: string | null = null;
         let signalReason = '';
+        
+        // Variables to hold TP/SL data for Telegram
+        let signalStopLoss: number | undefined;
+        let signalTakeProfit: number | undefined;
+        let signalStopLossPercent: number | undefined;
+        let signalTakeProfitPercent: number | undefined;
 
         // Check if this is an ATH Guard Scalping strategy
         if (strategy.strategy_type === 'ath_guard_scalping') {
@@ -437,6 +443,8 @@ Deno.serve(async (req) => {
           if (athGuardSignal.signal_type) {
             signalType = athGuardSignal.signal_type;
             signalReason = athGuardSignal.reason;
+            signalStopLoss = athGuardSignal.stop_loss;
+            signalTakeProfit = athGuardSignal.take_profit_1; // Use first TP for display
             console.log(`[CRON] ✅ ATH Guard signal generated: ${signalType} - ${signalReason}`);
           } else {
             console.log(`[CRON] ⏸️ ATH Guard: ${athGuardSignal.reason}`);
@@ -464,6 +472,8 @@ Deno.serve(async (req) => {
           if (reentrySignal.signal_type) {
             signalType = reentrySignal.signal_type;
             signalReason = reentrySignal.reason;
+            signalStopLoss = reentrySignal.stop_loss;
+            signalTakeProfit = reentrySignal.take_profit;
             console.log(`[CRON] ✅ 4h Reentry signal generated: ${signalType} - ${signalReason}`);
             
             // Update live state with range data
@@ -531,6 +541,8 @@ Deno.serve(async (req) => {
           if (mstgSignal.signal_type) {
             signalType = mstgSignal.signal_type;
             signalReason = mstgSignal.reason;
+            signalStopLossPercent = strategy.stop_loss_percent;
+            signalTakeProfitPercent = strategy.take_profit_percent;
             
             console.log(`[CRON] MSTG signal generated: ${signalType} - ${signalReason}`);
           } else {
@@ -563,6 +575,8 @@ Deno.serve(async (req) => {
           if (buyConditionsMet) {
             signalType = 'BUY';
             signalReason = 'Entry conditions met';
+            signalStopLossPercent = strategy.stop_loss_percent;
+            signalTakeProfitPercent = strategy.take_profit_percent;
             console.log(`[CRON] ✅ BUY signal generated for ${strategy.name}`);
             
             await supabase
@@ -582,6 +596,8 @@ Deno.serve(async (req) => {
           if (sellConditionsMet) {
             signalType = 'SELL';
             signalReason = 'Exit conditions met';
+            signalStopLossPercent = strategy.stop_loss_percent;
+            signalTakeProfitPercent = strategy.take_profit_percent;
             console.log(`[CRON] ✅ SELL signal generated for ${strategy.name}`);
             
             await supabase
@@ -635,6 +651,11 @@ Deno.serve(async (req) => {
                   symbol: strategy.symbol,
                   price: currentPrice,
                   reason: signalReason,
+                  stop_loss: signalStopLoss,
+                  take_profit: signalTakeProfit,
+                  stop_loss_percent: signalStopLossPercent,
+                  take_profit_percent: signalTakeProfitPercent,
+                  timestamp: candles[candles.length - 1].timestamp,
                 }
               );
               
