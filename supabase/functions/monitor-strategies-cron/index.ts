@@ -7,6 +7,7 @@ import {
 } from '../helpers/signal-utils.ts';
 import { evaluateATHGuardStrategy } from '../helpers/ath-guard-strategy.ts';
 import { evaluate4hReentry } from '../helpers/4h-reentry-strategy.ts';
+import { evaluateMSTG } from '../helpers/mstg-strategy.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -487,6 +488,48 @@ Deno.serve(async (req) => {
             }
           }
         } 
+        else if (strategy.strategy_type === 'market_sentiment_trend_gauge') {
+          console.log(`[CRON] 🎯 Evaluating MSTG strategy for ${strategy.symbol}`);
+          
+          // Fetch benchmark data
+          const benchmarkSymbol = strategy.benchmark_symbol || 'BTCUSDT';
+          console.log(`[CRON] Fetching benchmark data for ${benchmarkSymbol}...`);
+          
+          const benchmarkCandles = await getCandlesWithHistory(
+            supabase,
+            benchmarkSymbol,
+            strategy.timeframe
+          );
+          
+          console.log(`[CRON] Fetched ${benchmarkCandles.length} benchmark candles`);
+          
+          const mstgConfig = {
+            long_threshold: strategy.mstg_long_threshold || 30,
+            short_threshold: strategy.mstg_short_threshold || -30,
+            exit_threshold: strategy.mstg_exit_threshold || 0,
+            extreme_threshold: strategy.mstg_extreme_threshold || 60,
+            weight_momentum: strategy.mstg_weight_momentum || 0.25,
+            weight_trend: strategy.mstg_weight_trend || 0.35,
+            weight_volatility: strategy.mstg_weight_volatility || 0.20,
+            weight_relative: strategy.mstg_weight_relative || 0.20,
+          };
+          
+          const mstgSignal = evaluateMSTG(
+            candles,
+            benchmarkCandles,
+            mstgConfig,
+            liveState?.position_open || false
+          );
+          
+          if (mstgSignal.signal_type) {
+            signalType = mstgSignal.signal_type;
+            signalReason = mstgSignal.reason;
+            
+            console.log(`[CRON] MSTG signal generated: ${signalType} - ${signalReason}`);
+          } else {
+            console.log(`[CRON] No MSTG signal: ${mstgSignal.reason}`);
+          }
+        }
         else if (!liveState.position_open) {
           // Check if position already exists on Binance before generating entry signal
           if (userSettings?.binance_api_key && userSettings?.binance_api_secret) {
