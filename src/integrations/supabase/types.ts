@@ -786,7 +786,12 @@ export type Database = {
           binance_mainnet_api_secret: string | null
           binance_testnet_api_key: string | null
           binance_testnet_api_secret: string | null
+          bybit_mainnet_api_key: string | null
+          bybit_mainnet_api_secret: string | null
+          bybit_testnet_api_key: string | null
+          bybit_testnet_api_secret: string | null
           created_at: string
+          exchange_type: string | null
           id: string
           telegram_bot_token: string | null
           telegram_chat_id: string | null
@@ -802,7 +807,12 @@ export type Database = {
           binance_mainnet_api_secret?: string | null
           binance_testnet_api_key?: string | null
           binance_testnet_api_secret?: string | null
+          bybit_mainnet_api_key?: string | null
+          bybit_mainnet_api_secret?: string | null
+          bybit_testnet_api_key?: string | null
+          bybit_testnet_api_secret?: string | null
           created_at?: string
+          exchange_type?: string | null
           id?: string
           telegram_bot_token?: string | null
           telegram_chat_id?: string | null
@@ -818,7 +828,12 @@ export type Database = {
           binance_mainnet_api_secret?: string | null
           binance_testnet_api_key?: string | null
           binance_testnet_api_secret?: string | null
+          bybit_mainnet_api_key?: string | null
+          bybit_mainnet_api_secret?: string | null
+          bybit_testnet_api_key?: string | null
+          bybit_testnet_api_secret?: string | null
           created_at?: string
+          exchange_type?: string | null
           id?: string
           telegram_bot_token?: string | null
           telegram_chat_id?: string | null

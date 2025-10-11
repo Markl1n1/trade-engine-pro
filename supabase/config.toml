@@ -1,5 +1,8 @@
 project_id = "wnkjtkigpyfnthnfmdlk"
 
+[functions.test-exchange]
+verify_jwt = true
+
 [functions.binance-api-status]
 verify_jwt = false
 

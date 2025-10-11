@@ -12,22 +12,33 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { z } from "zod";
 import { TradingPairsManager } from "@/components/TradingPairsManager";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 // Validation schema for security
 const settingsSchema = z.object({
+  exchange_type: z.enum(['binance', 'bybit']).optional(),
   binance_mainnet_api_key: z.string().trim().max(128, "API key too long").optional(),
   binance_mainnet_api_secret: z.string().trim().max(128, "API secret too long").optional(),
   binance_testnet_api_key: z.string().trim().max(128, "API key too long").optional(),
   binance_testnet_api_secret: z.string().trim().max(128, "API secret too long").optional(),
+  bybit_mainnet_api_key: z.string().trim().max(128, "API key too long").optional(),
+  bybit_mainnet_api_secret: z.string().trim().max(128, "API secret too long").optional(),
+  bybit_testnet_api_key: z.string().trim().max(128, "API key too long").optional(),
+  bybit_testnet_api_secret: z.string().trim().max(128, "API secret too long").optional(),
   telegram_bot_token: z.string().trim().max(256, "Token too long").optional(),
   telegram_chat_id: z.string().trim().max(64, "Chat ID too long").optional(),
 });
 
 interface UserSettings {
+  exchange_type: 'binance' | 'bybit';
   binance_mainnet_api_key: string;
   binance_mainnet_api_secret: string;
   binance_testnet_api_key: string;
   binance_testnet_api_secret: string;
+  bybit_mainnet_api_key: string;
+  bybit_mainnet_api_secret: string;
+  bybit_testnet_api_key: string;
+  bybit_testnet_api_secret: string;
   use_testnet: boolean;
   telegram_bot_token: string;
   telegram_chat_id: string;
@@ -60,10 +71,15 @@ const Settings = () => {
     lastRun: null,
   });
   const [settings, setSettings] = useState<UserSettings>({
+    exchange_type: 'binance',
     binance_mainnet_api_key: "",
     binance_mainnet_api_secret: "",
     binance_testnet_api_key: "",
     binance_testnet_api_secret: "",
+    bybit_mainnet_api_key: "",
+    bybit_mainnet_api_secret: "",
+    bybit_testnet_api_key: "",
+    bybit_testnet_api_secret: "",
     use_testnet: true,
     telegram_bot_token: "",
     telegram_chat_id: "",
@@ -124,10 +140,15 @@ const Settings = () => {
 
       if (data) {
         setSettings({
+          exchange_type: (data.exchange_type as 'binance' | 'bybit') || 'binance',
           binance_mainnet_api_key: data.binance_mainnet_api_key || "",
           binance_mainnet_api_secret: data.binance_mainnet_api_secret || "",
           binance_testnet_api_key: data.binance_testnet_api_key || "",
           binance_testnet_api_secret: data.binance_testnet_api_secret || "",
+          bybit_mainnet_api_key: data.bybit_mainnet_api_key || "",
+          bybit_mainnet_api_secret: data.bybit_mainnet_api_secret || "",
+          bybit_testnet_api_key: data.bybit_testnet_api_key || "",
+          bybit_testnet_api_secret: data.bybit_testnet_api_secret || "",
           use_testnet: data.use_testnet,
           telegram_bot_token: data.telegram_bot_token || "",
           telegram_chat_id: data.telegram_chat_id || "",
@@ -176,10 +197,15 @@ const Settings = () => {
     try {
       // Validate input
       const validationResult = settingsSchema.safeParse({
+        exchange_type: settings.exchange_type,
         binance_mainnet_api_key: settings.binance_mainnet_api_key || undefined,
         binance_mainnet_api_secret: settings.binance_mainnet_api_secret || undefined,
         binance_testnet_api_key: settings.binance_testnet_api_key || undefined,
         binance_testnet_api_secret: settings.binance_testnet_api_secret || undefined,
+        bybit_mainnet_api_key: settings.bybit_mainnet_api_key || undefined,
+        bybit_mainnet_api_secret: settings.bybit_mainnet_api_secret || undefined,
+        bybit_testnet_api_key: settings.bybit_testnet_api_key || undefined,
+        bybit_testnet_api_secret: settings.bybit_testnet_api_secret || undefined,
         telegram_bot_token: settings.telegram_bot_token || undefined,
         telegram_chat_id: settings.telegram_chat_id || undefined,
       });
@@ -205,10 +231,15 @@ const Settings = () => {
 
       const settingsData = {
         user_id: user.id,
+        exchange_type: settings.exchange_type,
         binance_mainnet_api_key: settings.binance_mainnet_api_key?.trim() || null,
         binance_mainnet_api_secret: settings.binance_mainnet_api_secret?.trim() || null,
         binance_testnet_api_key: settings.binance_testnet_api_key?.trim() || null,
         binance_testnet_api_secret: settings.binance_testnet_api_secret?.trim() || null,
+        bybit_mainnet_api_key: settings.bybit_mainnet_api_key?.trim() || null,
+        bybit_mainnet_api_secret: settings.bybit_mainnet_api_secret?.trim() || null,
+        bybit_testnet_api_key: settings.bybit_testnet_api_key?.trim() || null,
+        bybit_testnet_api_secret: settings.bybit_testnet_api_secret?.trim() || null,
         use_testnet: settings.use_testnet,
         telegram_bot_token: settings.telegram_bot_token?.trim() || null,
         telegram_chat_id: settings.telegram_chat_id?.trim() || null,
@@ -294,28 +325,30 @@ const Settings = () => {
     }
   };
 
-  const handleTestBinance = async () => {
+  const handleTestExchange = async () => {
     setTestingBinance(true);
     try {
-      const { data, error } = await supabase.functions.invoke('test-binance', {
+      const { data, error } = await supabase.functions.invoke('test-exchange', {
         body: {},
       });
 
       if (error) throw error;
 
       if (data.success) {
+        const exchangeName = settings.exchange_type === 'binance' ? 'Binance' : 'Bybit';
         toast({
           title: "Success",
-          description: `Connected to Binance ${data.data.environment}! Balance: $${data.data.totalWalletBalance}`,
+          description: `Connected to ${exchangeName} ${data.data.environment}! Balance: $${data.data.totalWalletBalance}`,
         });
       } else {
-        throw new Error(data.error || 'Failed to connect to Binance');
+        throw new Error(data.error || `Failed to connect to ${settings.exchange_type}`);
       }
     } catch (error: any) {
-      console.error("Error testing Binance:", error);
+      console.error("Error testing exchange:", error);
+      const exchangeName = settings.exchange_type === 'binance' ? 'Binance' : 'Bybit';
       toast({
         title: "Error",
-        description: error.message || "Failed to connect to Binance",
+        description: error.message || `Failed to connect to ${exchangeName}`,
         variant: "destructive",
       });
     } finally {
@@ -402,6 +435,33 @@ const Settings = () => {
         </p>
       </div>
 
+      {/* Exchange Selection */}
+      <Card className="p-6">
+        <h2 className="text-xl font-semibold mb-4">Exchange Selection</h2>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <Label htmlFor="exchange" className="text-base">Select Exchange</Label>
+              <p className="text-sm text-muted-foreground">
+                Choose between Binance or Bybit for trading
+              </p>
+            </div>
+            <Select
+              value={settings.exchange_type}
+              onValueChange={(value: 'binance' | 'bybit') => updateSetting('exchange_type', value)}
+            >
+              <SelectTrigger className="w-[180px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="binance">Binance</SelectItem>
+                <SelectItem value="bybit">Bybit</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </Card>
+
       {/* Environment Section */}
       <Card className="p-6">
         <h2 className="text-xl font-semibold mb-4">Environment</h2>
@@ -410,7 +470,7 @@ const Settings = () => {
             <div>
               <Label htmlFor="testnet" className="text-base">Testnet Mode</Label>
               <p className="text-sm text-muted-foreground">
-                Switches between Binance mainnet and testnet API endpoints
+                Switches between {settings.exchange_type === 'binance' ? 'Binance' : 'Bybit'} mainnet and testnet API endpoints
               </p>
             </div>
             <Switch 
@@ -424,12 +484,12 @@ const Settings = () => {
             <AlertDescription className="text-xs">
               {settings.use_testnet ? (
                 <>
-                  <strong>TESTNET MODE:</strong> Using https://testnet.binancefuture.com
+                  <strong>TESTNET MODE:</strong> Using {settings.exchange_type === 'binance' ? 'https://testnet.binancefuture.com' : 'https://api-testnet.bybit.com'}
                   <br />No real funds at risk. Perfect for testing strategies.
                 </>
               ) : (
                 <>
-                  <strong>MAINNET MODE:</strong> Using https://fapi.binance.com
+                  <strong>MAINNET MODE:</strong> Using {settings.exchange_type === 'binance' ? 'https://fapi.binance.com' : 'https://api.bybit.com'}
                   <br />⚠️ Real funds trading enabled. Be cautious!
                 </>
               )}
@@ -441,7 +501,7 @@ const Settings = () => {
       {/* API Keys Section */}
       <Card className="p-6">
         <div className="flex items-center gap-2 mb-4">
-          <h2 className="text-xl font-semibold">Binance API Keys</h2>
+          <h2 className="text-xl font-semibold">{settings.exchange_type === 'binance' ? 'Binance' : 'Bybit'} API Keys</h2>
           <Shield className="h-5 w-5 text-green-500" />
         </div>
         <Alert className="bg-green-500/5 border-green-500/20 mb-4">
@@ -451,66 +511,125 @@ const Settings = () => {
           </AlertDescription>
         </Alert>
 
-        <Tabs defaultValue="mainnet" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="mainnet">Mainnet API Keys</TabsTrigger>
-            <TabsTrigger value="testnet">Testnet API Keys</TabsTrigger>
-          </TabsList>
-          
-          <TabsContent value="mainnet" className="space-y-4 mt-4">
-            <div className="space-y-2">
-              <Label htmlFor="mainnet-api-key">Mainnet API Key</Label>
-              <Input 
-                id="mainnet-api-key" 
-                type="password" 
-                placeholder="Enter your Binance mainnet API key"
-                value={settings.binance_mainnet_api_key}
-                onChange={(e) => updateSetting("binance_mainnet_api_key", e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="mainnet-api-secret">Mainnet API Secret</Label>
-              <Input 
-                id="mainnet-api-secret" 
-                type="password" 
-                placeholder="Enter your Binance mainnet API secret"
-                value={settings.binance_mainnet_api_secret}
-                onChange={(e) => updateSetting("binance_mainnet_api_secret", e.target.value)}
-              />
-            </div>
-          </TabsContent>
+        {settings.exchange_type === 'binance' ? (
+          <Tabs defaultValue="mainnet" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="mainnet">Mainnet API Keys</TabsTrigger>
+              <TabsTrigger value="testnet">Testnet API Keys</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="mainnet" className="space-y-4 mt-4">
+              <div className="space-y-2">
+                <Label htmlFor="mainnet-api-key">Mainnet API Key</Label>
+                <Input 
+                  id="mainnet-api-key" 
+                  type="password" 
+                  placeholder="Enter your Binance mainnet API key"
+                  value={settings.binance_mainnet_api_key}
+                  onChange={(e) => updateSetting("binance_mainnet_api_key", e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="mainnet-api-secret">Mainnet API Secret</Label>
+                <Input 
+                  id="mainnet-api-secret" 
+                  type="password" 
+                  placeholder="Enter your Binance mainnet API secret"
+                  value={settings.binance_mainnet_api_secret}
+                  onChange={(e) => updateSetting("binance_mainnet_api_secret", e.target.value)}
+                />
+              </div>
+            </TabsContent>
 
-          <TabsContent value="testnet" className="space-y-4 mt-4">
-            <div className="space-y-2">
-              <Label htmlFor="testnet-api-key">Testnet API Key</Label>
-              <Input 
-                id="testnet-api-key" 
-                type="password" 
-                placeholder="Enter your Binance testnet API key"
-                value={settings.binance_testnet_api_key}
-                onChange={(e) => updateSetting("binance_testnet_api_key", e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="testnet-api-secret">Testnet API Secret</Label>
-              <Input 
-                id="testnet-api-secret" 
-                type="password" 
-                placeholder="Enter your Binance testnet API secret"
-                value={settings.binance_testnet_api_secret}
-                onChange={(e) => updateSetting("binance_testnet_api_secret", e.target.value)}
-              />
-            </div>
-          </TabsContent>
-        </Tabs>
+            <TabsContent value="testnet" className="space-y-4 mt-4">
+              <div className="space-y-2">
+                <Label htmlFor="testnet-api-key">Testnet API Key</Label>
+                <Input 
+                  id="testnet-api-key" 
+                  type="password" 
+                  placeholder="Enter your Binance testnet API key"
+                  value={settings.binance_testnet_api_key}
+                  onChange={(e) => updateSetting("binance_testnet_api_key", e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="testnet-api-secret">Testnet API Secret</Label>
+                <Input 
+                  id="testnet-api-secret" 
+                  type="password" 
+                  placeholder="Enter your Binance testnet API secret"
+                  value={settings.binance_testnet_api_secret}
+                  onChange={(e) => updateSetting("binance_testnet_api_secret", e.target.value)}
+                />
+              </div>
+            </TabsContent>
+          </Tabs>
+        ) : (
+          <Tabs defaultValue="mainnet" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="mainnet">Mainnet API Keys</TabsTrigger>
+              <TabsTrigger value="testnet">Testnet API Keys</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="mainnet" className="space-y-4 mt-4">
+              <div className="space-y-2">
+                <Label htmlFor="bybit-mainnet-api-key">Mainnet API Key</Label>
+                <Input 
+                  id="bybit-mainnet-api-key" 
+                  type="password" 
+                  placeholder="Enter your Bybit mainnet API key"
+                  value={settings.bybit_mainnet_api_key}
+                  onChange={(e) => updateSetting("bybit_mainnet_api_key", e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="bybit-mainnet-api-secret">Mainnet API Secret</Label>
+                <Input 
+                  id="bybit-mainnet-api-secret" 
+                  type="password" 
+                  placeholder="Enter your Bybit mainnet API secret"
+                  value={settings.bybit_mainnet_api_secret}
+                  onChange={(e) => updateSetting("bybit_mainnet_api_secret", e.target.value)}
+                />
+              </div>
+            </TabsContent>
+
+            <TabsContent value="testnet" className="space-y-4 mt-4">
+              <div className="space-y-2">
+                <Label htmlFor="bybit-testnet-api-key">Testnet API Key</Label>
+                <Input 
+                  id="bybit-testnet-api-key" 
+                  type="password" 
+                  placeholder="Enter your Bybit testnet API key"
+                  value={settings.bybit_testnet_api_key}
+                  onChange={(e) => updateSetting("bybit_testnet_api_key", e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="bybit-testnet-api-secret">Testnet API Secret</Label>
+                <Input 
+                  id="bybit-testnet-api-secret" 
+                  type="password" 
+                  placeholder="Enter your Bybit testnet API secret"
+                  value={settings.bybit_testnet_api_secret}
+                  onChange={(e) => updateSetting("bybit_testnet_api_secret", e.target.value)}
+                />
+              </div>
+            </TabsContent>
+          </Tabs>
+        )}
 
         <Button 
           variant="outline" 
-          onClick={handleTestBinance}
+          onClick={handleTestExchange}
           disabled={testingBinance || (
             settings.use_testnet 
-              ? !settings.binance_testnet_api_key || !settings.binance_testnet_api_secret
-              : !settings.binance_mainnet_api_key || !settings.binance_mainnet_api_secret
+              ? (settings.exchange_type === 'binance' 
+                  ? !settings.binance_testnet_api_key || !settings.binance_testnet_api_secret
+                  : !settings.bybit_testnet_api_key || !settings.bybit_testnet_api_secret)
+              : (settings.exchange_type === 'binance'
+                  ? !settings.binance_mainnet_api_key || !settings.binance_mainnet_api_secret
+                  : !settings.bybit_mainnet_api_key || !settings.bybit_mainnet_api_secret)
           )}
           className="mt-4"
         >
@@ -522,7 +641,7 @@ const Settings = () => {
           ) : (
             <>
               <CheckCircle className="mr-2 h-4 w-4" />
-              Test {settings.use_testnet ? 'Testnet' : 'Mainnet'} Connection
+              Test {settings.exchange_type === 'binance' ? 'Binance' : 'Bybit'} {settings.use_testnet ? 'Testnet' : 'Mainnet'} Connection
             </>
           )}
         </Button>
