@@ -655,7 +655,7 @@ Deno.serve(async (req) => {
                   take_profit: signalTakeProfit,
                   stop_loss_percent: signalStopLossPercent,
                   take_profit_percent: signalTakeProfitPercent,
-                  timestamp: candles[candles.length - 1].timestamp,
+                  timestamp: Date.now(),
                 }
               );
               

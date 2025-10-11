@@ -217,15 +217,13 @@ export function evaluate4hReentry(
   // LONG setup: C_{t-1} < L_4h AND C_t >= L_4h
   if (C_prev < rangeLow && C_curr >= rangeLow) {
     const entryPrice = C_curr;
-    const stopLoss = L_prev;
-    const distance = Math.abs(entryPrice - stopLoss);
-    const takeProfit = entryPrice + (riskRewardRatio * distance);
+    const stopLoss = entryPrice * (1 - 0.20);  // Fixed -20% SL
+    const takeProfit = entryPrice * (1 + 0.35);  // Fixed +35% TP
     
     console.log(`[4H-REENTRY] 🟢 LONG reentry detected!`);
     console.log(`  - Previous close (${C_prev.toFixed(2)}) < L_4h (${rangeLow.toFixed(2)})`);
     console.log(`  - Current close (${C_curr.toFixed(2)}) >= L_4h (${rangeLow.toFixed(2)})`);
-    console.log(`  - Entry: ${entryPrice.toFixed(2)}, SL: ${stopLoss.toFixed(2)}, TP: ${takeProfit.toFixed(2)}`);
-    console.log(`  - Risk: ${distance.toFixed(2)}, Reward: ${(riskRewardRatio * distance).toFixed(2)} (${riskRewardRatio}:1 R:R)`);
+    console.log(`  - Entry: ${entryPrice.toFixed(2)}, SL: ${stopLoss.toFixed(2)} (-20%), TP: ${takeProfit.toFixed(2)} (+35%)`);
     
     return {
       signal_type: 'BUY',
@@ -240,15 +238,13 @@ export function evaluate4hReentry(
   // SHORT setup: C_{t-1} > H_4h AND C_t <= H_4h
   if (C_prev > rangeHigh && C_curr <= rangeHigh) {
     const entryPrice = C_curr;
-    const stopLoss = H_prev;
-    const distance = Math.abs(entryPrice - stopLoss);
-    const takeProfit = entryPrice - (riskRewardRatio * distance);
+    const stopLoss = entryPrice * (1 + 0.20);  // Fixed +20% SL (higher price for SHORT)
+    const takeProfit = entryPrice * (1 - 0.35);  // Fixed -35% TP (lower price for SHORT)
     
     console.log(`[4H-REENTRY] 🔴 SHORT reentry detected!`);
     console.log(`  - Previous close (${C_prev.toFixed(2)}) > H_4h (${rangeHigh.toFixed(2)})`);
     console.log(`  - Current close (${C_curr.toFixed(2)}) <= H_4h (${rangeHigh.toFixed(2)})`);
-    console.log(`  - Entry: ${entryPrice.toFixed(2)}, SL: ${stopLoss.toFixed(2)}, TP: ${takeProfit.toFixed(2)}`);
-    console.log(`  - Risk: ${distance.toFixed(2)}, Reward: ${(riskRewardRatio * distance).toFixed(2)} (${riskRewardRatio}:1 R:R)`);
+    console.log(`  - Entry: ${entryPrice.toFixed(2)}, SL: ${stopLoss.toFixed(2)} (+20%), TP: ${takeProfit.toFixed(2)} (-35%)`);
     
     return {
       signal_type: 'SELL',
