@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.binance-websocket-monitor]
 verify_jwt = false
+
+[functions.monitor-strategies-realtime]
+verify_jwt = true

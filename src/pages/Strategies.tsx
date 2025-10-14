@@ -2,18 +2,23 @@ import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Zap, Edit, Trash2, Play, Pause, TrendingUp } from "lucide-react";
+import { Plus, Zap, Edit, Trash2, Play, Pause, TrendingUp, Radio } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { StrategyBuilder } from "@/components/StrategyBuilder";
 import { StrategyCloner } from "@/components/StrategyCloner";
 import { MonitoringStatus } from "@/components/MonitoringStatus";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { useLiveMonitoring } from "@/hooks/useLiveMonitoring";
 
 const Strategies = () => {
   const [strategies, setStrategies] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [builderOpen, setBuilderOpen] = useState(false);
   const [editStrategy, setEditStrategy] = useState<any>(null);
+  const [liveMonitoringEnabled, setLiveMonitoringEnabled] = useState(false);
+  const { isActive, lastCheck, inFlight } = useLiveMonitoring(liveMonitoringEnabled);
 
   useEffect(() => {
     loadStrategies();
@@ -99,10 +104,37 @@ const Strategies = () => {
             Create and manage your trading strategies
           </p>
         </div>
-        <Button className="gap-2" onClick={() => setBuilderOpen(true)}>
-          <Plus className="h-4 w-4" />
-          New Strategy
-        </Button>
+        <div className="flex gap-3 items-center">
+          <Card className="p-3">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="live-monitoring"
+                  checked={liveMonitoringEnabled}
+                  onCheckedChange={setLiveMonitoringEnabled}
+                />
+                <Label htmlFor="live-monitoring" className="flex items-center gap-2 cursor-pointer">
+                  {isActive && <Radio className="h-3 w-3 text-green-500 animate-pulse" />}
+                  <span className="text-sm">Live ({isActive ? 'ON' : 'OFF'})</span>
+                </Label>
+              </div>
+              {lastCheck && (
+                <span className="text-xs text-muted-foreground">
+                  {lastCheck.toLocaleTimeString()}
+                </span>
+              )}
+              {inFlight && (
+                <span className="text-xs text-muted-foreground animate-pulse">
+                  Checking...
+                </span>
+              )}
+            </div>
+          </Card>
+          <Button className="gap-2" onClick={() => setBuilderOpen(true)}>
+            <Plus className="h-4 w-4" />
+            New Strategy
+          </Button>
+        </div>
       </div>
 
       <MonitoringStatus />
