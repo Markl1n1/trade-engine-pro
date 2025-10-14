@@ -106,7 +106,8 @@ Deno.serve(async (req) => {
     };
 
     // Make request to exchange API
-    const accountData = await makeExchangeRequest(config, 'account');
+    const accountParams = exchangeType === 'bybit' ? { accountType: 'UNIFIED' } : {};
+    const accountData = await makeExchangeRequest(config, 'account', accountParams);
     
     // Parse account data to unified format
     const parsed = parseAccountData(accountData, exchangeType);
