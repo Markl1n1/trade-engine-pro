@@ -14,6 +14,22 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const EXCHANGE_URLS = {
+  binance: {
+    mainnet: 'https://fapi.binance.com',
+    testnet: 'https://testnet.binancefuture.com',
+  },
+  bybit: {
+    mainnet: 'https://api.bybit.com',
+    testnet: 'https://api-testnet.bybit.com',
+  },
+};
+
+const INTERVAL_MAPPING: Record<string, Record<string, string>> = {
+  binance: { '1m': '1m', '5m': '5m', '15m': '15m', '1h': '1h', '4h': '4h', '1d': '1d' },
+  bybit: { '1m': '1', '5m': '5', '15m': '15', '1h': '60', '4h': '240', '1d': 'D' },
+};
+
 interface Candle {
   open: number;
   high: number;
@@ -31,13 +47,26 @@ interface StrategyState {
   range_low: number | null;
 }
 
-// Fetch market data from Binance Futures API with exponential backoff retry
-async function fetchMarketData(symbol: string, timeframe: string, limit = 100, maxRetries = 3): Promise<Candle[]> {
+// Fetch market data from exchange API with exponential backoff retry
+async function fetchMarketData(
+  symbol: string, 
+  timeframe: string, 
+  limit = 100, 
+  exchangeType: string = 'binance',
+  useTestnet: boolean = false,
+  maxRetries = 3
+): Promise<Candle[]> {
+  const exchange = exchangeType as 'binance' | 'bybit';
+  const baseUrl = useTestnet ? EXCHANGE_URLS[exchange].testnet : EXCHANGE_URLS[exchange].mainnet;
+  const mappedInterval = INTERVAL_MAPPING[exchange][timeframe] || timeframe;
+  
+  const endpoint = exchange === 'binance' 
+    ? `/fapi/v1/klines?symbol=${symbol}&interval=${mappedInterval}&limit=${limit}`
+    : `/v5/market/kline?category=linear&symbol=${symbol}&interval=${mappedInterval}&limit=${limit}`;
+  
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      const response = await fetch(
-        `https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=${timeframe}&limit=${limit}`
-      );
+      const response = await fetch(`${baseUrl}${endpoint}`);
       
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -45,24 +74,34 @@ async function fetchMarketData(symbol: string, timeframe: string, limit = 100, m
       
       const data = await response.json();
       
-      return data.map((candle: any) => ({
-        timestamp: candle[0],
-        open: parseFloat(candle[1]),
-        high: parseFloat(candle[2]),
-        low: parseFloat(candle[3]),
-        close: parseFloat(candle[4]),
-        volume: parseFloat(candle[5]),
-      }));
+      if (exchange === 'binance') {
+        return data.map((k: any) => ({
+          timestamp: k[0],
+          open: parseFloat(k[1]),
+          high: parseFloat(k[2]),
+          low: parseFloat(k[3]),
+          close: parseFloat(k[4]),
+          volume: parseFloat(k[5]),
+        }));
+      } else {
+        return data.result.list.reverse().map((k: any) => ({
+          timestamp: parseInt(k[0]),
+          open: parseFloat(k[1]),
+          high: parseFloat(k[2]),
+          low: parseFloat(k[3]),
+          close: parseFloat(k[4]),
+          volume: parseFloat(k[5]),
+        }));
+      }
     } catch (error) {
       const isLastAttempt = attempt === maxRetries - 1;
-      console.error(`[CRON] Binance API attempt ${attempt + 1}/${maxRetries} failed for ${symbol}:`, error);
+      console.error(`[CRON] ${exchange.toUpperCase()} API attempt ${attempt + 1}/${maxRetries} failed for ${symbol}:`, error);
       
       if (isLastAttempt) {
         throw new Error(`Failed to fetch market data for ${symbol} after ${maxRetries} attempts`);
       }
       
       const delay = Math.pow(2, attempt) * 1000;
-      console.log(`[CRON] Retrying in ${delay}ms...`);
       await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
@@ -107,10 +146,12 @@ async function loadCandlesFromDatabase(
 async function getCandlesWithHistory(
   supabase: any,
   symbol: string,
-  timeframe: string
+  timeframe: string,
+  exchangeType: string = 'binance',
+  useTestnet: boolean = false
 ): Promise<Candle[]> {
   const dbCandles = await loadCandlesFromDatabase(supabase, symbol, timeframe, 500);
-  const apiCandles = await fetchMarketData(symbol, timeframe, 100);
+  const apiCandles = await fetchMarketData(symbol, timeframe, 100, exchangeType, useTestnet);
   
   if (dbCandles.length === 0) {
     console.log(`[CRON] Using only API candles for ${symbol} (${apiCandles.length} candles)`);
@@ -238,58 +279,118 @@ function checkConditions(conditions: any[], candles: Candle[]): boolean {
   return conditions.every(condition => evaluateCondition(condition, candles));
 }
 
-async function checkBinancePosition(apiKey: string, apiSecret: string, useTestnet: boolean, symbol: string): Promise<boolean | null> {
+async function checkExchangePosition(
+  apiKey: string, 
+  apiSecret: string, 
+  useTestnet: boolean, 
+  symbol: string,
+  exchangeType: string = 'binance'
+): Promise<boolean | null> {
   try {
-    const baseUrl = useTestnet 
-      ? 'https://testnet.binancefuture.com'
-      : 'https://fapi.binance.com';
-    
-    const timestamp = Date.now();
-    const queryString = `symbol=${symbol}&timestamp=${timestamp}`;
-    
-    const encoder = new TextEncoder();
-    const keyData = encoder.encode(apiSecret);
-    const messageData = encoder.encode(queryString);
-    
-    const cryptoKey = await crypto.subtle.importKey(
-      'raw',
-      keyData,
-      { name: 'HMAC', hash: 'SHA-256' },
-      false,
-      ['sign']
-    );
-    
-    const signature = await crypto.subtle.sign('HMAC', cryptoKey, messageData);
-    const signatureHex = Array.from(new Uint8Array(signature))
-      .map(b => b.toString(16).padStart(2, '0'))
-      .join('');
-    
-    const response = await fetch(
-      `${baseUrl}/fapi/v2/positionRisk?${queryString}&signature=${signatureHex}`,
-      {
-        headers: {
-          'X-MBX-APIKEY': apiKey
+    if (exchangeType === 'binance') {
+      const baseUrl = useTestnet 
+        ? 'https://testnet.binancefuture.com'
+        : 'https://fapi.binance.com';
+      
+      const timestamp = Date.now();
+      const queryString = `symbol=${symbol}&timestamp=${timestamp}`;
+      
+      const encoder = new TextEncoder();
+      const keyData = encoder.encode(apiSecret);
+      const messageData = encoder.encode(queryString);
+      
+      const cryptoKey = await crypto.subtle.importKey(
+        'raw',
+        keyData,
+        { name: 'HMAC', hash: 'SHA-256' },
+        false,
+        ['sign']
+      );
+      
+      const signature = await crypto.subtle.sign('HMAC', cryptoKey, messageData);
+      const signatureHex = Array.from(new Uint8Array(signature))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+      
+      const response = await fetch(
+        `${baseUrl}/fapi/v2/positionRisk?${queryString}&signature=${signatureHex}`,
+        {
+          headers: {
+            'X-MBX-APIKEY': apiKey
+          }
         }
+      );
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.warn(`[BINANCE] ⚠️ Position check failed (${response.status}): ${errorText.substring(0, 200)}`);
+        console.warn(`[BINANCE] API keys may be expired/invalid. Continuing with signal generation...`);
+        return null;
       }
-    );
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.warn(`[BINANCE] ⚠️ Position check failed (${response.status}): ${errorText.substring(0, 200)}`);
-      console.warn(`[BINANCE] API keys may be expired/invalid. Continuing with signal generation...`);
-      return null; // Unknown state - can't confirm position status
+      
+      const positions = await response.json();
+      const position = positions.find((p: any) => p.symbol === symbol);
+      const hasPosition = position && parseFloat(position.positionAmt) !== 0;
+      
+      console.log(`[BINANCE] ✅ Position check successful for ${symbol}: ${hasPosition ? 'OPEN' : 'CLOSED'}`);
+      return hasPosition;
+    } else if (exchangeType === 'bybit') {
+      const baseUrl = useTestnet 
+        ? 'https://api-testnet.bybit.com'
+        : 'https://api.bybit.com';
+      
+      const timestamp = Date.now();
+      const queryString = `category=linear&symbol=${symbol}&timestamp=${timestamp}`;
+      
+      const encoder = new TextEncoder();
+      const keyData = encoder.encode(apiSecret);
+      const messageData = encoder.encode(queryString);
+      
+      const cryptoKey = await crypto.subtle.importKey(
+        'raw',
+        keyData,
+        { name: 'HMAC', hash: 'SHA-256' },
+        false,
+        ['sign']
+      );
+      
+      const signature = await crypto.subtle.sign('HMAC', cryptoKey, messageData);
+      const signatureHex = Array.from(new Uint8Array(signature))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+      
+      const response = await fetch(
+        `${baseUrl}/v5/position/list?${queryString}&signature=${signatureHex}`,
+        {
+          headers: {
+            'X-BAPI-API-KEY': apiKey,
+            'X-BAPI-TIMESTAMP': timestamp.toString(),
+            'X-BAPI-SIGN': signatureHex,
+          }
+        }
+      );
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.warn(`[BYBIT] ⚠️ Position check failed (${response.status}): ${errorText.substring(0, 200)}`);
+        console.warn(`[BYBIT] API keys may be expired/invalid. Continuing with signal generation...`);
+        return null;
+      }
+      
+      const data = await response.json();
+      const positions = data.result?.list || [];
+      const position = positions.find((p: any) => p.symbol === symbol);
+      const hasPosition = position && parseFloat(position.size) !== 0;
+      
+      console.log(`[BYBIT] ✅ Position check successful for ${symbol}: ${hasPosition ? 'OPEN' : 'CLOSED'}`);
+      return hasPosition;
     }
     
-    const positions = await response.json();
-    const position = positions.find((p: any) => p.symbol === symbol);
-    const hasPosition = position && parseFloat(position.positionAmt) !== 0;
-    
-    console.log(`[BINANCE] ✅ Position check successful for ${symbol}: ${hasPosition ? 'OPEN' : 'CLOSED'}`);
-    return hasPosition;
+    return null;
   } catch (error) {
-    console.warn('[BINANCE] ⚠️ Position check error:', error);
-    console.warn('[BINANCE] Network/API issue detected. Continuing with signal generation...');
-    return null; // Unknown state - can't confirm position status
+    console.warn(`[${exchangeType.toUpperCase()}] ⚠️ Position check error:`, error);
+    console.warn(`[${exchangeType.toUpperCase()}] Network/API issue detected. Continuing with signal generation...`);
+    return null;
   }
 }
 
@@ -357,7 +458,23 @@ Deno.serve(async (req) => {
 
         const { data: userSettings } = await supabase
           .from('user_settings')
-          .select('telegram_enabled, telegram_bot_token, telegram_chat_id, binance_api_key, binance_api_secret, use_testnet')
+          .select(`
+            telegram_enabled, 
+            telegram_bot_token, 
+            telegram_chat_id, 
+            exchange_type,
+            use_testnet,
+            binance_api_key,
+            binance_api_secret,
+            binance_testnet_api_key,
+            binance_testnet_api_secret,
+            binance_mainnet_api_key,
+            binance_mainnet_api_secret,
+            bybit_testnet_api_key,
+            bybit_testnet_api_secret,
+            bybit_mainnet_api_key,
+            bybit_mainnet_api_secret
+          `)
           .eq('user_id', strategy.user_id)
           .single();
 
@@ -381,7 +498,15 @@ Deno.serve(async (req) => {
           liveState = newState;
         }
 
-        const candles = await getCandlesWithHistory(supabase, strategy.symbol, strategy.timeframe);
+        const exchangeType = userSettings?.exchange_type || 'binance';
+        const useTestnet = userSettings?.use_testnet || false;
+        const candles = await getCandlesWithHistory(
+          supabase, 
+          strategy.symbol, 
+          strategy.timeframe,
+          exchangeType,
+          useTestnet
+        );
         
         if (candles.length === 0) {
           console.log(`[CRON] ⚠️ No candle data available for ${strategy.name}`);
@@ -515,7 +640,9 @@ Deno.serve(async (req) => {
           const benchmarkCandles = await getCandlesWithHistory(
             supabase,
             benchmarkSymbol,
-            strategy.timeframe
+            strategy.timeframe,
+            exchangeType,
+            useTestnet
           );
           
           console.log(`[CRON] Fetched ${benchmarkCandles.length} benchmark candles`);
@@ -550,22 +677,38 @@ Deno.serve(async (req) => {
           }
         }
         else if (!liveState.position_open) {
-          // Check if position already exists on Binance before generating entry signal
-          if (userSettings?.binance_api_key && userSettings?.binance_api_secret) {
-            const positionExists = await checkBinancePosition(
-              userSettings.binance_api_key,
-              userSettings.binance_api_secret,
-              userSettings.use_testnet,
-              strategy.symbol
+          // Check if position already exists on exchange before generating entry signal
+          const exchangeType = userSettings?.exchange_type || 'binance';
+          const useTestnet = userSettings?.use_testnet || false;
+          
+          // Get appropriate API keys based on exchange and testnet
+          let apiKey: string | undefined;
+          let apiSecret: string | undefined;
+          
+          if (exchangeType === 'binance') {
+            apiKey = useTestnet ? userSettings?.binance_testnet_api_key : userSettings?.binance_mainnet_api_key;
+            apiSecret = useTestnet ? userSettings?.binance_testnet_api_secret : userSettings?.binance_mainnet_api_secret;
+          } else if (exchangeType === 'bybit') {
+            apiKey = useTestnet ? userSettings?.bybit_testnet_api_key : userSettings?.bybit_mainnet_api_key;
+            apiSecret = useTestnet ? userSettings?.bybit_testnet_api_secret : userSettings?.bybit_mainnet_api_secret;
+          }
+          
+          if (apiKey && apiSecret) {
+            const positionExists = await checkExchangePosition(
+              apiKey,
+              apiSecret,
+              useTestnet,
+              strategy.symbol,
+              exchangeType
             );
             
             // Only skip if we CONFIRMED position exists (true)
             // If null (API error), continue with signal generation
             if (positionExists === true) {
-              console.log(`[CRON] ⚠️ Skipping entry signal for ${strategy.name} - position confirmed open on Binance`);
+              console.log(`[CRON] ⚠️ Skipping entry signal for ${strategy.name} - position confirmed open on ${exchangeType.toUpperCase()}`);
               continue;
             } else if (positionExists === null) {
-              console.log(`[CRON] ⚠️ Could not verify Binance position for ${strategy.name} - continuing with signal generation`);
+              console.log(`[CRON] ⚠️ Could not verify ${exchangeType.toUpperCase()} position for ${strategy.name} - continuing with signal generation`);
             }
           }
 
