@@ -20,6 +20,7 @@ const Backtest = () => {
   const [initialBalance, setInitialBalance] = useState<string>("1000");
   const [stopLossPercent, setStopLossPercent] = useState<string>("3");
   const [takeProfitPercent, setTakeProfitPercent] = useState<string>("6");
+  const [trailingStopPercent, setTrailingStopPercent] = useState<string>("20");
   const [isStrategyDefaults, setIsStrategyDefaults] = useState(true);
   const [productType, setProductType] = useState<string>("spot");
   const [leverage, setLeverage] = useState<string>("1");
@@ -204,6 +205,7 @@ const Backtest = () => {
           initialBalance: parseFloat(initialBalance),
           stopLossPercent: parseFloat(stopLossPercent),
           takeProfitPercent: parseFloat(takeProfitPercent),
+          trailingStopPercent: parseFloat(trailingStopPercent),
           productType,
           leverage: parseFloat(leverage),
           makerFee: parseFloat(makerFee),
@@ -488,7 +490,7 @@ const Backtest = () => {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <div>
                 <Label className="text-xs text-muted-foreground flex items-center gap-2">
                   Stop Loss (%)
@@ -527,6 +529,35 @@ const Backtest = () => {
                   min="0.1"
                   max="1000"
                   step="0.1"
+                />
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground flex items-center gap-2">
+                  Trailing Stop (%)
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-xs">
+                        <p className="text-xs">Trailing stop activates when profit reaches 50% of TP. Closes position if profit drops by this percentage from the maximum reached.</p>
+                        <p className="text-xs mt-1">Example: TP=80%, Trailing=20% → Activates at 40% profit, closes if profit drops to 64% (80% - 20% = 64%)</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </Label>
+                <Input
+                  type="number"
+                  value={trailingStopPercent}
+                  onChange={(e) => {
+                    setTrailingStopPercent(e.target.value);
+                    setIsStrategyDefaults(false);
+                  }}
+                  className="mt-1"
+                  min="1"
+                  max="50"
+                  step="1"
+                  placeholder="20"
                 />
               </div>
             </div>

@@ -79,6 +79,7 @@ serve(async (req) => {
       initialBalance, 
       stopLossPercent, 
       takeProfitPercent,
+      trailingStopPercent, // New: trailing stop percentage
       productType = 'spot',
       leverage = 1,
       makerFee = 0.02,
@@ -388,21 +389,47 @@ serve(async (req) => {
     let entryPrice = 0;
     const trades: any[] = [];
     const balanceHistory: any[] = [];
+    
+    // Trailing stop variables
+    let maxProfitReached = 0;
+    let trailingStopActive = false;
 
     for (let i = 0; i < candles.length; i++) {
       const candle = candles[i];
       const price = Number(candle.close);
 
-      // Check exit or stop loss/take profit
+      // Check exit or stop loss/take profit with trailing stop
       if (position > 0) {
         const pnlPercent = ((price - entryPrice) / entryPrice) * 100 * leverage;
         let exitReason = '';
 
+        // Update max profit reached
+        if (pnlPercent > maxProfitReached) {
+          maxProfitReached = pnlPercent;
+        }
+
+        // Activate trailing stop when we reach 50% of take profit
+        if (!trailingStopActive && pnlPercent >= (takeProfitPercent * 0.5)) {
+          trailingStopActive = true;
+          console.log(`[TRAILING] Activated at ${pnlPercent.toFixed(2)}% profit`);
+        }
+
+        // Check traditional SL/TP first
         if (pnlPercent <= -stopLossPercent) {
           exitReason = 'stop_loss';
         } else if (pnlPercent >= takeProfitPercent) {
           exitReason = 'take_profit';
-        } else if (exitSignals[i]) {
+        } 
+        // Check trailing stop
+        else if (trailingStopActive && trailingStopPercent) {
+          const trailingThreshold = maxProfitReached * (1 - trailingStopPercent / 100);
+          if (pnlPercent < trailingThreshold) {
+            exitReason = 'trailing_stop';
+            console.log(`[TRAILING] Triggered: ${pnlPercent.toFixed(2)}% < ${trailingThreshold.toFixed(2)}% (max: ${maxProfitReached.toFixed(2)}%)`);
+          }
+        }
+        // Check exit signal
+        else if (exitSignals[i]) {
           exitReason = 'signal';
         }
 
@@ -426,6 +453,10 @@ serve(async (req) => {
 
           position = 0;
           entryPrice = 0;
+          
+          // Reset trailing stop
+          maxProfitReached = 0;
+          trailingStopActive = false;
         }
       }
 

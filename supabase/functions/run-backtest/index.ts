@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as indicators from "../indicators/all-indicators.ts";
 import { evaluateATHGuardStrategy } from '../helpers/ath-guard-strategy.ts';
+import { EnhancedBacktestEngine } from '../helpers/backtest-engine.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -474,6 +475,7 @@ serve(async (req) => {
       initialBalance, 
       stopLossPercent, 
       takeProfitPercent,
+      trailingStopPercent, // New: trailing stop percentage
       productType = 'spot', // 'spot' or 'futures'
       leverage = 1,
       makerFee = 0.02,
@@ -707,238 +709,30 @@ serve(async (req) => {
       );
     }
 
-    // Run standard backtest simulation
-    let balance = initialBalance || strategy.initial_capital || 1000;
-    let availableBalance = balance;
-    let lockedMargin = 0;
-    let position: Trade | null = null;
-    const trades: Trade[] = [];
-    let maxBalance = balance;
-    let maxDrawdown = 0;
-    const balanceHistory: { time: number; balance: number }[] = [{ time: candles[0].open_time, balance }];
+    // Use enhanced backtest engine with trailing stop support
+    const backtestConfig = {
+      initialBalance: initialBalance || strategy.initial_capital || 1000,
+      stopLossPercent: stopLossPercent ?? strategy.stop_loss_percent,
+      takeProfitPercent: takeProfitPercent ?? strategy.take_profit_percent,
+      trailingStopPercent: trailingStopPercent, // New trailing stop feature
+      productType,
+      leverage,
+      makerFee,
+      takerFee,
+      slippage,
+      executionTiming,
+      positionSizePercent: strategy.position_size_percent || 100
+    };
 
-    // Exchange constraints (Binance-like)
-    const stepSize = 0.00001;
-    const minQty = 0.001;
-    const minNotional = 10;
+    console.log(`[ENHANCED] Using enhanced backtest engine with config:`, backtestConfig);
 
-    for (let i = 1; i < candles.length; i++) {
-      const currentCandle = candles[i];
-      
-      // CRITICAL FIX: Use indicators from previous candle (i-1) to prevent look-ahead bias
-      const indicatorIndex = i - 1;
+    // Initialize enhanced backtest engine
+    const backtestEngine = new EnhancedBacktestEngine(candles, backtestConfig);
 
-      // Check entry conditions
-      if (!position) {
-        const shouldEnter = checkConditions(
-          normalizedConditions, 
-          groups || [],
-          candles, 
-          indicatorCache, 
-          indicatorIndex,  // Use i-1 for decision
-          'buy'
-        );
-        
-        if (shouldEnter) {
-          // Determine execution price based on timing
-          const executionPrice = executionTiming === 'open' 
-            ? currentCandle.open 
-            : currentCandle.close;
-          
-          // Apply slippage
-          const priceWithSlippage = executionPrice * (1 + slippage / 100);
-          
-          // Calculate position size
-          const positionSizeUSD = (availableBalance * (strategy.position_size_percent || 100)) / 100;
-          
-          let quantity: number;
-          let margin: number;
-          let notional: number;
-          
-          if (productType === 'futures') {
-            // Futures: use leverage
-            notional = positionSizeUSD * leverage;
-            quantity = notional / priceWithSlippage;
-            margin = notional / leverage;
-          } else {
-            // Spot: full cost
-            notional = positionSizeUSD;
-            quantity = notional / priceWithSlippage;
-            margin = notional;
-          }
-          
-          // Apply exchange constraints
-          quantity = Math.floor(quantity / stepSize) * stepSize;
-          const actualNotional = quantity * priceWithSlippage;
-          
-          // Validate constraints with verbose logging
-          const canEnter = quantity >= minQty && actualNotional >= minNotional && margin <= availableBalance;
-          
-          if (!canEnter) {
-            console.log(`[${i}] ❌ ENTRY REJECTED:`);
-            console.log(`  - positionSizeUSD: ${positionSizeUSD.toFixed(2)}`);
-            console.log(`  - executionPrice: ${priceWithSlippage.toFixed(2)}`);
-            console.log(`  - quantity: ${quantity.toFixed(5)} (minQty: ${minQty})`);
-            console.log(`  - actualNotional: ${actualNotional.toFixed(2)} (minNotional: ${minNotional})`);
-            console.log(`  - margin: ${margin.toFixed(2)}`);
-            console.log(`  - availableBalance: ${availableBalance.toFixed(2)}`);
-            console.log(`  - leverage: ${leverage}x`);
-            console.log(`  - Reason: ${quantity < minQty ? 'quantity < minQty' : actualNotional < minNotional ? 'actualNotional < minNotional' : 'margin > availableBalance'}`);
-          }
-          
-          if (canEnter) {
-            // Calculate entry fee
-            const entryFee = actualNotional * (takerFee / 100);
-            
-            position = {
-              type: 'buy',
-              entry_price: priceWithSlippage,
-              entry_time: currentCandle.open_time,
-              quantity,
-            };
-            
-            // Deduct margin and fee
-            if (productType === 'futures') {
-              lockedMargin = margin;
-              availableBalance -= (margin + entryFee);
-            } else {
-              availableBalance -= (actualNotional + entryFee);
-            }
-            
-            console.log(`[${i}] ✅ Opened BUY at ${priceWithSlippage.toFixed(2)} (qty: ${quantity.toFixed(5)}, notional: ${actualNotional.toFixed(2)}, fee: ${entryFee.toFixed(2)})`);
-          }
-        }
-      } else {
-        // PHASE 1.2: Intrabar execution logic - check SL/TP using high/low FIRST
-        const stopLoss = stopLossPercent ?? strategy.stop_loss_percent;
-        const takeProfit = takeProfitPercent ?? strategy.take_profit_percent;
-        
-        let exitPrice: number | null = null;
-        let exitReason = '';
-        
-        if (stopLoss || takeProfit) {
-          // Calculate SL/TP prices for LONG position
-          const stopLossPrice = position.entry_price * (1 - (stopLoss || 0) / 100);
-          const takeProfitPrice = position.entry_price * (1 + (takeProfit || 0) / 100);
-          
-          // Check intrabar hits using high/low
-          const slHit = stopLoss && currentCandle.low <= stopLossPrice;
-          const tpHit = takeProfit && currentCandle.high >= takeProfitPrice;
-          
-          if (slHit && tpHit) {
-            // Both hit in same candle - conservative: assume SL hit first
-            exitPrice = stopLossPrice;
-            exitReason = 'STOP_LOSS';
-          } else if (slHit) {
-            exitPrice = stopLossPrice;
-            exitReason = 'STOP_LOSS';
-          } else if (tpHit) {
-            exitPrice = takeProfitPrice;
-            exitReason = 'TAKE_PROFIT';
-          }
-        }
-        
-        // If no SL/TP hit, check strategy SELL signal
-        if (!exitPrice) {
-          const shouldExit = checkConditions(
-            normalizedConditions, 
-            groups || [],
-            candles, 
-            indicatorCache, 
-            indicatorIndex,  // Use i-1 for decision
-            'sell'
-          );
-          
-          if (shouldExit) {
-            exitPrice = executionTiming === 'open' ? currentCandle.open : currentCandle.close;
-            exitReason = 'SELL_SIGNAL';
-          }
-        }
+    // Run enhanced backtest with trailing stop support
+    const results = backtestEngine.runBacktest(normalizedConditions, groups || []);
 
-        if (exitPrice) {
-          // Apply slippage on exit
-          const exitPriceWithSlippage = exitPrice * (1 - slippage / 100);
-          
-          // PHASE 1.3: Directional P&L calculation (correct for LONG)
-          const pnl = position.quantity * (exitPriceWithSlippage - position.entry_price);
-          const exitNotional = position.quantity * exitPriceWithSlippage;
-          const exitFee = exitNotional * (takerFee / 100);
-          const netProfit = pnl - exitFee;
-          
-          position.exit_price = exitPriceWithSlippage;
-          position.exit_time = currentCandle.open_time;
-          position.profit = netProfit;
-          
-          // Return funds
-          if (productType === 'futures') {
-            availableBalance += (lockedMargin + netProfit);
-            lockedMargin = 0;
-          } else {
-            availableBalance += (exitNotional - exitFee);
-          }
-          
-          balance = availableBalance + lockedMargin;
-          trades.push(position);
-          
-          console.log(`[${i}] Closed ${exitReason} at ${exitPriceWithSlippage.toFixed(2)}, profit: ${netProfit.toFixed(2)}`);
-          
-          position = null;
-        }
-      }
-
-      // Track balance and drawdown
-      balance = availableBalance + lockedMargin;
-      balanceHistory.push({ time: currentCandle.open_time, balance });
-      
-      if (balance > maxBalance) {
-        maxBalance = balance;
-      }
-      const currentDrawdown = ((maxBalance - balance) / maxBalance) * 100;
-      if (currentDrawdown > maxDrawdown) {
-        maxDrawdown = currentDrawdown;
-      }
-    }
-
-    // Close any open position at the end
-    if (position) {
-      const lastCandle = candles[candles.length - 1];
-      const exitPrice = lastCandle.close;
-      const pnl = position.quantity * (exitPrice - position.entry_price);
-      const exitNotional = position.quantity * exitPrice;
-      const exitFee = exitNotional * (takerFee / 100);
-      const netProfit = pnl - exitFee;
-      
-      position.exit_price = exitPrice;
-      position.exit_time = lastCandle.open_time;
-      position.profit = netProfit;
-      
-      if (productType === 'futures') {
-        availableBalance += (lockedMargin + netProfit);
-      } else {
-        availableBalance += (exitNotional - exitFee);
-      }
-      
-      balance = availableBalance;
-      trades.push(position);
-      console.log(`[END] Closed position at ${exitPrice.toFixed(2)}, profit: ${netProfit.toFixed(2)}`);
-    }
-
-    // Calculate metrics
-    const totalReturn = ((balance - initialBalance) / initialBalance) * 100;
-    const winningTrades = trades.filter(t => (t.profit || 0) > 0).length;
-    const losingTrades = trades.filter(t => (t.profit || 0) <= 0).length;
-    const winRate = trades.length > 0 ? (winningTrades / trades.length) * 100 : 0;
-
-    // Calculate additional metrics
-    const avgWin = winningTrades > 0 
-      ? trades.filter(t => (t.profit || 0) > 0).reduce((sum, t) => sum + (t.profit || 0), 0) / winningTrades 
-      : 0;
-    const avgLoss = losingTrades > 0
-      ? Math.abs(trades.filter(t => (t.profit || 0) <= 0).reduce((sum, t) => sum + (t.profit || 0), 0) / losingTrades)
-      : 0;
-    const profitFactor = avgLoss > 0 ? (avgWin * winningTrades) / (avgLoss * losingTrades) : 0;
-
-    console.log(`Backtest complete: ${trades.length} trades, ${winRate.toFixed(1)}% win rate, PF: ${profitFactor.toFixed(2)}`);
+    console.log(`[ENHANCED] Backtest complete: ${results.total_trades} trades, ${results.win_rate.toFixed(1)}% win rate, PF: ${results.profit_factor.toFixed(2)}`);
 
     // Save backtest results
     const { error: insertError } = await supabaseClient
@@ -947,14 +741,14 @@ serve(async (req) => {
         strategy_id: strategyId,
         start_date: startDate,
         end_date: endDate,
-        initial_balance: initialBalance,
-        final_balance: balance,
-        total_return: totalReturn,
-        total_trades: trades.length,
-        winning_trades: winningTrades,
-        losing_trades: losingTrades,
-        win_rate: winRate,
-        max_drawdown: maxDrawdown,
+        initial_balance: results.initial_balance,
+        final_balance: results.final_balance,
+        total_return: results.total_return,
+        total_trades: results.total_trades,
+        winning_trades: results.winning_trades,
+        losing_trades: results.losing_trades,
+        win_rate: results.win_rate,
+        max_drawdown: results.max_drawdown,
       });
 
     if (insertError) {
@@ -965,26 +759,27 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         results: {
-          initial_balance: initialBalance,
-          final_balance: balance,
-          total_return: totalReturn,
-          total_trades: trades.length,
-          winning_trades: winningTrades,
-          losing_trades: losingTrades,
-          win_rate: winRate,
-          max_drawdown: maxDrawdown,
-          profit_factor: profitFactor,
-          avg_win: avgWin,
-          avg_loss: avgLoss,
-          balance_history: balanceHistory,
-          trades,
+          initial_balance: results.initial_balance,
+          final_balance: results.final_balance,
+          total_return: results.total_return,
+          total_trades: results.total_trades,
+          winning_trades: results.winning_trades,
+          losing_trades: results.losing_trades,
+          win_rate: results.win_rate,
+          max_drawdown: results.max_drawdown,
+          profit_factor: results.profit_factor,
+          avg_win: results.avg_win,
+          avg_loss: results.avg_loss,
+          balance_history: results.balance_history,
+          trades: results.trades,
           config: {
             product_type: productType,
             leverage,
             maker_fee: makerFee,
             taker_fee: takerFee,
             slippage,
-            execution_timing: executionTiming
+            execution_timing: executionTiming,
+            trailing_stop_percent: trailingStopPercent // New trailing stop info
           }
         },
       }),
