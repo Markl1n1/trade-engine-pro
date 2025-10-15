@@ -47,6 +47,45 @@ interface StrategyState {
   range_low: number | null;
 }
 
+// Fetch market data using hybrid data manager
+async function fetchHybridMarketData(
+  symbol: string,
+  timeframe: string,
+  limit: number
+): Promise<Candle[]> {
+  try {
+    console.log(`[HYBRID] Fetching market data for ${symbol} ${timeframe}`);
+    
+    // Import hybrid data manager
+    const { createHybridDataManager, getOptimalHybridConfig } = await import('../helpers/hybrid-data-manager.ts');
+    
+    // Get optimal configuration
+    const config = getOptimalHybridConfig('medium', true);
+    
+    // Create data manager
+    const dataManager = createHybridDataManager(config, 'binance');
+    
+    // Get market data
+    const result = await dataManager.getMarketData({
+      symbol,
+      timeframe,
+      limit
+    });
+    
+    console.log(`[HYBRID] Retrieved ${result.data.length} candles from ${result.source} (quality: ${result.quality})`);
+    
+    if (result.warnings.length > 0) {
+      console.warn(`[HYBRID] Warnings: ${result.warnings.join(', ')}`);
+    }
+    
+    return result.data;
+    
+  } catch (error) {
+    console.error(`[HYBRID] Error fetching market data:`, error);
+    throw error;
+  }
+}
+
 // Fetch market data from exchange API with exponential backoff retry
 async function fetchMarketData(
   symbol: string, 
@@ -56,6 +95,10 @@ async function fetchMarketData(
   useTestnet: boolean = false,
   maxRetries = 3
 ): Promise<Candle[]> {
+  // Check if we should use hybrid data manager
+  if (process.env.USE_HYBRID_DATA === 'true') {
+    return await fetchHybridMarketData(symbol, timeframe, limit);
+  }
   const exchange = exchangeType as 'binance' | 'bybit';
   const baseUrl = useTestnet ? EXCHANGE_URLS[exchange].testnet : EXCHANGE_URLS[exchange].mainnet;
   const mappedInterval = INTERVAL_MAPPING[exchange][timeframe] || timeframe;

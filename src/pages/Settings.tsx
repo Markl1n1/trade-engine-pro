@@ -55,6 +55,83 @@ interface SystemSettings {
   lastRun: string | null;
 }
 
+// Helper functions for trading mode display
+const getTradingModeAlertClass = (mode: string) => {
+  switch (mode) {
+    case 'testnet_only':
+      return "bg-blue-50 border-blue-200";
+    case 'hybrid_safe':
+      return "bg-green-50 border-green-200";
+    case 'hybrid_live':
+      return "bg-yellow-50 border-yellow-200";
+    case 'paper_trading':
+      return "bg-purple-50 border-purple-200";
+    case 'mainnet_only':
+      return "bg-red-50 border-red-200";
+    default:
+      return "bg-gray-50 border-gray-200";
+  }
+};
+
+const getTradingModeIconClass = (mode: string) => {
+  switch (mode) {
+    case 'testnet_only':
+      return "text-blue-600";
+    case 'hybrid_safe':
+      return "text-green-600";
+    case 'hybrid_live':
+      return "text-yellow-600";
+    case 'paper_trading':
+      return "text-purple-600";
+    case 'mainnet_only':
+      return "text-red-600";
+    default:
+      return "text-gray-600";
+  }
+};
+
+const getTradingModeDescription = (mode: string) => {
+  switch (mode) {
+    case 'testnet_only':
+      return (
+        <>
+          <strong>TESTNET ONLY:</strong> Using testnet data and API
+          <br />✅ Safe for testing, ❌ Limited accuracy
+        </>
+      );
+    case 'hybrid_safe':
+      return (
+        <>
+          <strong>HYBRID SAFE:</strong> Real market data + testnet API + paper trading
+          <br />✅ High accuracy, ✅ Safe testing, ✅ No real money risk
+        </>
+      );
+    case 'hybrid_live':
+      return (
+        <>
+          <strong>HYBRID LIVE:</strong> Real market data + testnet API + real execution
+          <br />✅ High accuracy, ⚠️ Real money trading, ⚠️ Medium risk
+        </>
+      );
+    case 'paper_trading':
+      return (
+        <>
+          <strong>PAPER TRADING:</strong> Real market data + no real execution
+          <br />✅ High accuracy, ✅ Safe testing, ✅ Perfect for strategy validation
+        </>
+      );
+    case 'mainnet_only':
+      return (
+        <>
+          <strong>MAINNET ONLY:</strong> Real market data + mainnet API + real execution
+          <br />✅ High accuracy, ⚠️ Real money trading, ⚠️ High risk
+        </>
+      );
+    default:
+      return "Select a trading mode to see details";
+  }
+};
+
 const Settings = () => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
@@ -462,39 +539,102 @@ const Settings = () => {
         </div>
       </Card>
 
-      {/* Environment Section */}
+      {/* Trading Mode Section */}
       <Card className="p-6">
-        <h2 className="text-xl font-semibold mb-4">Environment</h2>
+        <h2 className="text-xl font-semibold mb-4">Trading Mode</h2>
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <Label htmlFor="testnet" className="text-base">Testnet Mode</Label>
-              <p className="text-sm text-muted-foreground">
-                Switches between {settings.exchange_type === 'binance' ? 'Binance' : 'Bybit'} mainnet and testnet API endpoints
-              </p>
-            </div>
-            <Switch 
-              id="testnet" 
-              checked={settings.use_testnet}
-              onCheckedChange={(checked) => updateSetting("use_testnet", checked)}
-            />
+          <div>
+            <Label htmlFor="trading-mode" className="text-base">Trading Mode</Label>
+            <p className="text-sm text-muted-foreground mb-3">
+              Choose your trading mode based on your risk tolerance and testing needs
+            </p>
+            <Select 
+              value={settings.trading_mode || 'hybrid_safe'} 
+              onValueChange={(value) => updateSetting("trading_mode", value)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select trading mode" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="testnet_only">
+                  <div className="flex flex-col">
+                    <span className="font-medium">Testnet Only</span>
+                    <span className="text-xs text-muted-foreground">Safe testing, limited accuracy</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="hybrid_safe">
+                  <div className="flex flex-col">
+                    <span className="font-medium">Hybrid Safe</span>
+                    <span className="text-xs text-muted-foreground">Real data + testnet API + paper trading</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="hybrid_live">
+                  <div className="flex flex-col">
+                    <span className="font-medium">Hybrid Live</span>
+                    <span className="text-xs text-muted-foreground">Real data + testnet API + real execution</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="paper_trading">
+                  <div className="flex flex-col">
+                    <span className="font-medium">Paper Trading</span>
+                    <span className="text-xs text-muted-foreground">Real data, no real execution</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="mainnet_only">
+                  <div className="flex flex-col">
+                    <span className="font-medium">Mainnet Only</span>
+                    <span className="text-xs text-muted-foreground">⚠️ Real money, high risk</span>
+                  </div>
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-          <Alert className={settings.use_testnet ? "bg-warning/10 border-warning/30" : "bg-primary/10 border-primary/30"}>
-            <AlertCircle className={`h-4 w-4 ${settings.use_testnet ? "text-warning" : "text-primary"}`} />
+          
+          <Alert className={getTradingModeAlertClass(settings.trading_mode)}>
+            <AlertCircle className={`h-4 w-4 ${getTradingModeIconClass(settings.trading_mode)}`} />
             <AlertDescription className="text-xs">
-              {settings.use_testnet ? (
-                <>
-                  <strong>TESTNET MODE:</strong> Using {settings.exchange_type === 'binance' ? 'https://testnet.binancefuture.com' : 'https://api-testnet.bybit.com'}
-                  <br />No real funds at risk. Perfect for testing strategies.
-                </>
-              ) : (
-                <>
-                  <strong>MAINNET MODE:</strong> Using {settings.exchange_type === 'binance' ? 'https://fapi.binance.com' : 'https://api.bybit.com'}
-                  <br />⚠️ Real funds trading enabled. Be cautious!
-                </>
-              )}
+              {getTradingModeDescription(settings.trading_mode)}
             </AlertDescription>
           </Alert>
+          
+          {/* Advanced Settings */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label htmlFor="use-mainnet-data" className="text-sm">Use Mainnet Data</Label>
+                <p className="text-xs text-muted-foreground">Get accurate market data from mainnet</p>
+              </div>
+              <Switch 
+                id="use-mainnet-data" 
+                checked={settings.use_mainnet_data ?? true}
+                onCheckedChange={(checked) => updateSetting("use_mainnet_data", checked)}
+              />
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <div>
+                <Label htmlFor="use-testnet-api" className="text-sm">Use Testnet API</Label>
+                <p className="text-xs text-muted-foreground">Use testnet for API calls (safer)</p>
+              </div>
+              <Switch 
+                id="use-testnet-api" 
+                checked={settings.use_testnet_api ?? true}
+                onCheckedChange={(checked) => updateSetting("use_testnet_api", checked)}
+              />
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <div>
+                <Label htmlFor="paper-trading" className="text-sm">Paper Trading Mode</Label>
+                <p className="text-xs text-muted-foreground">Simulate trades without real execution</p>
+              </div>
+              <Switch 
+                id="paper-trading" 
+                checked={settings.paper_trading_mode ?? true}
+                onCheckedChange={(checked) => updateSetting("paper_trading_mode", checked)}
+              />
+            </div>
+          </div>
         </div>
       </Card>
 
