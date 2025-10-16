@@ -29,6 +29,9 @@ verify_jwt = true
 [functions.performance-dashboard]
 verify_jwt = true
 
+[functions.instant-signals]
+verify_jwt = false
+
 # Market data functions
 [functions.binance-api-status]
 verify_jwt = false
