@@ -739,3 +739,4 @@ function evaluateMeanReversion(candles, config) {
     </Dialog>
   );
 };
+

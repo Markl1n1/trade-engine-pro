@@ -626,3 +626,4 @@ function evaluateScalpingRSI(candles, config) {
     </div>
   );
 };
+
