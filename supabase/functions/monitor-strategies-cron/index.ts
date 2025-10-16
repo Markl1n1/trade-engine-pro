@@ -8,6 +8,7 @@ import {
 import { evaluateATHGuardStrategy } from '../helpers/ath-guard-strategy.ts';
 import { evaluate4hReentry } from '../helpers/4h-reentry-strategy.ts';
 import { evaluateMSTG } from '../helpers/mstg-strategy.ts';
+import { enhancedTelegramSignaler, TradingSignal } from '../helpers/enhanced-telegram-signaler.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -822,42 +823,47 @@ Deno.serve(async (req) => {
           const signal = insertResult.data;
           allSignals.push(signal);
 
-          // Send Telegram notification
+          // Send enhanced Telegram notification
           if (userSettings?.telegram_enabled && userSettings.telegram_bot_token && userSettings.telegram_chat_id) {
             try {
-              console.log(`[TELEGRAM] Attempting to send ${signalType} signal for ${strategy.name}...`);
+              console.log(`[ENHANCED-TELEGRAM] Attempting to send ${signalType} signal for ${strategy.name}...`);
               const telegramStartTime = Date.now();
               
-              const telegramSent = await sendTelegramUtil(
-                userSettings.telegram_bot_token,
-                userSettings.telegram_chat_id,
-                {
-                  strategy_name: strategy.name,
-                  signal_type: signalType,
-                  symbol: strategy.symbol,
-                  price: currentPrice,
-                  reason: signalReason,
-                  stop_loss: signalStopLoss,
-                  take_profit: signalTakeProfit,
-                  stop_loss_percent: signalStopLossPercent,
-                  take_profit_percent: signalTakeProfitPercent,
-                  timestamp: Date.now(),
-                }
-              );
+              // Create enhanced trading signal
+              const enhancedSignal: TradingSignal = {
+                id: signal.id,
+                userId: user.id,
+                strategyId: strategy.id,
+                strategyName: strategy.name,
+                signalType: signalType as 'BUY' | 'SELL' | 'LONG' | 'SHORT',
+                symbol: strategy.symbol,
+                price: currentPrice,
+                stopLoss: signalStopLoss,
+                takeProfit: signalTakeProfit,
+                takeProfit1: signalTakeProfit1,
+                takeProfit2: signalTakeProfit2,
+                reason: signalReason,
+                timestamp: Date.now(),
+                priority: 'high', // Default priority for trading signals
+                tradingMode: userSettings.trading_mode || 'mainnet_only',
+                originalSignalId: signal.id
+              };
+              
+              const telegramSent = await enhancedTelegramSignaler.sendTradingSignal(enhancedSignal, userSettings);
               
               const telegramLatency = Date.now() - telegramStartTime;
               
               if (telegramSent) {
                 await markSignalAsDelivered(supabase, signal.id);
-                console.log(`[TELEGRAM] ✅ ${signalType} signal sent for ${strategy.name} (${telegramLatency}ms)`);
+                console.log(`[ENHANCED-TELEGRAM] ✅ ${signalType} signal sent for ${strategy.name} (${telegramLatency}ms)`);
               } else {
-                console.error(`[TELEGRAM] ❌ Failed to send ${signalType} signal for ${strategy.name} (${telegramLatency}ms)`);
+                console.error(`[ENHANCED-TELEGRAM] ❌ Failed to send ${signalType} signal for ${strategy.name} (${telegramLatency}ms)`);
               }
             } catch (telegramError) {
-              console.error(`[TELEGRAM] ❌ Error sending Telegram notification for ${strategy.name}:`, telegramError);
+              console.error(`[ENHANCED-TELEGRAM] ❌ Error sending Telegram notification for ${strategy.name}:`, telegramError);
             }
           } else {
-            console.log(`[TELEGRAM] Telegram disabled or not configured for ${strategy.name}`);
+            console.log(`[ENHANCED-TELEGRAM] Telegram disabled or not configured for ${strategy.name}`);
           }
         }
       } catch (error) {

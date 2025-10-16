@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.58.0';
 import { createHmac } from 'https://deno.land/std@0.168.0/node/crypto.ts';
+import { enhancedTelegramSignaler, PositionEvent } from '../helpers/enhanced-telegram-signaler.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -181,31 +182,56 @@ Deno.serve(async (req) => {
         if (userSettingsData?.telegram_enabled && userSettingsData.telegram_bot_token && userSettingsData.telegram_chat_id) {
           try {
             const pnlPercent = entryPriceData?.entry_price 
-              ? (((parseFloat(position.markPrice) - parseFloat(entryPriceData.entry_price)) / parseFloat(entryPriceData.entry_price)) * 100).toFixed(2)
-              : 'N/A';
+              ? (((parseFloat(position.markPrice) - parseFloat(entryPriceData.entry_price)) / parseFloat(entryPriceData.entry_price)) * 100)
+              : 0;
             
-            const message = `🔴 *Position Closed*\n\n` +
-              `📊 Strategy: ${strategyData?.name || 'Unknown'}\n` +
-              `💹 Pair: ${position.symbol}\n` +
-              `⏰ Time: ${new Date().toISOString()}\n` +
-              `📝 Reason: Manual Close\n` +
-              `💰 Entry: ${entryPriceData?.entry_price || 'N/A'}\n` +
-              `💰 Exit: ${position.markPrice}\n` +
-              `📈 P&L: ${pnlPercent}%`;
+            const pnlAmount = entryPriceData?.entry_price 
+              ? parseFloat(position.markPrice) - parseFloat(entryPriceData.entry_price)
+              : 0;
+
+            // Create position event with enhanced signaling
+            const positionEvent: PositionEvent = {
+              id: crypto.randomUUID(),
+              signalId: `close_${Date.now()}`,
+              originalSignalId: entryPriceData?.signal_id, // Reference to original signal
+              eventType: 'closed',
+              symbol: position.symbol,
+              entryPrice: parseFloat(entryPriceData?.entry_price || '0'),
+              exitPrice: parseFloat(position.markPrice),
+              positionSize: parseFloat(position.positionAmt),
+              pnlPercent: pnlPercent,
+              pnlAmount: pnlAmount,
+              reason: 'Manual Close',
+              timestamp: Date.now(),
+              tradingMode: userSettingsData.trading_mode || 'mainnet_only'
+            };
+
+            // Send enhanced Telegram notification
+            await enhancedTelegramSignaler.sendPositionEvent(positionEvent, userSettingsData);
             
-            await fetch(`https://api.telegram.org/bot${userSettingsData.telegram_bot_token}/sendMessage`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                chat_id: userSettingsData.telegram_chat_id,
-                text: message,
-                parse_mode: 'Markdown'
-              })
-            });
+            // Store position event in database
+            await supabaseClient
+              .from('position_events')
+              .insert({
+                signal_id: positionEvent.signalId,
+                original_signal_id: positionEvent.originalSignalId,
+                user_id: user.id,
+                strategy_id: strategyData?.id,
+                event_type: positionEvent.eventType,
+                symbol: positionEvent.symbol,
+                entry_price: positionEvent.entryPrice,
+                exit_price: positionEvent.exitPrice,
+                position_size: positionEvent.positionSize,
+                pnl_percent: positionEvent.pnlPercent,
+                pnl_amount: positionEvent.pnlAmount,
+                reason: positionEvent.reason,
+                timestamp: new Date(positionEvent.timestamp).toISOString(),
+                trading_mode: positionEvent.tradingMode
+              });
             
-            console.log(`Sent position closed notification for ${position.symbol}`);
+            console.log(`[ENHANCED-CLOSE] Sent enhanced position closed notification for ${position.symbol}`);
           } catch (telegramError) {
-            console.error('Failed to send Telegram notification:', telegramError);
+            console.error('[ENHANCED-CLOSE] Failed to send enhanced Telegram notification:', telegramError);
           }
         }
       }
