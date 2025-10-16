@@ -35,6 +35,9 @@ interface AccountData {
     side: string;
   }>;
   environment: string;
+  tradingMode: 'testnet_only' | 'hybrid_safe' | 'hybrid_live' | 'paper_trading' | 'mainnet_only';
+  dataSource: 'mainnet' | 'testnet' | 'simulated';
+  executionMode: 'real' | 'paper' | 'simulated';
 }
 
 interface StrategySignal {
@@ -60,10 +63,13 @@ const Dashboard = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [signalsPerPage, setSignalsPerPage] = useState(10);
   const [tickerErrors, setTickerErrors] = useState<Array<{ symbol: string; error: string }>>([]);
+  const [tradingMode, setTradingMode] = useState<string>('unknown');
+  const [userSettings, setUserSettings] = useState<any>(null);
   const { toast } = useToast();
 
   useEffect(() => {
     loadUserPairs();
+    loadUserSettings();
     fetchAccountData();
     fetchStrategySignals();
     loadSignalsPerPage();
@@ -96,6 +102,22 @@ const Dashboard = () => {
     } catch (error) {
       console.error('Error loading pairs:', error);
       setUserPairs(['BTCUSDT', 'ETHUSDT']);
+    }
+  };
+
+  const loadUserSettings = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("user_settings")
+        .select("*")
+        .single();
+      
+      if (error) throw error;
+      setUserSettings(data);
+      setTradingMode(data?.trading_mode || 'mainnet_only');
+    } catch (error) {
+      console.error('Error loading user settings:', error);
+      setTradingMode('mainnet_only');
     }
   };
 
@@ -281,6 +303,62 @@ const Dashboard = () => {
     }
   };
 
+  // Get trading mode info
+  const getTradingModeInfo = (mode: string) => {
+    switch (mode) {
+      case 'testnet_only':
+        return {
+          emoji: '🧪',
+          name: 'Testnet Only',
+          description: 'Safe testing with testnet data',
+          dataSource: 'Testnet API',
+          executionMode: 'Simulated'
+        };
+      case 'hybrid_safe':
+        return {
+          emoji: '🛡️',
+          name: 'Hybrid Safe',
+          description: 'Real data + Testnet API + Paper Trading',
+          dataSource: 'Mainnet Data',
+          executionMode: 'Paper Trading'
+        };
+      case 'hybrid_live':
+        return {
+          emoji: '⚡',
+          name: 'Hybrid Live',
+          description: 'Real data + Testnet API + Real execution',
+          dataSource: 'Mainnet Data',
+          executionMode: 'Real Trading'
+        };
+      case 'paper_trading':
+        return {
+          emoji: '📄',
+          name: 'Paper Trading',
+          description: 'Real data, no real execution',
+          dataSource: 'Mainnet Data',
+          executionMode: 'Paper Trading'
+        };
+      case 'mainnet_only':
+        return {
+          emoji: '🚨',
+          name: 'Live Trading',
+          description: 'Real money at risk!',
+          dataSource: 'Mainnet API',
+          executionMode: 'Real Trading'
+        };
+      default:
+        return {
+          emoji: '📊',
+          name: 'Unknown Mode',
+          description: 'Trading mode not configured',
+          dataSource: 'Unknown',
+          executionMode: 'Unknown'
+        };
+    }
+  };
+
+  const modeInfo = getTradingModeInfo(tradingMode);
+
   const stats = [
     { 
       label: "Balance", 
@@ -288,32 +366,36 @@ const Dashboard = () => {
       change: accountData?.totalUnrealizedProfit ? `${accountData.totalUnrealizedProfit >= 0 ? '+' : ''}$${accountData.totalUnrealizedProfit.toFixed(2)}` : "—",
       trend: accountData?.totalUnrealizedProfit ? (accountData.totalUnrealizedProfit >= 0 ? "up" : "down") : "neutral",
       environment: accountData?.environment,
-      tooltip: "Total wallet balance from Binance account (real-time, includes unrealized P&L)",
+      tooltip: `Total wallet balance (${modeInfo.dataSource}, ${modeInfo.executionMode})`,
       timeframe: "Real-time",
+      modeInfo: modeInfo
     },
     { 
       label: "Open Positions", 
       value: loadingAccount ? "..." : accountData?.openPositionsCount.toString() || "0",
       change: "—",
       trend: "neutral",
-      tooltip: "Number of active open positions from Binance account",
+      tooltip: `Active positions (${modeInfo.executionMode})`,
       timeframe: "Real-time",
+      modeInfo: modeInfo
     },
     { 
       label: "Win Rate", 
       value: loadingAccount ? "..." : accountData ? `${accountData.winRate.toFixed(1)}%` : "—",
       change: "—",
       trend: "neutral",
-      tooltip: "Percentage of winning trades calculated from historical trade data",
+      tooltip: `Historical performance (${modeInfo.dataSource})`,
       timeframe: "All-time",
+      modeInfo: modeInfo
     },
     { 
       label: "Unrealized P&L", 
       value: loadingAccount ? "Loading..." : `$${accountData?.totalUnrealizedProfit.toFixed(2) || '0.00'}`,
       change: "—",
       trend: accountData?.totalUnrealizedProfit ? (accountData.totalUnrealizedProfit >= 0 ? "up" : "down") : "neutral",
-      tooltip: "Floating profit/loss from open positions (not yet realized)",
+      tooltip: `Floating P&L (${modeInfo.executionMode})`,
       timeframe: "Real-time",
+      modeInfo: modeInfo
     },
   ];
 
@@ -323,23 +405,29 @@ const Dashboard = () => {
         <div>
           <div className="flex items-center gap-3 mb-2">
             <h2 className="text-2xl font-bold">Dashboard</h2>
-            {accountData && (
-              <Badge 
-                variant={accountData.environment === 'testnet' ? 'secondary' : 'destructive'}
-                className="text-sm px-3 py-1"
-              >
-                {accountData.environment === 'testnet' ? '🧪 Testnet Mode' : '🔴 Live Trading'}
-              </Badge>
-            )}
+            <Badge 
+              variant={
+                tradingMode === 'mainnet_only' ? 'destructive' : 
+                tradingMode === 'testnet_only' ? 'secondary' : 
+                'default'
+              }
+              className="text-sm px-3 py-1"
+            >
+              {modeInfo.emoji} {modeInfo.name}
+            </Badge>
           </div>
           <p className="text-sm text-muted-foreground">
-            Real-time overview of your trading activity
+            {modeInfo.description}
             {lastUpdated && (
               <span className="ml-2 text-xs">
                 • Last updated: {lastUpdated.toLocaleTimeString()}
               </span>
             )}
           </p>
+          <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+            <span>📊 Data: {modeInfo.dataSource}</span>
+            <span>⚡ Execution: {modeInfo.executionMode}</span>
+          </div>
         </div>
         <Button 
           variant="outline" 
@@ -372,7 +460,9 @@ const Dashboard = () => {
                       </TooltipTrigger>
                       <TooltipContent className="max-w-xs">
                         <p className="text-xs">{stat.tooltip}</p>
-                        <p className="text-xs font-semibold mt-1">Source: Binance API</p>
+                        <p className="text-xs font-semibold mt-1">Mode: {stat.modeInfo.name}</p>
+                        <p className="text-xs mt-1">Data: {stat.modeInfo.dataSource}</p>
+                        <p className="text-xs">Execution: {stat.modeInfo.executionMode}</p>
                         <p className="text-xs mt-1">Timeframe: {stat.timeframe}</p>
                       </TooltipContent>
                     </Tooltip>
@@ -431,6 +521,14 @@ const Dashboard = () => {
             <p className="text-xs text-muted-foreground mt-1">
               Positions will appear here when you open trades
             </p>
+            <div className="mt-4 p-3 bg-secondary/30 rounded-lg">
+              <p className="text-xs text-muted-foreground">
+                <strong>Current Mode:</strong> {modeInfo.name} ({modeInfo.executionMode})
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Data Source: {modeInfo.dataSource}
+              </p>
+            </div>
           </div>
         ) : (
           <div className="space-y-3">
@@ -530,6 +628,19 @@ const Dashboard = () => {
             <p className="text-xs text-muted-foreground mt-1">
               Signals will appear here when your strategies trigger entry conditions
             </p>
+            <div className="mt-4 p-3 bg-secondary/30 rounded-lg">
+              <p className="text-xs text-muted-foreground">
+                <strong>Signal Mode:</strong> {modeInfo.name} ({modeInfo.executionMode})
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Data Source: {modeInfo.dataSource}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {modeInfo.executionMode === 'Paper Trading' ? '📄 Paper signals will be simulated' : 
+                 modeInfo.executionMode === 'Simulated' ? '🧪 Testnet signals will be simulated' :
+                 '⚡ Real signals will execute trades'}
+              </p>
+            </div>
           </div>
         ) : (
           <>
