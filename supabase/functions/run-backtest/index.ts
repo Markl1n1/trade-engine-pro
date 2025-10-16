@@ -485,6 +485,14 @@ serve(async (req) => {
     } = await req.json();
 
     console.log(`Running backtest for strategy ${strategyId} (${productType.toUpperCase()}, ${leverage}x leverage)`);
+    console.log(`[BACKTEST] Parameters received:`, {
+      stopLossPercent,
+      takeProfitPercent,
+      trailingStopPercent,
+      initialBalance,
+      productType,
+      leverage
+    });
 
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',

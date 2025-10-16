@@ -139,7 +139,7 @@ serve(async (req) => {
   }
 });
 
-// Handle calculate position size request
+// Handler functions
 async function handleCalculatePositionSize(
   riskManager: AdvancedRiskManager, 
   request: RiskManagementRequest
@@ -154,25 +154,160 @@ async function handleCalculatePositionSize(
       request.entryPrice,
       request.stopLoss,
       request.accountBalance,
-      request.volatility,
-      request.winRate
+      request.volatility || 0.02,
+      request.winRate || 0.5
     );
 
-    return {
-      success: true,
-      data: {
+    return { 
+      success: true, 
+      data: { 
         positionSize,
         riskAmount: positionSize * Math.abs(request.entryPrice - request.stopLoss),
-        riskPercent: (positionSize * Math.abs(request.entryPrice - request.stopLoss) / request.accountBalance) * 100
-      }
+        riskPercent: (Math.abs(request.entryPrice - request.stopLoss) / request.entryPrice) * 100
+      } 
     };
   } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to calculate position size'
-    };
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to calculate position size' };
   }
 }
+
+async function handleCheckRiskLimits(
+  riskManager: AdvancedRiskManager, 
+  request: RiskManagementRequest
+): Promise<RiskManagementResponse> {
+  try {
+    const riskCheck = riskManager.checkRiskLimits(
+      request.symbol || 'BTCUSDT',
+      request.currentPrice || 50000,
+      request.accountBalance || 10000
+    );
+
+    return { 
+      success: true, 
+      data: { 
+        withinLimits: riskCheck.withinLimits,
+        warnings: riskCheck.warnings,
+        recommendations: riskCheck.recommendations
+      } 
+    };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to check risk limits' };
+  }
+}
+
+async function handlePartialClosing(
+  riskManager: AdvancedRiskManager, 
+  request: RiskManagementRequest
+): Promise<RiskManagementResponse> {
+  try {
+    if (!request.positionId || !request.closePercent) {
+      throw new Error('Missing required parameters for partial closing');
+    }
+
+    const result = riskManager.handlePartialClosing(
+      request.positionId,
+      request.closePercent
+    );
+
+    return { 
+      success: true, 
+      data: { 
+        closedAmount: result.closedAmount,
+        remainingAmount: result.remainingAmount,
+        profit: result.profit,
+        newStopLoss: result.newStopLoss
+      } 
+    };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to handle partial closing' };
+  }
+}
+
+async function handleUpdateAdaptiveStops(
+  riskManager: AdvancedRiskManager, 
+  request: RiskManagementRequest
+): Promise<RiskManagementResponse> {
+  try {
+    if (!request.positionId || !request.currentPrice) {
+      throw new Error('Missing required parameters for adaptive stops');
+    }
+
+    const result = riskManager.updateAdaptiveStops(
+      request.positionId,
+      request.currentPrice,
+      request.atr || 100,
+      request.trend || 'sideways'
+    );
+
+    return { 
+      success: true, 
+      data: { 
+        newStopLoss: result.newStopLoss,
+        newTakeProfit: result.newTakeProfit,
+        adjustment: result.adjustment,
+        reason: result.reason
+      } 
+    };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to update adaptive stops' };
+  }
+}
+
+async function handleGetRiskReport(
+  riskManager: AdvancedRiskManager, 
+  request: RiskManagementRequest
+): Promise<RiskManagementResponse> {
+  try {
+    const report = riskManager.getRiskReport();
+
+    return { 
+      success: true, 
+      data: { 
+        report: {
+          totalRisk: report.totalRisk,
+          portfolioValue: report.portfolioValue,
+          riskPercent: report.riskPercent,
+          maxDrawdown: report.maxDrawdown,
+          sharpeRatio: report.sharpeRatio,
+          positions: report.positions,
+          recommendations: report.recommendations
+        }
+      } 
+    };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to get risk report' };
+  }
+}
+
+async function handleClosePositionPartial(
+  riskManager: AdvancedRiskManager, 
+  request: RiskManagementRequest
+): Promise<RiskManagementResponse> {
+  try {
+    if (!request.positionId || !request.closePercent) {
+      throw new Error('Missing required parameters for partial closing');
+    }
+
+    const result = riskManager.closePositionPartial(
+      request.positionId,
+      request.closePercent
+    );
+
+    return { 
+      success: true, 
+      data: { 
+        success: result.success,
+        closedAmount: result.closedAmount,
+        remainingAmount: result.remainingAmount,
+        profit: result.profit,
+        message: result.message
+      } 
+    };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to close position partially' };
+  }
+}
+
 
 // Handle check risk limits request
 async function handleCheckRiskLimits(

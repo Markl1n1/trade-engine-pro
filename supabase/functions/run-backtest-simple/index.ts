@@ -31,6 +31,15 @@ serve(async (req) => {
       slippage = 0.01,
     } = await req.json();
 
+    console.log(`[Simple Backtest] Parameters received:`, {
+      stopLossPercent,
+      takeProfitPercent,
+      trailingStopPercent,
+      initialBalance,
+      productType,
+      leverage
+    });
+
     console.log('[Simple Backtest] Starting simple vectorized backtest');
 
     const supabaseClient = createClient(

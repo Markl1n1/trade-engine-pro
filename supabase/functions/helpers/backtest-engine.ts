@@ -62,6 +62,7 @@ class TrailingStopManager {
   
   constructor(trailingPercent: number) {
     this.trailingPercent = trailingPercent;
+    console.log(`[TRAILING] Initialized with ${trailingPercent}% trailing stop`);
   }
   
   updateProfit(currentProfit: number, tpPercent: number): 'HOLD' | 'CLOSE' {
@@ -135,6 +136,11 @@ export class EnhancedBacktestEngine {
   runBacktest(conditions: any[], groups: any[] = []): BacktestResults {
     console.log(`[BACKTEST] Starting enhanced backtest with ${this.candles.length} candles`);
     console.log(`[BACKTEST] Config: ${JSON.stringify(this.config, null, 2)}`);
+    console.log(`[BACKTEST] SL/TP/Trailing parameters:`, {
+      stopLossPercent: this.config.stopLossPercent,
+      takeProfitPercent: this.config.takeProfitPercent,
+      trailingStopPercent: this.config.trailingStopPercent
+    });
     
     // Pre-calculate all indicators to avoid recalculation
     const indicatorCache = this.preCalculateIndicators(conditions);
