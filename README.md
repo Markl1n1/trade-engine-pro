@@ -147,10 +147,18 @@ Navigate to Project > Settings > Domains and click Connect Domain.
 
 ## 📚 **Documentation**
 
-- [APP_GUIDE.md](./APP_GUIDE.md) - Detailed architecture guide
-- [BACKTEST_IMPROVEMENTS.md](./BACKTEST_IMPROVEMENTS.md) - Backtesting improvements
-- [HYBRID_TRADING_GUIDE.md](./HYBRID_TRADING_GUIDE.md) - Hybrid trading mode guide
-- [SECURITY.md](./SECURITY.md) - Security best practices
+### **Platform Pages**
+- [Dashboard](./DASHBOARD.md) - Real-time trading overview and market data
+- [Strategies](./STRATEGIES.md) - Strategy creation, management, and validation
+- [Backtest](./BACKTEST.md) - Historical strategy testing and analysis
+- [Performance](./PERFORMANCE.md) - System performance monitoring and optimization
+- [Risk Management](./RISK_MANAGEMENT.md) - Portfolio risk control and management
+- [Data Quality](./DATA_QUALITY.md) - Data validation, cleaning, and monitoring
+- [Audit Logs](./AUDIT_LOGS.md) - Activity tracking and compliance monitoring
+- [Settings](./SETTINGS.md) - Platform configuration and preferences
+
+### **Security & Compliance**
+- [SECURITY.md](./SECURITY.md) - Security best practices and guidelines
 
 ## ⚠️ **Important Notes**
 
