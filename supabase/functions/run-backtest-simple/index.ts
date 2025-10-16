@@ -1,70 +1,14 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
+import * as indicators from "../indicators/all-indicators.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Simple SMA calculation
-function calculateSMA(data: number[], period: number): number[] {
-  const result: number[] = [];
-  for (let i = 0; i < data.length; i++) {
-    if (i < period - 1) {
-      result.push(NaN);
-    } else {
-      const sum = data.slice(i - period + 1, i + 1).reduce((a, b) => a + b, 0);
-      result.push(sum / period);
-    }
-  }
-  return result;
-}
-
-// Simple EMA calculation
-function calculateEMA(data: number[], period: number): number[] {
-  const k = 2 / (period + 1);
-  const ema: number[] = [];
-  let prevEMA = data[0];
-
-  for (let i = 0; i < data.length; i++) {
-    if (i === 0) {
-      ema.push(data[i]);
-    } else {
-      const currentEMA = data[i] * k + prevEMA * (1 - k);
-      ema.push(currentEMA);
-      prevEMA = currentEMA;
-    }
-  }
-
-  return ema;
-}
-
-// Simple RSI calculation
-function calculateRSI(data: number[], period: number = 14): number[] {
-  const result: number[] = [];
-  const gains: number[] = [];
-  const losses: number[] = [];
-
-  for (let i = 1; i < data.length; i++) {
-    const change = data[i] - data[i - 1];
-    gains.push(change > 0 ? change : 0);
-    losses.push(change < 0 ? -change : 0);
-  }
-
-  for (let i = 0; i < data.length; i++) {
-    if (i < period) {
-      result.push(NaN);
-    } else {
-      const avgGain = gains.slice(i - period, i).reduce((a, b) => a + b, 0) / period;
-      const avgLoss = losses.slice(i - period, i).reduce((a, b) => a + b, 0) / period;
-      const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
-      const rsi = 100 - (100 / (1 + rs));
-      result.push(rsi);
-    }
-  }
-
-  return result;
-}
+// Use optimized indicators from all-indicators.ts
+// Removed duplicate indicator functions - now using centralized indicators
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
