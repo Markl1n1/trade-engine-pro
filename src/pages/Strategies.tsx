@@ -158,7 +158,7 @@ const Strategies = () => {
                 />
                 <Label htmlFor="live-monitoring" className="flex items-center gap-2 cursor-pointer">
                   {isActive && <Radio className="h-3 w-3 text-green-500 animate-pulse" />}
-                  <span className="text-sm">Live ({isActive ? 'ON' : 'OFF'})</span>
+                  <span className="text-sm">Real-time Dashboard ({isActive ? 'ON' : 'OFF'})</span>
                 </Label>
               </div>
               {lastCheck && (

@@ -18,10 +18,21 @@ export function MonitoringStatus() {
   const [debugLogs, setDebugLogs] = useState<any[]>([]);
   const [connectionInfo, setConnectionInfo] = useState<any>(null);
   const [showDisconnectBanner, setShowDisconnectBanner] = useState(false);
+  
+  // New monitoring system status
+  const [cronStatus, setCronStatus] = useState<'active' | 'inactive' | 'unknown'>('unknown');
+  const [cronLastRun, setCronLastRun] = useState<string | null>(null);
+  const [systemHealth, setSystemHealth] = useState<any>(null);
 
   useEffect(() => {
     loadMonitoringStatus();
-    const interval = setInterval(loadMonitoringStatus, 30000);
+    loadCronStatus();
+    loadSystemHealth();
+    const interval = setInterval(() => {
+      loadMonitoringStatus();
+      loadCronStatus();
+      loadSystemHealth();
+    }, 30000);
     
     // Connect to WebSocket monitor
     const connectWebSocket = () => {
@@ -82,6 +93,44 @@ export function MonitoringStatus() {
       ws.close();
     };
   }, []);
+
+  const loadCronStatus = async () => {
+    try {
+      // Check cron job status from system settings
+      const { data: cronSettings } = await supabase
+        .from('system_settings')
+        .select('setting_value')
+        .eq('setting_key', 'monitoring_enabled')
+        .single();
+      
+      const { data: lastRun } = await supabase
+        .from('system_settings')
+        .select('setting_value')
+        .eq('setting_key', 'last_monitoring_run')
+        .single();
+      
+      setCronStatus(cronSettings?.setting_value === 'true' ? 'active' : 'inactive');
+      setCronLastRun(lastRun?.setting_value || null);
+    } catch (error) {
+      console.error('[MONITOR] Error loading cron status:', error);
+      setCronStatus('unknown');
+    }
+  };
+
+  const loadSystemHealth = async () => {
+    try {
+      // Get system health from health logs
+      const { data: healthLogs } = await supabase
+        .from('system_health_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(5);
+      
+      setSystemHealth(healthLogs);
+    } catch (error) {
+      console.error('[MONITOR] Error loading system health:', error);
+    }
+  };
 
   const loadMonitoringStatus = async () => {
     try {
@@ -179,7 +228,7 @@ export function MonitoringStatus() {
           <div>
             <h3 className="text-sm font-bold">Strategy Monitoring</h3>
             <p className="text-xs text-muted-foreground">
-              {wsStatus === 'connected' ? 'Real-time monitoring active' : 'Backup mode (5-min checks)'}
+              Multi-tier monitoring system status
             </p>
           </div>
         </div>
@@ -199,6 +248,53 @@ export function MonitoringStatus() {
                '⚠️ Offline'}
             </span>
           </Badge>
+        </div>
+      </div>
+
+      {/* System Status Overview */}
+      <div className="grid grid-cols-2 gap-4 mb-4">
+        <div className="p-3 rounded-lg bg-secondary/50">
+          <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
+            <Clock className="h-3 w-3" />
+            Cron Job (Auto)
+          </div>
+          <div className="flex items-center gap-2">
+            <div className={`h-2 w-2 rounded-full ${
+              cronStatus === 'active' ? 'bg-green-400' : 
+              cronStatus === 'inactive' ? 'bg-red-400' : 'bg-yellow-400'
+            }`} />
+            <span className="text-sm font-medium">
+              {cronStatus === 'active' ? 'Active' : 
+               cronStatus === 'inactive' ? 'Inactive' : 'Unknown'}
+            </span>
+          </div>
+          {cronLastRun && (
+            <div className="text-xs text-muted-foreground mt-1">
+              Last: {getTimeAgo(cronLastRun)}
+            </div>
+          )}
+        </div>
+
+        <div className="p-3 rounded-lg bg-secondary/50">
+          <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
+            <Activity className="h-3 w-3" />
+            WebSocket (Real-time)
+          </div>
+          <div className="flex items-center gap-2">
+            <div className={`h-2 w-2 rounded-full ${
+              wsStatus === 'connected' ? 'bg-green-400' : 
+              wsStatus === 'connecting' ? 'bg-yellow-400' : 'bg-red-400'
+            }`} />
+            <span className="text-sm font-medium">
+              {wsStatus === 'connected' ? 'Connected' : 
+               wsStatus === 'connecting' ? 'Connecting' : 'Disconnected'}
+            </span>
+          </div>
+          {lastUpdate && (
+            <div className="text-xs text-muted-foreground mt-1">
+              Last: {getTimeAgo(new Date(lastUpdate).toISOString())}
+            </div>
+          )}
         </div>
       </div>
 
@@ -222,7 +318,7 @@ export function MonitoringStatus() {
         <div className="p-3 rounded-lg bg-secondary/50">
           <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
             <Activity className="h-3 w-3" />
-            Last Update
+            Real-time Updates
           </div>
           <div className="text-sm font-medium">
             {wsStatus === 'connected' && lastUpdate ? getTimeAgo(new Date(lastUpdate).toISOString()) : 'N/A'}
@@ -232,10 +328,10 @@ export function MonitoringStatus() {
         <div className="p-3 rounded-lg bg-secondary/50">
           <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
             <Clock className="h-3 w-3" />
-            Backup Check
+            Auto Monitoring
           </div>
           <div className="text-sm font-medium">
-            {lastRun ? getTimeAgo(lastRun) : "Never"}
+            {cronLastRun ? getTimeAgo(cronLastRun) : "Never"}
           </div>
         </div>
       </div>
