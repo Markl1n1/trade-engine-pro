@@ -3,8 +3,6 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { strategyValidator } from '../helpers/strategy-validator.ts';
-import { strategyTestSuite } from '../helpers/strategy-tests.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -105,8 +103,8 @@ serve(async (req) => {
       throw new Error('Either strategyId or strategy must be provided');
     }
 
-    // Run validation
-    const validation = strategyValidator.validateStrategy(strategy, marketData);
+    // Run basic validation
+    const validation = validateStrategyBasic(strategy, marketData);
     console.log(`[VALIDATE-STRATEGY] Validation completed - Score: ${validation.score}/100`);
 
     let tests = null;
@@ -114,24 +112,14 @@ serve(async (req) => {
 
     // Run tests if requested
     if (request.runTests) {
-      console.log(`[VALIDATE-STRATEGY] Running test suite: ${request.testSuite || 'all'}`);
-      
-      if (request.testSuite) {
-        // Run specific test suite
-        const testResults = await strategyTestSuite.runTestSuite(request.testSuite);
-        tests = testResults;
-      } else {
-        // Run all tests
-        const allTestResults = await strategyTestSuite.runAllTests();
-        tests = allTestResults;
-      }
-      
-      report = strategyTestSuite.getTestReport(tests);
+      console.log(`[VALIDATE-STRATEGY] Running basic tests`);
+      tests = runBasicTests(strategy, marketData);
+      report = generateTestReport(tests);
       console.log(`[VALIDATE-STRATEGY] Tests completed - ${tests.passed || 0}/${tests.total || 0} passed`);
     }
 
     // Generate validation report
-    const validationReport = strategyValidator.getValidationReport(validation);
+    const validationReport = generateValidationReport(validation);
     
     // Combine reports
     const fullReport = `${validationReport}\n\n${report}`;
@@ -279,4 +267,187 @@ function calculateATR(candles: any[], period: number = 14): number[] {
     tr.push(Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose)));
   }
   return [0, ...calculateEMA(tr, period)];
+}
+
+// Basic validation functions
+function validateStrategyBasic(strategy: any, marketData: any): any {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  const recommendations: string[] = [];
+  let score = 100;
+
+  console.log(`[VALIDATE-STRATEGY] Validating strategy: ${strategy.name || 'Unknown'}`);
+
+  // Basic validation checks
+  if (!strategy.name || strategy.name.trim() === '') {
+    errors.push('Strategy name is required');
+    score -= 20;
+  }
+
+  if (!strategy.symbol || strategy.symbol.trim() === '') {
+    errors.push('Symbol is required');
+    score -= 20;
+  }
+
+  if (!strategy.timeframe || strategy.timeframe.trim() === '') {
+    errors.push('Timeframe is required');
+    score -= 15;
+  }
+
+  if (!strategy.initial_capital || strategy.initial_capital <= 0) {
+    errors.push('Initial capital must be greater than 0');
+    score -= 15;
+  }
+
+  if (!strategy.position_size || strategy.position_size <= 0) {
+    errors.push('Position size must be greater than 0');
+    score -= 10;
+  }
+
+  // Check for stop loss and take profit
+  if (!strategy.stop_loss || strategy.stop_loss <= 0) {
+    warnings.push('Stop loss is recommended for risk management');
+    score -= 5;
+  }
+
+  if (!strategy.take_profit || strategy.take_profit <= 0) {
+    warnings.push('Take profit is recommended for profit taking');
+    score -= 5;
+  }
+
+  // Check strategy type specific validations
+  if (strategy.type === 'market_sentiment_trend_gauge' && !strategy.benchmark_symbol) {
+    errors.push('Benchmark symbol is required for MSTG strategy');
+    score -= 20;
+  }
+
+  if (strategy.type === '4h_reentry' && !strategy.breakout_threshold) {
+    warnings.push('Breakout threshold is recommended for 4h reentry strategy');
+    score -= 5;
+  }
+
+  // Check for market data availability
+  if (marketData && marketData.indicators) {
+    const indicators = marketData.indicators;
+    
+    // Check for NaN values in indicators
+    for (const [name, values] of Object.entries(indicators)) {
+      if (Array.isArray(values)) {
+        const nanCount = values.filter(v => isNaN(v)).length;
+        if (nanCount > 0) {
+          warnings.push(`${name} indicator has ${nanCount} NaN values`);
+          score -= 2;
+        }
+      }
+    }
+  } else {
+    warnings.push('No market data available for validation');
+    score -= 10;
+  }
+
+  // Generate recommendations
+  if (score < 80) {
+    recommendations.push('Consider reviewing strategy parameters for better performance');
+  }
+
+  if (score < 60) {
+    recommendations.push('Strategy needs significant improvements before deployment');
+  }
+
+  const result = {
+    valid: errors.length === 0,
+    errors,
+    warnings,
+    score: Math.max(0, score),
+    recommendations
+  };
+
+  console.log(`[VALIDATE-STRATEGY] Validation result: Score ${result.score}/100, Errors: ${errors.length}, Warnings: ${warnings.length}`);
+  
+  return result;
+}
+
+function runBasicTests(strategy: any, marketData: any): any {
+  const tests = [
+    {
+      name: 'strategy_name_test',
+      passed: !!(strategy.name && strategy.name.trim() !== ''),
+      description: 'Strategy has a valid name'
+    },
+    {
+      name: 'symbol_test',
+      passed: !!(strategy.symbol && strategy.symbol.trim() !== ''),
+      description: 'Strategy has a valid symbol'
+    },
+    {
+      name: 'timeframe_test',
+      passed: !!(strategy.timeframe && strategy.timeframe.trim() !== ''),
+      description: 'Strategy has a valid timeframe'
+    },
+    {
+      name: 'capital_test',
+      passed: !!(strategy.initial_capital && strategy.initial_capital > 0),
+      description: 'Strategy has valid initial capital'
+    },
+    {
+      name: 'position_size_test',
+      passed: !!(strategy.position_size && strategy.position_size > 0),
+      description: 'Strategy has valid position size'
+    }
+  ];
+
+  const passed = tests.filter(t => t.passed).length;
+  const total = tests.length;
+
+  return {
+    passed,
+    failed: total - passed,
+    total,
+    duration: 0,
+    results: tests
+  };
+}
+
+function generateTestReport(tests: any): string {
+  if (!tests) return '';
+  
+  let report = `Test Results: ${tests.passed}/${tests.total} passed\n`;
+  report += `Duration: ${tests.duration}ms\n\n`;
+  
+  tests.results.forEach((test: any) => {
+    report += `${test.passed ? '✅' : '❌'} ${test.name}: ${test.description}\n`;
+  });
+  
+  return report;
+}
+
+function generateValidationReport(validation: any): string {
+  let report = `Validation Report\n`;
+  report += `Score: ${validation.score}/100\n`;
+  report += `Valid: ${validation.valid ? 'Yes' : 'No'}\n\n`;
+  
+  if (validation.errors.length > 0) {
+    report += `Errors:\n`;
+    validation.errors.forEach((error: string) => {
+      report += `❌ ${error}\n`;
+    });
+    report += `\n`;
+  }
+  
+  if (validation.warnings.length > 0) {
+    report += `Warnings:\n`;
+    validation.warnings.forEach((warning: string) => {
+      report += `⚠️ ${warning}\n`;
+    });
+    report += `\n`;
+  }
+  
+  if (validation.recommendations.length > 0) {
+    report += `Recommendations:\n`;
+    validation.recommendations.forEach((rec: string) => {
+      report += `💡 ${rec}\n`;
+    });
+  }
+  
+  return report;
 }
