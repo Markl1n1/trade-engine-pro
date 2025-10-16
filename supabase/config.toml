@@ -41,3 +41,6 @@ verify_jwt = false
 
 [functions.get-hybrid-market-data]
 verify_jwt = true
+
+[functions.get-audit-logs]
+verify_jwt = true

@@ -43,6 +43,11 @@ interface UserSettings {
   telegram_bot_token: string;
   telegram_chat_id: string;
   telegram_enabled: boolean;
+  // Trading mode settings
+  trading_mode: 'testnet_only' | 'hybrid_safe' | 'hybrid_live' | 'paper_trading' | 'mainnet_only';
+  use_mainnet_data: boolean;
+  use_testnet_api: boolean;
+  paper_trading_mode: boolean;
 }
 
 interface AppSettings {
@@ -161,6 +166,11 @@ const Settings = () => {
     telegram_bot_token: "",
     telegram_chat_id: "",
     telegram_enabled: false,
+    // Trading mode settings
+    trading_mode: 'hybrid_safe',
+    use_mainnet_data: true,
+    use_testnet_api: true,
+    paper_trading_mode: true,
   });
 
   useEffect(() => {
@@ -230,6 +240,11 @@ const Settings = () => {
           telegram_bot_token: data.telegram_bot_token || "",
           telegram_chat_id: data.telegram_chat_id || "",
           telegram_enabled: data.telegram_enabled,
+          // Trading mode settings
+          trading_mode: (data.trading_mode as 'testnet_only' | 'hybrid_safe' | 'hybrid_live' | 'paper_trading' | 'mainnet_only') || 'hybrid_safe',
+          use_mainnet_data: data.use_mainnet_data ?? true,
+          use_testnet_api: data.use_testnet_api ?? true,
+          paper_trading_mode: data.paper_trading_mode ?? true,
         });
       }
 
@@ -321,6 +336,11 @@ const Settings = () => {
         telegram_bot_token: settings.telegram_bot_token?.trim() || null,
         telegram_chat_id: settings.telegram_chat_id?.trim() || null,
         telegram_enabled: settings.telegram_enabled,
+        // Trading mode settings
+        trading_mode: settings.trading_mode,
+        use_mainnet_data: settings.use_mainnet_data,
+        use_testnet_api: settings.use_testnet_api,
+        paper_trading_mode: settings.paper_trading_mode,
       };
 
       console.log("Settings data prepared:", {
