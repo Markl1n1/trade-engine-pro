@@ -555,7 +555,7 @@ const Settings = () => {
               <SelectTrigger>
                 <SelectValue placeholder="Select trading mode" />
               </SelectTrigger>
-              <SelectContent className="bg-background border-border">
+              <SelectContent className="!bg-background !border-border dark:!bg-gray-800 dark:!text-white">
                 <SelectItem value="testnet_only" className="hover:bg-accent">
                   <div className="flex flex-col">
                     <span className="font-medium">Testnet Only</span>

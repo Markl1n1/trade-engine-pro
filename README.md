@@ -1,73 +1,172 @@
-# Welcome to your Lovable project
+# 🚀 Advanced Crypto Trading Platform
 
-## Project info
+**A sophisticated trading platform for crypto futures with advanced strategy management, risk control, and performance monitoring.**
 
-**URL**: https://lovable.dev/projects/a2c583a3-2ea9-4a28-b431-3556a30ea5cb
+## 🎯 **Key Features**
 
-## How can I edit this code?
+### **Trading & Strategies**
+- **Advanced Strategy Builder** - Visual and JavaScript-based strategy creation
+- **Strategy Template Library** - Pre-built trading strategies
+- **Custom Strategy Support** - JavaScript code execution for complex strategies
+- **Strategy Validation** - Automated testing and validation of strategies
 
-There are several ways of editing your application.
+### **Backtesting & Analysis**
+- **Enhanced Backtest Engine** - Look-ahead bias prevention and accurate calculations
+- **Trailing Stop Loss** - Advanced profit protection mechanisms
+- **Performance Analytics** - Detailed trade analysis and metrics
+- **Multiple Timeframes** - Support for various trading intervals
 
-**Use Lovable**
+### **Risk Management**
+- **Advanced Risk Manager** - Portfolio risk monitoring and control
+- **Partial Position Closing** - Gradual profit-taking strategies
+- **Adaptive Stop Losses** - Dynamic risk adjustment based on market conditions
+- **Position Sizing** - Kelly Criterion and volatility-based sizing
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/a2c583a3-2ea9-4a28-b431-3556a30ea5cb) and start prompting.
+### **Data & Performance**
+- **Data Quality Management** - Real-time data validation and cleaning
+- **Performance Monitoring** - System performance tracking and optimization
+- **Hybrid Trading Mode** - Testnet API with mainnet data for safe testing
+- **Real-time Monitoring** - Live strategy execution and signal generation
 
-Changes made via Lovable will be committed automatically to this repo.
+## 🏗️ **Architecture**
 
-**Use your preferred IDE**
+### **Frontend**
+- **React 18** with TypeScript
+- **Vite** for fast development
+- **Tailwind CSS** for styling
+- **shadcn/ui** component library
+- **Recharts** for data visualization
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+### **Backend**
+- **Supabase** - PostgreSQL database and Edge Functions
+- **Row Level Security** - Secure data access
+- **Real-time subscriptions** - Live data updates
+- **Cron jobs** - Automated strategy monitoring
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+### **Integrations**
+- **Binance API** - Market data and order execution
+- **Telegram Bot** - Signal notifications
+- **Multiple Exchanges** - Binance, Bybit support
+- **Testnet Support** - Safe testing environment
 
-Follow these steps:
+## 🚀 **Quick Start**
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
+### **Prerequisites**
+- Node.js 18+ and npm
+- Supabase account
+- Binance API keys (optional for testing)
+
+### **Installation**
+```bash
+# Clone the repository
 git clone <YOUR_GIT_URL>
+cd trade-engine-pro
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+# Install dependencies
+npm install
 
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# Start development server
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+### **Configuration**
+1. Set up Supabase project
+2. Configure environment variables
+3. Set up Binance API keys (optional)
+4. Configure Telegram bot (optional)
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## 📊 **Platform Overview**
 
-**Use GitHub Codespaces**
+### **Dashboard**
+- Real-time market data
+- Account balance and positions
+- Active strategy signals
+- Performance metrics
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+### **Strategies**
+- Create and manage trading strategies
+- Visual strategy builder
+- Custom JavaScript strategies
+- Strategy validation and testing
 
-## What technologies are used for this project?
+### **Backtest**
+- Historical strategy testing
+- Performance analysis
+- Risk assessment
+- Trade simulation
 
-This project is built with:
+### **Performance**
+- System performance monitoring
+- Resource usage tracking
+- Optimization recommendations
+- Real-time metrics
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+### **Risk Management**
+- Portfolio risk monitoring
+- Position sizing controls
+- Risk limit management
+- Adaptive stop losses
 
-## How can I deploy this project?
+### **Data Quality**
+- Data validation and cleaning
+- Quality monitoring
+- Error detection and correction
+- Data source management
 
+## 🔧 **Development**
+
+### **Technologies Used**
+- **Frontend**: React, TypeScript, Vite, Tailwind CSS, shadcn/ui
+- **Backend**: Supabase, PostgreSQL, Edge Functions
+- **Trading**: Binance API, Telegram Bot API
+- **Charts**: Recharts
+- **State Management**: React Query
+
+### **Project Structure**
+```
+src/
+├── components/          # React components
+├── pages/              # Application pages
+├── hooks/              # Custom React hooks
+├── integrations/       # External service integrations
+└── lib/                # Utility functions
+
+supabase/
+├── functions/          # Edge Functions
+├── migrations/         # Database migrations
+└── config.toml         # Supabase configuration
+```
+
+## 🚀 **Deployment**
+
+### **Lovable Platform**
 Simply open [Lovable](https://lovable.dev/projects/a2c583a3-2ea9-4a28-b431-3556a30ea5cb) and click on Share -> Publish.
 
-## Can I connect a custom domain to my Lovable project?
+### **Custom Domain**
+Navigate to Project > Settings > Domains and click Connect Domain.
 
-Yes, you can!
+## 📚 **Documentation**
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+- [APP_GUIDE.md](./APP_GUIDE.md) - Detailed architecture guide
+- [BACKTEST_IMPROVEMENTS.md](./BACKTEST_IMPROVEMENTS.md) - Backtesting improvements
+- [HYBRID_TRADING_GUIDE.md](./HYBRID_TRADING_GUIDE.md) - Hybrid trading mode guide
+- [SECURITY.md](./SECURITY.md) - Security best practices
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+## ⚠️ **Important Notes**
+
+- **Risk Warning**: Trading cryptocurrencies involves substantial risk
+- **Testing**: Always test strategies on testnet before live trading
+- **API Keys**: Keep your API keys secure and use testnet for development
+- **Compliance**: Ensure compliance with local regulations
+
+## 🤝 **Contributing**
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test thoroughly
+5. Submit a pull request
+
+## 📄 **License**
+
+This project is for educational and development purposes. Use at your own risk.

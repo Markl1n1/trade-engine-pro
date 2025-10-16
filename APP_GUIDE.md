@@ -1,7 +1,7 @@
-# Trading Strategy Bot Platform - Architecture Guide
+# 🚀 Advanced Crypto Trading Platform - Architecture Guide
 
-**Version:** 1.0  
-**Last Updated:** October 15, 2025  
+**Version:** 2.0  
+**Last Updated:** January 2025  
 **Platform:** Lovable Cloud
 
 ---
@@ -29,16 +29,19 @@
 ## Project Overview
 
 ### Application Name
-**Trading Strategy Bot Platform**
+**Advanced Crypto Trading Platform**
 
 ### Purpose
-An automated cryptocurrency trading strategy management platform that enables users to:
-- Create and manage trading strategies using technical indicators
-- Backtest strategies against historical data
-- Monitor live markets in real-time
-- Generate automated trading signals
-- Receive notifications via Telegram
-- Execute trades on Binance and Bybit exchanges
+A sophisticated cryptocurrency trading platform with advanced features:
+- **Advanced Strategy Management** - Visual and JavaScript-based strategy creation
+- **Enhanced Backtesting** - Look-ahead bias prevention and accurate calculations
+- **Risk Management** - Portfolio risk monitoring and adaptive stop losses
+- **Performance Monitoring** - Real-time system performance tracking
+- **Data Quality Control** - Automated data validation and cleaning
+- **Hybrid Trading Mode** - Testnet API with mainnet data for safe testing
+- **Custom Strategies** - JavaScript code execution for complex strategies
+- **Strategy Validation** - Automated testing and validation
+- **Real-time Monitoring** - Live strategy execution and signal generation
 
 ### Technology Stack Summary
 

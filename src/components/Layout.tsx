@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import { Activity, BarChart3, Settings, Zap, LogOut, RefreshCw } from "lucide-react";
+import { Activity, BarChart3, Settings, Zap, LogOut, RefreshCw, Shield, TrendingUp, Database } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -37,6 +37,9 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
     { path: "/", label: "Dashboard", icon: Activity },
     { path: "/strategies", label: "Strategies", icon: Zap },
     { path: "/backtest", label: "Backtest", icon: BarChart3 },
+    { path: "/performance", label: "Performance", icon: TrendingUp },
+    { path: "/risk-management", label: "Risk Management", icon: Shield },
+    { path: "/data-quality", label: "Data Quality", icon: Database },
     { path: "/settings", label: "Settings", icon: Settings },
   ];
 

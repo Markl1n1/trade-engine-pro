@@ -6,6 +6,9 @@ import Layout from "./components/Layout";
 import Dashboard from "./pages/Dashboard";
 import Strategies from "./pages/Strategies";
 import Backtest from "./pages/Backtest";
+import Performance from "./pages/Performance";
+import RiskManagement from "./pages/RiskManagement";
+import DataQuality from "./pages/DataQuality";
 import Settings from "./pages/Settings";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
@@ -29,6 +32,9 @@ const App = () => (
                   <Route path="/" element={<Dashboard />} />
                   <Route path="/strategies" element={<Strategies />} />
                   <Route path="/backtest" element={<Backtest />} />
+                  <Route path="/performance" element={<Performance />} />
+                  <Route path="/risk-management" element={<RiskManagement />} />
+                  <Route path="/data-quality" element={<DataQuality />} />
                   <Route path="/settings" element={<Settings />} />
                   {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                   <Route path="*" element={<NotFound />} />
