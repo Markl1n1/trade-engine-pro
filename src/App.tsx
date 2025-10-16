@@ -9,7 +9,7 @@ import Backtest from "./pages/Backtest";
 import Performance from "./pages/Performance";
 import RiskManagement from "./pages/RiskManagement";
 import DataQuality from "./pages/DataQuality";
-import AuditLogs from "./pages/AuditLogs";
+import AuditLogsPage from "./pages/AuditLogs";
 import Settings from "./pages/Settings";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
@@ -36,7 +36,7 @@ const App = () => (
             <Route path="/performance" element={<Performance />} />
             <Route path="/risk-management" element={<RiskManagement />} />
             <Route path="/data-quality" element={<DataQuality />} />
-            <Route path="/audit-logs" element={<AuditLogs />} />
+            <Route path="/audit-logs" element={<AuditLogsPage />} />
             <Route path="/settings" element={<Settings />} />
                   {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                   <Route path="*" element={<NotFound />} />

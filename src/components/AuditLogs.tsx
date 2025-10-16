@@ -54,8 +54,8 @@ export const AuditLogs = () => {
   const [currentPage, setCurrentPage] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   const [filters, setFilters] = useState({
-    action_type: '',
-    entity_type: '',
+    action_type: 'all',
+    entity_type: 'all',
     limit: 50
   });
   const { toast } = useToast();
@@ -69,8 +69,8 @@ export const AuditLogs = () => {
           action: 'get_logs',
           limit: filters.limit,
           offset: currentPage * filters.limit,
-          action_type: filters.action_type || undefined,
-          entity_type: filters.entity_type || undefined
+          action_type: filters.action_type === 'all' ? undefined : filters.action_type || undefined,
+          entity_type: filters.entity_type === 'all' ? undefined : filters.entity_type || undefined
         }
       });
 
@@ -231,7 +231,7 @@ export const AuditLogs = () => {
                       <SelectValue placeholder="All actions" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">All actions</SelectItem>
+                      <SelectItem value="all">All actions</SelectItem>
                       <SelectItem value="settings_change">Settings Change</SelectItem>
                       <SelectItem value="strategy_change">Strategy Change</SelectItem>
                       <SelectItem value="strategy_created">Strategy Created</SelectItem>
@@ -250,7 +250,7 @@ export const AuditLogs = () => {
                       <SelectValue placeholder="All entities" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">All entities</SelectItem>
+                      <SelectItem value="all">All entities</SelectItem>
                       <SelectItem value="user_settings">User Settings</SelectItem>
                       <SelectItem value="strategy">Strategy</SelectItem>
                       <SelectItem value="position">Position</SelectItem>
