@@ -555,32 +555,32 @@ const Settings = () => {
               <SelectTrigger>
                 <SelectValue placeholder="Select trading mode" />
               </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="testnet_only">
+              <SelectContent className="bg-background border-border">
+                <SelectItem value="testnet_only" className="hover:bg-accent">
                   <div className="flex flex-col">
                     <span className="font-medium">Testnet Only</span>
                     <span className="text-xs text-muted-foreground">Safe testing, limited accuracy</span>
                   </div>
                 </SelectItem>
-                <SelectItem value="hybrid_safe">
+                <SelectItem value="hybrid_safe" className="hover:bg-accent">
                   <div className="flex flex-col">
                     <span className="font-medium">Hybrid Safe</span>
                     <span className="text-xs text-muted-foreground">Real data + testnet API + paper trading</span>
                   </div>
                 </SelectItem>
-                <SelectItem value="hybrid_live">
+                <SelectItem value="hybrid_live" className="hover:bg-accent">
                   <div className="flex flex-col">
                     <span className="font-medium">Hybrid Live</span>
                     <span className="text-xs text-muted-foreground">Real data + testnet API + real execution</span>
                   </div>
                 </SelectItem>
-                <SelectItem value="paper_trading">
+                <SelectItem value="paper_trading" className="hover:bg-accent">
                   <div className="flex flex-col">
                     <span className="font-medium">Paper Trading</span>
                     <span className="text-xs text-muted-foreground">Real data, no real execution</span>
                   </div>
                 </SelectItem>
-                <SelectItem value="mainnet_only">
+                <SelectItem value="mainnet_only" className="hover:bg-accent">
                   <div className="flex flex-col">
                     <span className="font-medium">Mainnet Only</span>
                     <span className="text-xs text-muted-foreground">⚠️ Real money, high risk</span>

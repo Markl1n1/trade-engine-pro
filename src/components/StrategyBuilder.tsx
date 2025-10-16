@@ -845,7 +845,10 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
               <p className="text-sm text-muted-foreground">
                 Choose from pre-built strategy templates to get started quickly
               </p>
-              <StrategyTemplates onSelectTemplate={loadTemplate} />
+              <div className="text-center py-8 text-muted-foreground">
+                <p>Template library is available in the main Strategies page.</p>
+                <p className="text-sm mt-2">Use the "Templates" button to access pre-built strategies.</p>
+              </div>
             </div>
           </TabsContent>
         </Tabs>
