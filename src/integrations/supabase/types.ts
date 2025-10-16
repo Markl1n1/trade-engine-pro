@@ -790,15 +790,32 @@ export type Database = {
           bybit_mainnet_api_secret: string | null
           bybit_testnet_api_key: string | null
           bybit_testnet_api_secret: string | null
+          cache_indicators: boolean
           created_at: string
+          data_quality_score: number | null
           exchange_type: string | null
+          handle_missing_data: string
+          hybrid_stats: Json | null
           id: string
+          last_data_sync: string | null
+          max_daily_trades: number
+          max_data_age_minutes: number
+          max_position_size: number
+          paper_trading_mode: boolean
+          real_data_simulation: boolean
+          risk_tolerance: string
+          risk_warning_threshold: number
+          sync_mainnet_data: boolean
           telegram_bot_token: string | null
           telegram_chat_id: string | null
           telegram_enabled: boolean
+          trading_mode: string
           updated_at: string
+          use_mainnet_data: boolean
           use_testnet: boolean
+          use_testnet_api: boolean
           user_id: string
+          validate_data_integrity: boolean
         }
         Insert: {
           binance_api_key?: string | null
@@ -811,15 +828,32 @@ export type Database = {
           bybit_mainnet_api_secret?: string | null
           bybit_testnet_api_key?: string | null
           bybit_testnet_api_secret?: string | null
+          cache_indicators?: boolean
           created_at?: string
+          data_quality_score?: number | null
           exchange_type?: string | null
+          handle_missing_data?: string
+          hybrid_stats?: Json | null
           id?: string
+          last_data_sync?: string | null
+          max_daily_trades?: number
+          max_data_age_minutes?: number
+          max_position_size?: number
+          paper_trading_mode?: boolean
+          real_data_simulation?: boolean
+          risk_tolerance?: string
+          risk_warning_threshold?: number
+          sync_mainnet_data?: boolean
           telegram_bot_token?: string | null
           telegram_chat_id?: string | null
           telegram_enabled?: boolean
+          trading_mode?: string
           updated_at?: string
+          use_mainnet_data?: boolean
           use_testnet?: boolean
+          use_testnet_api?: boolean
           user_id: string
+          validate_data_integrity?: boolean
         }
         Update: {
           binance_api_key?: string | null
@@ -832,15 +866,32 @@ export type Database = {
           bybit_mainnet_api_secret?: string | null
           bybit_testnet_api_key?: string | null
           bybit_testnet_api_secret?: string | null
+          cache_indicators?: boolean
           created_at?: string
+          data_quality_score?: number | null
           exchange_type?: string | null
+          handle_missing_data?: string
+          hybrid_stats?: Json | null
           id?: string
+          last_data_sync?: string | null
+          max_daily_trades?: number
+          max_data_age_minutes?: number
+          max_position_size?: number
+          paper_trading_mode?: boolean
+          real_data_simulation?: boolean
+          risk_tolerance?: string
+          risk_warning_threshold?: number
+          sync_mainnet_data?: boolean
           telegram_bot_token?: string | null
           telegram_chat_id?: string | null
           telegram_enabled?: boolean
+          trading_mode?: string
           updated_at?: string
+          use_mainnet_data?: boolean
           use_testnet?: boolean
+          use_testnet_api?: boolean
           user_id?: string
+          validate_data_integrity?: boolean
         }
         Relationships: []
       }
