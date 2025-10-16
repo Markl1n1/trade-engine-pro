@@ -12,7 +12,7 @@ import { Plus, Trash2, Sparkles, Info } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { IndicatorSelector } from "./IndicatorSelector";
-import { StrategyTemplates } from "./StrategyTemplates";
+// Removed StrategyTemplates import - using StrategyTemplateLibrary instead
 import { StrategyTypeConfig } from "./StrategyTypeConfig";
 
 type OrderType = "buy" | "sell";

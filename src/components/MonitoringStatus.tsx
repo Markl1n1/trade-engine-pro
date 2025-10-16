@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Activity, Clock, PlayCircle, Zap, AlertCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
-import { StrategyDebugPanel } from "./StrategyDebugPanel";
+// Removed StrategyDebugPanel import - using PerformanceDashboard instead
 
 export function MonitoringStatus() {
   const [monitoringEnabled, setMonitoringEnabled] = useState(false);
@@ -272,7 +272,7 @@ export function MonitoringStatus() {
         </Button>
       </Card>
 
-      <StrategyDebugPanel logs={debugLogs} connectionInfo={connectionInfo} />
+      {/* Removed StrategyDebugPanel - using PerformanceDashboard instead */}
     </div>
   );
 }

@@ -1,13 +1,40 @@
 project_id = "wnkjtkigpyfnthnfmdlk"
 
-[functions.test-exchange]
+# Core trading functions
+[functions.monitor-strategies-cron]
 verify_jwt = true
 
+[functions.run-backtest]
+verify_jwt = true
+
+[functions.run-backtest-simple]
+verify_jwt = true
+
+[functions.close-position]
+verify_jwt = true
+
+# New advanced functions
+[functions.validate-strategy]
+verify_jwt = true
+
+[functions.execute-javascript-strategy]
+verify_jwt = true
+
+[functions.data-quality]
+verify_jwt = true
+
+[functions.risk-management]
+verify_jwt = true
+
+[functions.performance-dashboard]
+verify_jwt = true
+
+# Market data functions
 [functions.binance-api-status]
 verify_jwt = false
 
 [functions.binance-websocket-monitor]
 verify_jwt = false
 
-[functions.monitor-strategies-realtime]
+[functions.get-hybrid-market-data]
 verify_jwt = true
