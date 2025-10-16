@@ -13,7 +13,7 @@ import {
   CheckCircle, 
   Cpu, 
   Database, 
-  Memory, 
+  HardDrive, 
   Network, 
   Settings,
   TrendingUp,
@@ -324,7 +324,7 @@ export const PerformanceDashboard = () => {
               <Card>
                 <CardHeader className="pb-2">
                   <CardTitle className="flex items-center gap-2 text-sm">
-                    <Memory className="h-4 w-4" />
+                    <HardDrive className="h-4 w-4" />
                     Memory Usage
                   </CardTitle>
                 </CardHeader>
