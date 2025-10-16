@@ -114,10 +114,15 @@ const Dashboard = () => {
       
       if (error) throw error;
       setUserSettings(data);
-      setTradingMode(data?.trading_mode || 'mainnet_only');
+      // Only set trading mode if not already set from account data
+      if (tradingMode === 'unknown') {
+        setTradingMode(data?.trading_mode || 'mainnet_only');
+      }
     } catch (error) {
       console.error('Error loading user settings:', error);
-      setTradingMode('mainnet_only');
+      if (tradingMode === 'unknown') {
+        setTradingMode('mainnet_only');
+      }
     }
   };
 
@@ -129,6 +134,10 @@ const Dashboard = () => {
       if (error) throw error;
       if (data?.success && data?.data) {
         setAccountData(data.data);
+        // Update trading mode from account data
+        if (data.data.tradingMode) {
+          setTradingMode(data.data.tradingMode);
+        }
         setLastUpdated(new Date());
       }
     } catch (error) {
@@ -433,6 +442,7 @@ const Dashboard = () => {
           variant="outline" 
           size="sm"
           onClick={() => {
+            loadUserSettings();
             fetchAccountData();
             fetchMarketData();
             fetchStrategySignals();

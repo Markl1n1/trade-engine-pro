@@ -38,7 +38,7 @@ Deno.serve(async (req) => {
     // Get user settings to determine which API keys to use
     const { data: settings, error: settingsError } = await supabase
       .from('user_settings')
-      .select('binance_mainnet_api_key, binance_mainnet_api_secret, binance_testnet_api_key, binance_testnet_api_secret, use_testnet')
+      .select('binance_mainnet_api_key, binance_mainnet_api_secret, binance_testnet_api_key, binance_testnet_api_secret, use_testnet, trading_mode, use_mainnet_data, use_testnet_api, paper_trading_mode')
       .eq('user_id', user.id)
       .maybeSingle();
 
@@ -160,6 +160,11 @@ Deno.serve(async (req) => {
         unrealizedProfit: parseFloat(asset.unrealizedProfit),
       })) || [];
 
+    // Determine trading mode info
+    const tradingMode = settings.trading_mode || 'mainnet_only';
+    const dataSource = settings.use_mainnet_data ? 'mainnet' : 'testnet';
+    const executionMode = settings.paper_trading_mode ? 'paper' : (settings.use_testnet ? 'simulated' : 'real');
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -174,6 +179,9 @@ Deno.serve(async (req) => {
           winRate: winRate,
           totalTrades: totalTrades,
           environment: settings.use_testnet ? 'testnet' : 'mainnet',
+          tradingMode: tradingMode,
+          dataSource: dataSource,
+          executionMode: executionMode,
         },
       }),
       {
