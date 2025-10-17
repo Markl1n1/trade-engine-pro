@@ -75,9 +75,12 @@ export const AuditLogs = () => {
       });
 
       if (error) throw error;
-      if (data.success) {
+      if (data?.success && Array.isArray(data.data)) {
         setLogs(data.data);
         setTotalPages(Math.ceil(data.data.length / filters.limit));
+      } else {
+        setLogs([]);
+        setTotalPages(0);
       }
     } catch (error: any) {
       console.error('Error loading audit logs:', error);
@@ -98,7 +101,7 @@ export const AuditLogs = () => {
       });
 
       if (error) throw error;
-      if (data.success) {
+      if (data?.success && data.data) {
         setStats(data.data);
       }
     } catch (error: any) {
@@ -115,10 +118,10 @@ export const AuditLogs = () => {
       });
 
       if (error) throw error;
-      if (data.success) {
+      if (data?.success && data.data) {
         toast({
           title: "Success",
-          description: `Cleaned up ${data.data.deleted_count} audit logs`,
+          description: `Cleaned up ${data.data.deleted_count || 0} audit logs`,
         });
         await loadAuditLogs();
         await loadStats();
