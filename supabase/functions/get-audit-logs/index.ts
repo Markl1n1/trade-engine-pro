@@ -61,7 +61,7 @@ Deno.serve(async (req) => {
         return await handleGetStats(supabase, user.id);
       
       case 'cleanup':
-        return await handleCleanup(supabase);
+        return await handleCleanup(supabase, user.id);
       
       case 'get_logs':
       default:
@@ -85,20 +85,111 @@ Deno.serve(async (req) => {
 
 async function handleGetStats(supabase: any, userId: string): Promise<Response> {
   try {
-    const { data: stats, error } = await supabase.rpc('get_audit_log_stats');
-    
-    if (error) throw error;
+    const now = new Date();
+    const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const last7d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const last30d = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    // Get counts from security_audit_log
+    const { count: securityTotal } = await supabase
+      .from('security_audit_log')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId);
+
+    const { count: security24h } = await supabase
+      .from('security_audit_log')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .gte('created_at', last24h.toISOString());
+
+    const { count: security7d } = await supabase
+      .from('security_audit_log')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .gte('created_at', last7d.toISOString());
+
+    const { count: security30d } = await supabase
+      .from('security_audit_log')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .gte('created_at', last30d.toISOString());
+
+    // Get counts from user_settings_audit
+    const { count: settingsTotal } = await supabase
+      .from('user_settings_audit')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId);
+
+    const { count: settings24h } = await supabase
+      .from('user_settings_audit')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .gte('accessed_at', last24h.toISOString());
+
+    const { count: settings7d } = await supabase
+      .from('user_settings_audit')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .gte('accessed_at', last7d.toISOString());
+
+    const { count: settings30d } = await supabase
+      .from('user_settings_audit')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .gte('accessed_at', last30d.toISOString());
+
+    // Get oldest and newest from both tables
+    const { data: oldestSecurity } = await supabase
+      .from('security_audit_log')
+      .select('created_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .single();
+
+    const { data: newestSecurity } = await supabase
+      .from('security_audit_log')
+      .select('created_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    const { data: oldestSettings } = await supabase
+      .from('user_settings_audit')
+      .select('accessed_at')
+      .eq('user_id', userId)
+      .order('accessed_at', { ascending: true })
+      .limit(1)
+      .single();
+
+    const { data: newestSettings } = await supabase
+      .from('user_settings_audit')
+      .select('accessed_at')
+      .eq('user_id', userId)
+      .order('accessed_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    const oldestLog = [oldestSecurity?.created_at, oldestSettings?.accessed_at]
+      .filter(Boolean)
+      .sort()[0] || null;
+
+    const newestLog = [newestSecurity?.created_at, newestSettings?.accessed_at]
+      .filter(Boolean)
+      .sort()
+      .reverse()[0] || null;
 
     return new Response(
       JSON.stringify({
         success: true,
-        data: stats[0] || {
-          total_logs: 0,
-          logs_last_24h: 0,
-          logs_last_7d: 0,
-          logs_last_30d: 0,
-          oldest_log: null,
-          newest_log: null
+        data: {
+          total_logs: (securityTotal || 0) + (settingsTotal || 0),
+          logs_last_24h: (security24h || 0) + (settings24h || 0),
+          logs_last_7d: (security7d || 0) + (settings7d || 0),
+          logs_last_30d: (security30d || 0) + (settings30d || 0),
+          oldest_log: oldestLog,
+          newest_log: newestLog
         }
       }),
       {
@@ -112,20 +203,72 @@ async function handleGetStats(supabase: any, userId: string): Promise<Response> 
 
 async function handleGetLogs(supabase: any, userId: string, request: AuditLogRequest): Promise<Response> {
   try {
-    const { data: logs, error } = await supabase.rpc('get_user_audit_logs', {
-      p_user_id: userId,
-      p_limit: request.limit || 50,
-      p_offset: request.offset || 0,
-      p_action_type: request.action_type || null,
-      p_entity_type: request.entity_type || null
-    });
-    
-    if (error) throw error;
+    // Fetch from security_audit_log
+    const { data: securityLogs, error: securityError } = await supabase
+      .from('security_audit_log')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (securityError) throw securityError;
+
+    // Fetch from user_settings_audit
+    const { data: settingsLogs, error: settingsError } = await supabase
+      .from('user_settings_audit')
+      .select('*')
+      .eq('user_id', userId)
+      .order('accessed_at', { ascending: false });
+
+    if (settingsError) throw settingsError;
+
+    // Map to common AuditLog shape
+    const mappedSecurityLogs: AuditLog[] = (securityLogs || []).map((log: any) => ({
+      id: log.id,
+      action_type: log.action,
+      entity_type: log.table_name,
+      entity_id: log.record_id,
+      old_values: null,
+      new_values: null,
+      changed_fields: [],
+      ip_address: log.ip_address,
+      user_agent: log.user_agent,
+      created_at: log.created_at
+    }));
+
+    const mappedSettingsLogs: AuditLog[] = (settingsLogs || []).map((log: any) => ({
+      id: log.id,
+      action_type: log.action,
+      entity_type: 'user_settings',
+      entity_id: null,
+      old_values: null,
+      new_values: null,
+      changed_fields: [],
+      ip_address: log.ip_address,
+      user_agent: log.user_agent,
+      created_at: log.accessed_at
+    }));
+
+    // Merge and sort by created_at desc
+    let allLogs = [...mappedSecurityLogs, ...mappedSettingsLogs]
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    // Apply filters
+    if (request.action_type) {
+      allLogs = allLogs.filter(log => log.action_type === request.action_type);
+    }
+    if (request.entity_type) {
+      allLogs = allLogs.filter(log => log.entity_type === request.entity_type);
+    }
+
+    // Paginate
+    const offset = request.offset || 0;
+    const limit = request.limit || 50;
+    const paginatedLogs = allLogs.slice(offset, offset + limit);
 
     return new Response(
       JSON.stringify({
         success: true,
-        data: logs || []
+        data: paginatedLogs
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -136,16 +279,38 @@ async function handleGetLogs(supabase: any, userId: string, request: AuditLogReq
   }
 }
 
-async function handleCleanup(supabase: any): Promise<Response> {
+async function handleCleanup(supabase: any, userId: string): Promise<Response> {
   try {
-    const { data: result, error } = await supabase.rpc('cleanup_audit_logs_manual');
-    
-    if (error) throw error;
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - 30);
+    const cutoff = cutoffDate.toISOString();
+
+    // Delete from security_audit_log
+    const { data: deletedSecurity, error: securityError } = await supabase
+      .from('security_audit_log')
+      .delete()
+      .eq('user_id', userId)
+      .lte('created_at', cutoff)
+      .select('id');
+
+    if (securityError) throw securityError;
+
+    // Delete from user_settings_audit
+    const { data: deletedSettings, error: settingsError } = await supabase
+      .from('user_settings_audit')
+      .delete()
+      .eq('user_id', userId)
+      .lte('accessed_at', cutoff)
+      .select('id');
+
+    if (settingsError) throw settingsError;
+
+    const deletedCount = (deletedSecurity?.length || 0) + (deletedSettings?.length || 0);
 
     return new Response(
       JSON.stringify({
         success: true,
-        data: result[0] || { deleted_count: 0, cleanup_date: new Date().toISOString() }
+        data: { deleted_count: deletedCount, cleanup_date: new Date().toISOString() }
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

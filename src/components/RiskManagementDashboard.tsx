@@ -64,7 +64,7 @@ interface Position {
   stopLoss: number;
   takeProfit: number;
   trailingStop?: number;
-  partialCloses: Array<{
+  partialCloses?: Array<{
     level: number;
     closedSize: number;
     profit: number;
@@ -132,9 +132,27 @@ export const RiskManagementDashboard = () => {
       });
 
       if (reportError) throw reportError;
-      if (reportData.success) {
-        setPositions(reportData.data.positions);
-        setMetrics(reportData.data.metrics);
+      if (reportData?.success) {
+        // Extract report with safe fallback
+        const report = reportData?.data?.report || reportData?.data || {};
+        
+        // Always set an array for positions
+        const nextPositions = Array.isArray(report.positions) ? report.positions : [];
+        setPositions(nextPositions);
+        
+        // Build a safe metrics object from report with defaults
+        const nextMetrics: RiskMetrics = {
+          totalRisk: typeof report.riskPercent === 'number' ? report.riskPercent : (typeof report.totalRisk === 'number' ? report.totalRisk : 0),
+          dailyPnL: 0,
+          maxDrawdown: Number(report.maxDrawdown ?? 0),
+          winRate: 0,
+          profitFactor: 0,
+          sharpeRatio: Number(report.sharpeRatio ?? 0),
+          var95: 0,
+          expectedReturn: 0,
+          volatility: 0
+        };
+        setMetrics(nextMetrics);
       }
 
     } catch (error) {
@@ -447,11 +465,11 @@ export const RiskManagementDashboard = () => {
                     </div>
                   </div>
                   
-                  {position.partialCloses.length > 0 && (
+                  {(position.partialCloses?.length ?? 0) > 0 && (
                     <div className="mt-4 pt-4 border-t">
                       <div className="text-sm font-medium mb-2">Partial Closes:</div>
                       <div className="space-y-1">
-                        {position.partialCloses.map((close, index) => (
+                        {(position.partialCloses || []).map((close, index) => (
                           <div key={index} className="flex justify-between text-sm">
                             <span>Level {close.level}%: {close.closedSize.toFixed(2)}</span>
                             <span className="text-green-500">+${close.profit.toFixed(2)}</span>
