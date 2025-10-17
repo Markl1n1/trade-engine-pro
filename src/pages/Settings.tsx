@@ -26,9 +26,8 @@ const settingsSchema = z.object({
   bybit_testnet_api_key: z.string().trim().max(128, "API key too long").optional(),
   bybit_testnet_api_secret: z.string().trim().max(128, "API secret too long").optional(),
   telegram_bot_token: z.string().trim().max(256, "Token too long").optional(),
-  telegram_chat_id: z.string().trim().max(64, "Chat ID too long").optional(),
+  telegram_chat_id: z.string().trim().max(64, "Chat ID too long").optional()
 });
-
 interface UserSettings {
   exchange_type: 'binance' | 'bybit';
   binance_mainnet_api_key: string;
@@ -49,11 +48,9 @@ interface UserSettings {
   use_testnet_api: boolean;
   paper_trading_mode: boolean;
 }
-
 interface AppSettings {
   signalsPerPage: number;
 }
-
 interface SystemSettings {
   monitoringEnabled: boolean;
   monitoringInterval: number;
@@ -77,7 +74,6 @@ const getTradingModeAlertClass = (mode: string) => {
       return "bg-gray-50 border-gray-200";
   }
 };
-
 const getTradingModeIconClass = (mode: string) => {
   switch (mode) {
     case 'testnet_only':
@@ -94,63 +90,53 @@ const getTradingModeIconClass = (mode: string) => {
       return "text-gray-600";
   }
 };
-
 const getTradingModeDescription = (mode: string) => {
   switch (mode) {
     case 'testnet_only':
-      return (
-        <>
+      return <>
           <strong>TESTNET ONLY:</strong> Using testnet data and API
           <br />✅ Safe for testing, ❌ Limited accuracy
-        </>
-      );
+        </>;
     case 'hybrid_safe':
-      return (
-        <>
+      return <>
           <strong>HYBRID SAFE:</strong> Real market data + testnet API + paper trading
           <br />✅ High accuracy, ✅ Safe testing, ✅ No real money risk
-        </>
-      );
+        </>;
     case 'hybrid_live':
-      return (
-        <>
+      return <>
           <strong>HYBRID LIVE:</strong> Real market data + testnet API + real execution
           <br />✅ High accuracy, ⚠️ Real money trading, ⚠️ Medium risk
-        </>
-      );
+        </>;
     case 'paper_trading':
-      return (
-        <>
+      return <>
           <strong>PAPER TRADING:</strong> Real market data + no real execution
           <br />✅ High accuracy, ✅ Safe testing, ✅ Perfect for strategy validation
-        </>
-      );
+        </>;
     case 'mainnet_only':
-      return (
-        <>
+      return <>
           <strong>MAINNET ONLY:</strong> Real market data + mainnet API + real execution
           <br />✅ High accuracy, ⚠️ Real money trading, ⚠️ High risk
-        </>
-      );
+        </>;
     default:
       return "Select a trading mode to see details";
   }
 };
-
 const Settings = () => {
-  const { toast } = useToast();
+  const {
+    toast
+  } = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [testingTelegram, setTestingTelegram] = useState(false);
   const [testingBinance, setTestingBinance] = useState(false);
   const [appSettings, setAppSettings] = useState<AppSettings>({
-    signalsPerPage: 10,
+    signalsPerPage: 10
   });
   const [systemSettings, setSystemSettings] = useState<SystemSettings>({
     monitoringEnabled: true,
     monitoringInterval: 15,
-    lastRun: null,
+    lastRun: null
   });
   const [settings, setSettings] = useState<UserSettings>({
     exchange_type: 'binance',
@@ -170,24 +156,24 @@ const Settings = () => {
     trading_mode: 'hybrid_safe',
     use_mainnet_data: true,
     use_testnet_api: true,
-    paper_trading_mode: true,
+    paper_trading_mode: true
   });
-
   useEffect(() => {
     checkAuthAndLoadSettings();
     loadAppSettings();
   }, []);
-
   const checkAuthAndLoadSettings = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      
+      const {
+        data: {
+          user
+        }
+      } = await supabase.auth.getUser();
       if (!user) {
         setIsAuthenticated(false);
         setLoading(false);
         return;
       }
-
       setIsAuthenticated(true);
       await loadSettings();
     } catch (error) {
@@ -195,39 +181,40 @@ const Settings = () => {
       setLoading(false);
     }
   };
-
   const loadAppSettings = () => {
     const savedSignalsPerPage = localStorage.getItem('signalsPerPage');
     if (savedSignalsPerPage) {
-      setAppSettings(prev => ({ ...prev, signalsPerPage: parseInt(savedSignalsPerPage) }));
+      setAppSettings(prev => ({
+        ...prev,
+        signalsPerPage: parseInt(savedSignalsPerPage)
+      }));
     }
   };
-
   const saveAppSettings = () => {
     localStorage.setItem('signalsPerPage', appSettings.signalsPerPage.toString());
     toast({
       title: "Settings Saved",
-      description: "Application settings have been saved",
+      description: "Application settings have been saved"
     });
   };
-
   const loadSettings = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: {
+          user
+        }
+      } = await supabase.auth.getUser();
       if (!user) return;
-
-      const { data, error } = await supabase
-        .from("user_settings")
-        .select("*")
-        .maybeSingle();
-
+      const {
+        data,
+        error
+      } = await supabase.from("user_settings").select("*").maybeSingle();
       if (error) {
         throw error;
       }
-
       if (data) {
         setSettings({
-          exchange_type: (data.exchange_type as 'binance' | 'bybit') || 'binance',
+          exchange_type: data.exchange_type as 'binance' | 'bybit' || 'binance',
           binance_mainnet_api_key: data.binance_mainnet_api_key || "",
           binance_mainnet_api_secret: data.binance_mainnet_api_secret || "",
           binance_testnet_api_key: data.binance_testnet_api_key || "",
@@ -241,27 +228,25 @@ const Settings = () => {
           telegram_chat_id: data.telegram_chat_id || "",
           telegram_enabled: data.telegram_enabled,
           // Trading mode settings
-          trading_mode: (data.trading_mode as 'testnet_only' | 'hybrid_safe' | 'hybrid_live' | 'paper_trading' | 'mainnet_only') || 'hybrid_safe',
+          trading_mode: data.trading_mode as 'testnet_only' | 'hybrid_safe' | 'hybrid_live' | 'paper_trading' | 'mainnet_only' || 'hybrid_safe',
           use_mainnet_data: data.use_mainnet_data ?? true,
           use_testnet_api: data.use_testnet_api ?? true,
-          paper_trading_mode: data.paper_trading_mode ?? true,
+          paper_trading_mode: data.paper_trading_mode ?? true
         });
       }
 
       // Load system settings
-      const { data: sysSettings } = await supabase
-        .from("system_settings")
-        .select("*");
-
+      const {
+        data: sysSettings
+      } = await supabase.from("system_settings").select("*");
       if (sysSettings) {
         const monitoringEnabled = sysSettings.find(s => s.setting_key === 'monitoring_enabled')?.setting_value === 'true';
         const monitoringInterval = parseInt(sysSettings.find(s => s.setting_key === 'monitoring_interval_seconds')?.setting_value || '15');
         const lastRun = sysSettings.find(s => s.setting_key === 'last_monitoring_run')?.setting_value || null;
-
         setSystemSettings({
           monitoringEnabled,
           monitoringInterval,
-          lastRun,
+          lastRun
         });
       }
     } catch (error) {
@@ -269,23 +254,21 @@ const Settings = () => {
       toast({
         title: "Error",
         description: "Failed to load settings",
-        variant: "destructive",
+        variant: "destructive"
       });
     } finally {
       setLoading(false);
     }
   };
-
   const handleSave = async () => {
     if (!isAuthenticated) {
       toast({
         title: "Authentication Required",
         description: "Please log in to save settings",
-        variant: "destructive",
+        variant: "destructive"
       });
       return;
     }
-
     try {
       // Validate input
       const validationResult = settingsSchema.safeParse({
@@ -299,28 +282,27 @@ const Settings = () => {
         bybit_testnet_api_key: settings.bybit_testnet_api_key || undefined,
         bybit_testnet_api_secret: settings.bybit_testnet_api_secret || undefined,
         telegram_bot_token: settings.telegram_bot_token || undefined,
-        telegram_chat_id: settings.telegram_chat_id || undefined,
+        telegram_chat_id: settings.telegram_chat_id || undefined
       });
-
       if (!validationResult.success) {
         const errorMessage = validationResult.error.errors[0]?.message || "Invalid input";
         toast({
           title: "Validation Error",
           description: errorMessage,
-          variant: "destructive",
+          variant: "destructive"
         });
         return;
       }
-
       setSaving(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      
+      const {
+        data: {
+          user
+        }
+      } = await supabase.auth.getUser();
       if (!user) {
         throw new Error("User not authenticated");
       }
-
       console.log("Saving settings for user:", user.id.substring(0, 8) + "...");
-
       const settingsData = {
         user_id: user.id,
         exchange_type: settings.exchange_type,
@@ -340,72 +322,63 @@ const Settings = () => {
         trading_mode: settings.trading_mode,
         use_mainnet_data: settings.use_mainnet_data,
         use_testnet_api: settings.use_testnet_api,
-        paper_trading_mode: settings.paper_trading_mode,
+        paper_trading_mode: settings.paper_trading_mode
       };
-
       console.log("Settings data prepared:", {
         use_testnet: settings.use_testnet,
         has_mainnet_key: !!settings.binance_mainnet_api_key,
         has_testnet_key: !!settings.binance_testnet_api_key,
-        telegram_enabled: settings.telegram_enabled,
+        telegram_enabled: settings.telegram_enabled
       });
-
-      const { error } = await supabase
-        .from("user_settings")
-        .upsert(settingsData, {
-          onConflict: 'user_id'
-        });
-
+      const {
+        error
+      } = await supabase.from("user_settings").upsert(settingsData, {
+        onConflict: 'user_id'
+      });
       if (error) {
         console.error("Database error:", error);
         throw new Error(`Database error: ${error.message} (Code: ${error.code || 'unknown'})`);
       }
-
       console.log("Settings saved successfully");
-
       toast({
         title: "Success",
-        description: "Settings saved successfully",
+        description: "Settings saved successfully"
       });
     } catch (error: any) {
       console.error("Save settings error:", error);
-      
       let errorMessage = "Failed to save settings";
-      
       if (error.message) {
         errorMessage = error.message;
       }
-      
       toast({
         title: "Error",
         description: errorMessage,
-        variant: "destructive",
+        variant: "destructive"
       });
     } finally {
       setSaving(false);
     }
   };
-
-  const updateSetting = <K extends keyof UserSettings>(
-    key: K,
-    value: UserSettings[K]
-  ) => {
-    setSettings((prev) => ({ ...prev, [key]: value }));
+  const updateSetting = <K extends keyof UserSettings,>(key: K, value: UserSettings[K]) => {
+    setSettings(prev => ({
+      ...prev,
+      [key]: value
+    }));
   };
-
   const handleTestTelegram = async () => {
     setTestingTelegram(true);
     try {
-      const { data, error } = await supabase.functions.invoke('test-telegram', {
-        body: {},
+      const {
+        data,
+        error
+      } = await supabase.functions.invoke('test-telegram', {
+        body: {}
       });
-
       if (error) throw error;
-
       if (data.success) {
         toast({
           title: "Success",
-          description: "Test message sent to Telegram successfully!",
+          description: "Test message sent to Telegram successfully!"
         });
       } else {
         throw new Error(data.error || 'Failed to send test message');
@@ -415,27 +388,27 @@ const Settings = () => {
       toast({
         title: "Error",
         description: error.message || "Failed to send test message",
-        variant: "destructive",
+        variant: "destructive"
       });
     } finally {
       setTestingTelegram(false);
     }
   };
-
   const handleTestExchange = async () => {
     setTestingBinance(true);
     try {
-      const { data, error } = await supabase.functions.invoke('test-exchange', {
-        body: {},
+      const {
+        data,
+        error
+      } = await supabase.functions.invoke('test-exchange', {
+        body: {}
       });
-
       if (error) throw error;
-
       if (data.success) {
         const exchangeName = settings.exchange_type === 'binance' ? 'Binance' : 'Bybit';
         toast({
           title: "Success",
-          description: `Connected to ${exchangeName} ${data.data.environment}! Balance: $${data.data.totalWalletBalance}`,
+          description: `Connected to ${exchangeName} ${data.data.environment}! Balance: $${data.data.totalWalletBalance}`
         });
       } else {
         throw new Error(data.error || `Failed to connect to ${settings.exchange_type}`);
@@ -446,85 +419,76 @@ const Settings = () => {
       toast({
         title: "Error",
         description: error.message || `Failed to connect to ${exchangeName}`,
-        variant: "destructive",
+        variant: "destructive"
       });
     } finally {
       setTestingBinance(false);
     }
   };
-
   const handleToggleMonitoring = async (enabled: boolean) => {
     try {
-      const { error } = await supabase
-        .from("system_settings")
-        .update({ setting_value: enabled ? 'true' : 'false' })
-        .eq('setting_key', 'monitoring_enabled');
-
+      const {
+        error
+      } = await supabase.from("system_settings").update({
+        setting_value: enabled ? 'true' : 'false'
+      }).eq('setting_key', 'monitoring_enabled');
       if (error) throw error;
-
-      setSystemSettings(prev => ({ ...prev, monitoringEnabled: enabled }));
-
+      setSystemSettings(prev => ({
+        ...prev,
+        monitoringEnabled: enabled
+      }));
       toast({
         title: "Success",
-        description: `System monitoring ${enabled ? 'enabled' : 'disabled'}`,
+        description: `System monitoring ${enabled ? 'enabled' : 'disabled'}`
       });
     } catch (error: any) {
       console.error("Error toggling monitoring:", error);
       toast({
         title: "Error",
         description: "Failed to update monitoring status",
-        variant: "destructive",
+        variant: "destructive"
       });
     }
   };
-
   const handleEmergencyStop = async () => {
     try {
-      await supabase
-        .from("system_settings")
-        .update({ setting_value: 'false' })
-        .eq('setting_key', 'monitoring_enabled');
-
-      setSystemSettings(prev => ({ ...prev, monitoringEnabled: false }));
-
+      await supabase.from("system_settings").update({
+        setting_value: 'false'
+      }).eq('setting_key', 'monitoring_enabled');
+      setSystemSettings(prev => ({
+        ...prev,
+        monitoringEnabled: false
+      }));
       toast({
         title: "Emergency Stop Activated",
         description: "All system monitoring has been stopped",
-        variant: "destructive",
+        variant: "destructive"
       });
     } catch (error: any) {
       console.error("Emergency stop error:", error);
       toast({
         title: "Error",
         description: "Failed to execute emergency stop",
-        variant: "destructive",
+        variant: "destructive"
       });
     }
   };
-
   if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
+    return <div className="flex items-center justify-center min-h-screen">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
+      </div>;
   }
-
   if (!isAuthenticated) {
-    return (
-      <div className="max-w-4xl mx-auto p-6">
+    return <div className="max-w-4xl mx-auto p-6">
         <Alert>
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>
             You need to be logged in to manage settings. Authentication will be implemented in the next phase.
           </AlertDescription>
         </Alert>
-      </div>
-    );
+      </div>;
   }
-
-  return (
-    <div className="max-w-4xl mx-auto p-6 space-y-6">
+  return <div className="max-w-4xl mx-auto p-6 space-y-6">
       <div>
         <h1 className="text-3xl font-bold mb-2">Settings</h1>
         <p className="text-muted-foreground">
@@ -543,10 +507,7 @@ const Settings = () => {
                 Choose between Binance or Bybit for trading
               </p>
             </div>
-            <Select
-              value={settings.exchange_type}
-              onValueChange={(value: 'binance' | 'bybit') => updateSetting('exchange_type', value)}
-            >
+            <Select value={settings.exchange_type} onValueChange={(value: 'binance' | 'bybit') => updateSetting('exchange_type', value)}>
               <SelectTrigger className="w-[180px]">
                 <SelectValue />
               </SelectTrigger>
@@ -568,10 +529,7 @@ const Settings = () => {
             <p className="text-sm text-muted-foreground mb-3">
               Choose your trading mode based on your risk tolerance and testing needs
             </p>
-            <Select 
-              value={settings.trading_mode || 'hybrid_safe'} 
-              onValueChange={(value: string) => updateSetting("trading_mode", value as any)}
-            >
+            <Select value={settings.trading_mode || 'hybrid_safe'} onValueChange={(value: string) => updateSetting("trading_mode", value as any)}>
               <SelectTrigger>
                 <SelectValue placeholder="Select trading mode" />
               </SelectTrigger>
@@ -610,12 +568,7 @@ const Settings = () => {
             </Select>
           </div>
           
-          <Alert className={getTradingModeAlertClass(settings.trading_mode)}>
-            <AlertCircle className={`h-4 w-4 ${getTradingModeIconClass(settings.trading_mode)}`} />
-            <AlertDescription className="text-xs">
-              {getTradingModeDescription(settings.trading_mode)}
-            </AlertDescription>
-          </Alert>
+          
           
           {/* Advanced Settings */}
           <div className="space-y-3">
@@ -624,11 +577,7 @@ const Settings = () => {
                 <Label htmlFor="use-mainnet-data" className="text-sm">Use Mainnet Data</Label>
                 <p className="text-xs text-muted-foreground">Get accurate market data from mainnet</p>
               </div>
-              <Switch 
-                id="use-mainnet-data" 
-                checked={settings.use_mainnet_data ?? true}
-                onCheckedChange={(checked) => updateSetting("use_mainnet_data", checked)}
-              />
+              <Switch id="use-mainnet-data" checked={settings.use_mainnet_data ?? true} onCheckedChange={checked => updateSetting("use_mainnet_data", checked)} />
             </div>
             
             <div className="flex items-center justify-between">
@@ -636,11 +585,7 @@ const Settings = () => {
                 <Label htmlFor="use-testnet-api" className="text-sm">Use Testnet API</Label>
                 <p className="text-xs text-muted-foreground">Use testnet for API calls (safer)</p>
               </div>
-              <Switch 
-                id="use-testnet-api" 
-                checked={settings.use_testnet_api ?? true}
-                onCheckedChange={(checked) => updateSetting("use_testnet_api", checked)}
-              />
+              <Switch id="use-testnet-api" checked={settings.use_testnet_api ?? true} onCheckedChange={checked => updateSetting("use_testnet_api", checked)} />
             </div>
             
             <div className="flex items-center justify-between">
@@ -648,11 +593,7 @@ const Settings = () => {
                 <Label htmlFor="paper-trading" className="text-sm">Paper Trading Mode</Label>
                 <p className="text-xs text-muted-foreground">Simulate trades without real execution</p>
               </div>
-              <Switch 
-                id="paper-trading" 
-                checked={settings.paper_trading_mode ?? true}
-                onCheckedChange={(checked) => updateSetting("paper_trading_mode", checked)}
-              />
+              <Switch id="paper-trading" checked={settings.paper_trading_mode ?? true} onCheckedChange={checked => updateSetting("paper_trading_mode", checked)} />
             </div>
           </div>
         </div>
@@ -671,8 +612,7 @@ const Settings = () => {
           </AlertDescription>
         </Alert>
 
-        {settings.exchange_type === 'binance' ? (
-          <Tabs defaultValue="mainnet" className="w-full">
+        {settings.exchange_type === 'binance' ? <Tabs defaultValue="mainnet" className="w-full">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="mainnet">Mainnet API Keys</TabsTrigger>
               <TabsTrigger value="testnet">Testnet API Keys</TabsTrigger>
@@ -681,51 +621,25 @@ const Settings = () => {
             <TabsContent value="mainnet" className="space-y-4 mt-4">
               <div className="space-y-2">
                 <Label htmlFor="mainnet-api-key">Mainnet API Key</Label>
-                <Input 
-                  id="mainnet-api-key" 
-                  type="password" 
-                  placeholder="Enter your Binance mainnet API key"
-                  value={settings.binance_mainnet_api_key}
-                  onChange={(e) => updateSetting("binance_mainnet_api_key", e.target.value)}
-                />
+                <Input id="mainnet-api-key" type="password" placeholder="Enter your Binance mainnet API key" value={settings.binance_mainnet_api_key} onChange={e => updateSetting("binance_mainnet_api_key", e.target.value)} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="mainnet-api-secret">Mainnet API Secret</Label>
-                <Input 
-                  id="mainnet-api-secret" 
-                  type="password" 
-                  placeholder="Enter your Binance mainnet API secret"
-                  value={settings.binance_mainnet_api_secret}
-                  onChange={(e) => updateSetting("binance_mainnet_api_secret", e.target.value)}
-                />
+                <Input id="mainnet-api-secret" type="password" placeholder="Enter your Binance mainnet API secret" value={settings.binance_mainnet_api_secret} onChange={e => updateSetting("binance_mainnet_api_secret", e.target.value)} />
               </div>
             </TabsContent>
 
             <TabsContent value="testnet" className="space-y-4 mt-4">
               <div className="space-y-2">
                 <Label htmlFor="testnet-api-key">Testnet API Key</Label>
-                <Input 
-                  id="testnet-api-key" 
-                  type="password" 
-                  placeholder="Enter your Binance testnet API key"
-                  value={settings.binance_testnet_api_key}
-                  onChange={(e) => updateSetting("binance_testnet_api_key", e.target.value)}
-                />
+                <Input id="testnet-api-key" type="password" placeholder="Enter your Binance testnet API key" value={settings.binance_testnet_api_key} onChange={e => updateSetting("binance_testnet_api_key", e.target.value)} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="testnet-api-secret">Testnet API Secret</Label>
-                <Input 
-                  id="testnet-api-secret" 
-                  type="password" 
-                  placeholder="Enter your Binance testnet API secret"
-                  value={settings.binance_testnet_api_secret}
-                  onChange={(e) => updateSetting("binance_testnet_api_secret", e.target.value)}
-                />
+                <Input id="testnet-api-secret" type="password" placeholder="Enter your Binance testnet API secret" value={settings.binance_testnet_api_secret} onChange={e => updateSetting("binance_testnet_api_secret", e.target.value)} />
               </div>
             </TabsContent>
-          </Tabs>
-        ) : (
-          <Tabs defaultValue="mainnet" className="w-full">
+          </Tabs> : <Tabs defaultValue="mainnet" className="w-full">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="mainnet">Mainnet API Keys</TabsTrigger>
               <TabsTrigger value="testnet">Testnet API Keys</TabsTrigger>
@@ -734,76 +648,34 @@ const Settings = () => {
             <TabsContent value="mainnet" className="space-y-4 mt-4">
               <div className="space-y-2">
                 <Label htmlFor="bybit-mainnet-api-key">Mainnet API Key</Label>
-                <Input 
-                  id="bybit-mainnet-api-key" 
-                  type="password" 
-                  placeholder="Enter your Bybit mainnet API key"
-                  value={settings.bybit_mainnet_api_key}
-                  onChange={(e) => updateSetting("bybit_mainnet_api_key", e.target.value)}
-                />
+                <Input id="bybit-mainnet-api-key" type="password" placeholder="Enter your Bybit mainnet API key" value={settings.bybit_mainnet_api_key} onChange={e => updateSetting("bybit_mainnet_api_key", e.target.value)} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="bybit-mainnet-api-secret">Mainnet API Secret</Label>
-                <Input 
-                  id="bybit-mainnet-api-secret" 
-                  type="password" 
-                  placeholder="Enter your Bybit mainnet API secret"
-                  value={settings.bybit_mainnet_api_secret}
-                  onChange={(e) => updateSetting("bybit_mainnet_api_secret", e.target.value)}
-                />
+                <Input id="bybit-mainnet-api-secret" type="password" placeholder="Enter your Bybit mainnet API secret" value={settings.bybit_mainnet_api_secret} onChange={e => updateSetting("bybit_mainnet_api_secret", e.target.value)} />
               </div>
             </TabsContent>
 
             <TabsContent value="testnet" className="space-y-4 mt-4">
               <div className="space-y-2">
                 <Label htmlFor="bybit-testnet-api-key">Testnet API Key</Label>
-                <Input 
-                  id="bybit-testnet-api-key" 
-                  type="password" 
-                  placeholder="Enter your Bybit testnet API key"
-                  value={settings.bybit_testnet_api_key}
-                  onChange={(e) => updateSetting("bybit_testnet_api_key", e.target.value)}
-                />
+                <Input id="bybit-testnet-api-key" type="password" placeholder="Enter your Bybit testnet API key" value={settings.bybit_testnet_api_key} onChange={e => updateSetting("bybit_testnet_api_key", e.target.value)} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="bybit-testnet-api-secret">Testnet API Secret</Label>
-                <Input 
-                  id="bybit-testnet-api-secret" 
-                  type="password" 
-                  placeholder="Enter your Bybit testnet API secret"
-                  value={settings.bybit_testnet_api_secret}
-                  onChange={(e) => updateSetting("bybit_testnet_api_secret", e.target.value)}
-                />
+                <Input id="bybit-testnet-api-secret" type="password" placeholder="Enter your Bybit testnet API secret" value={settings.bybit_testnet_api_secret} onChange={e => updateSetting("bybit_testnet_api_secret", e.target.value)} />
               </div>
             </TabsContent>
-          </Tabs>
-        )}
+          </Tabs>}
 
-        <Button 
-          variant="outline" 
-          onClick={handleTestExchange}
-          disabled={testingBinance || (
-            settings.use_testnet 
-              ? (settings.exchange_type === 'binance' 
-                  ? !settings.binance_testnet_api_key || !settings.binance_testnet_api_secret
-                  : !settings.bybit_testnet_api_key || !settings.bybit_testnet_api_secret)
-              : (settings.exchange_type === 'binance'
-                  ? !settings.binance_mainnet_api_key || !settings.binance_mainnet_api_secret
-                  : !settings.bybit_mainnet_api_key || !settings.bybit_mainnet_api_secret)
-          )}
-          className="mt-4"
-        >
-          {testingBinance ? (
-            <>
+        <Button variant="outline" onClick={handleTestExchange} disabled={testingBinance || (settings.use_testnet ? settings.exchange_type === 'binance' ? !settings.binance_testnet_api_key || !settings.binance_testnet_api_secret : !settings.bybit_testnet_api_key || !settings.bybit_testnet_api_secret : settings.exchange_type === 'binance' ? !settings.binance_mainnet_api_key || !settings.binance_mainnet_api_secret : !settings.bybit_mainnet_api_key || !settings.bybit_mainnet_api_secret)} className="mt-4">
+          {testingBinance ? <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               Testing...
-            </>
-          ) : (
-            <>
+            </> : <>
               <CheckCircle className="mr-2 h-4 w-4" />
               Test {settings.exchange_type === 'binance' ? 'Binance' : 'Bybit'} {settings.use_testnet ? 'Testnet' : 'Mainnet'} Connection
-            </>
-          )}
+            </>}
         </Button>
       </Card>
 
@@ -821,49 +693,24 @@ const Settings = () => {
                 Receive trading alerts via Telegram
               </p>
             </div>
-            <Switch 
-              id="telegram" 
-              checked={settings.telegram_enabled}
-              onCheckedChange={(checked) => updateSetting("telegram_enabled", checked)}
-            />
+            <Switch id="telegram" checked={settings.telegram_enabled} onCheckedChange={checked => updateSetting("telegram_enabled", checked)} />
           </div>
           <div className="space-y-2">
             <Label htmlFor="bot-token">Bot Token</Label>
-            <Input 
-              id="bot-token" 
-              type="password" 
-              placeholder="Enter your Telegram bot token"
-              value={settings.telegram_bot_token}
-              onChange={(e) => updateSetting("telegram_bot_token", e.target.value)}
-              disabled={!settings.telegram_enabled}
-            />
+            <Input id="bot-token" type="password" placeholder="Enter your Telegram bot token" value={settings.telegram_bot_token} onChange={e => updateSetting("telegram_bot_token", e.target.value)} disabled={!settings.telegram_enabled} />
           </div>
           <div className="space-y-2">
             <Label htmlFor="chat-id">Chat ID</Label>
-            <Input 
-              id="chat-id" 
-              placeholder="Enter your Telegram chat ID"
-              value={settings.telegram_chat_id}
-              onChange={(e) => updateSetting("telegram_chat_id", e.target.value)}
-              disabled={!settings.telegram_enabled}
-            />
+            <Input id="chat-id" placeholder="Enter your Telegram chat ID" value={settings.telegram_chat_id} onChange={e => updateSetting("telegram_chat_id", e.target.value)} disabled={!settings.telegram_enabled} />
           </div>
-          <Button 
-            variant="outline" 
-            onClick={handleTestTelegram}
-            disabled={testingTelegram || !settings.telegram_enabled || !settings.telegram_bot_token || !settings.telegram_chat_id}
-          >
-            {testingTelegram ? (
-              <>
+          <Button variant="outline" onClick={handleTestTelegram} disabled={testingTelegram || !settings.telegram_enabled || !settings.telegram_bot_token || !settings.telegram_chat_id}>
+            {testingTelegram ? <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Sending...
-              </>
-            ) : (
-              <>
+              </> : <>
                 <Send className="mr-2 h-4 w-4" />
                 Send Test Message
-              </>
-            )}
+              </>}
           </Button>
         </div>
       </Card>
@@ -877,12 +724,10 @@ const Settings = () => {
             <p className="text-sm text-muted-foreground mb-2">
               Number of strategy signals to display per page in the Dashboard
             </p>
-            <select
-              id="signals-per-page"
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              value={appSettings.signalsPerPage}
-              onChange={(e) => setAppSettings(prev => ({ ...prev, signalsPerPage: parseInt(e.target.value) }))}
-            >
+            <select id="signals-per-page" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" value={appSettings.signalsPerPage} onChange={e => setAppSettings(prev => ({
+            ...prev,
+            signalsPerPage: parseInt(e.target.value)
+          }))}>
               <option value="5">5 signals</option>
               <option value="10">10 signals</option>
               <option value="20">20 signals</option>
@@ -910,11 +755,7 @@ const Settings = () => {
                 Automatically monitor all active strategies for all users
               </p>
             </div>
-            <Switch
-              id="monitoring-toggle"
-              checked={systemSettings.monitoringEnabled}
-              onCheckedChange={handleToggleMonitoring}
-            />
+            <Switch id="monitoring-toggle" checked={systemSettings.monitoringEnabled} onCheckedChange={handleToggleMonitoring} />
           </div>
 
           <div className="space-y-2">
@@ -924,11 +765,9 @@ const Settings = () => {
                 {systemSettings.monitoringEnabled ? "🟢 Active" : "⚫ Inactive"}
               </Badge>
             </div>
-            {systemSettings.lastRun && (
-              <p className="text-sm text-muted-foreground">
+            {systemSettings.lastRun && <p className="text-sm text-muted-foreground">
                 Last run: {new Date(systemSettings.lastRun).toLocaleString()}
-              </p>
-            )}
+              </p>}
           </div>
 
           <div className="space-y-2">
@@ -945,12 +784,7 @@ const Settings = () => {
             </AlertDescription>
           </Alert>
 
-          <Button
-            variant="destructive"
-            onClick={handleEmergencyStop}
-            className="w-full"
-            size="lg"
-          >
+          <Button variant="destructive" onClick={handleEmergencyStop} className="w-full" size="lg">
             <AlertTriangle className="w-5 h-5 mr-2" />
             Emergency Stop All Monitoring
           </Button>
@@ -960,21 +794,15 @@ const Settings = () => {
       {/* Save Button */}
       <div className="flex justify-end">
         <Button size="lg" onClick={handleSave} disabled={saving}>
-          {saving ? (
-            <>
+          {saving ? <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               Saving...
-            </>
-          ) : (
-            <>
+            </> : <>
               <Save className="mr-2 h-4 w-4" />
               Save Settings
-            </>
-          )}
+            </>}
         </Button>
       </div>
-    </div>
-  );
+    </div>;
 };
-
 export default Settings;
