@@ -140,7 +140,7 @@ async function handleValidateData(
         throw new Error('No data found for validation');
       }
 
-      candles = marketData.map(d => ({
+      candles = marketData.map((d: any) => ({
         open: parseFloat(d.open),
         high: parseFloat(d.high),
         low: parseFloat(d.low),
@@ -197,7 +197,7 @@ async function handleCleanData(
         throw new Error('No data found for cleaning');
       }
 
-      candles = marketData.map(d => ({
+      candles = marketData.map((d: any) => ({
         open: parseFloat(d.open),
         high: parseFloat(d.high),
         low: parseFloat(d.low),
@@ -258,7 +258,7 @@ async function handleGetQualityReport(
       throw new Error('No recent data found for quality assessment');
     }
 
-    const candles = marketData.map(d => ({
+    const candles = marketData.map((d: any) => ({
       open: parseFloat(d.open),
       high: parseFloat(d.high),
       low: parseFloat(d.low),
@@ -403,7 +403,7 @@ async function handleFixIssues(
       throw new Error('No data found to fix');
     }
 
-    const candles = marketData.map(d => ({
+    const candles = marketData.map((d: any) => ({
       open: parseFloat(d.open),
       high: parseFloat(d.high),
       low: parseFloat(d.low),

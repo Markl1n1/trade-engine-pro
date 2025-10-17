@@ -1,7 +1,7 @@
 // Hybrid Data Manager
 // Manages data sources for hybrid trading mode (mainnet data + testnet API)
 
-import { HybridTradingConfig, DataSourceSelector, DataQualityManager, TradingModeManager } from './hybrid-trading-config.ts';
+import { HybridTradingConfig, DataSourceSelector, DataQualityManager, TradingModeManager, DEFAULT_HYBRID_CONFIG } from './hybrid-trading-config.ts';
 
 interface Candle {
   open: number;

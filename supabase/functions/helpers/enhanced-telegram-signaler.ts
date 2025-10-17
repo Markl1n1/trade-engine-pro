@@ -346,7 +346,7 @@ export class EnhancedTelegramSignaler {
           signal_id: signal.id,
           user_id: signal.userId,
           strategy_id: signal.strategyId,
-          symbol: signal.signal,
+          symbol: signal.symbol,
           signal_type: signal.signalType,
           price: signal.price,
           timestamp: new Date(signal.timestamp).toISOString(),

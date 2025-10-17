@@ -375,7 +375,7 @@ Deno.serve(async (req) => {
         
         if (userSettings) {
           // Определяем приоритет
-          const priority = priorityManager.calculatePriority(signal, userSettings);
+          const priority = priorityManager.calculatePriority(signal, userSettings) as 'high' | 'low' | 'medium' | 'critical';
           signal.priority = priority;
           
           // Отправляем сигнал

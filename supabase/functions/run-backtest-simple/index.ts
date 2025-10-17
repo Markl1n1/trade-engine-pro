@@ -146,11 +146,11 @@ serve(async (req) => {
         const period = parseInt(periodStr);
         
         if (type === 'SMA') {
-          indicatorCache[key] = calculateSMA(closes, period);
+          indicatorCache[key] = indicators.calculateSMA(closes, period);
         } else if (type === 'RSI') {
-          indicatorCache[key] = calculateRSI(closes, period);
+          indicatorCache[key] = indicators.calculateRSI(closes, period);
         } else if (type === 'EMA') {
-          indicatorCache[key] = calculateEMA(closes, period);
+          indicatorCache[key] = indicators.calculateEMA(closes, period);
         }
       });
     }
@@ -163,27 +163,27 @@ serve(async (req) => {
       console.log('[Simple Backtest] Running MSTG strategy');
       
       // Calculate MSTG components
-      const rsi = calculateRSI(closes, 14);
-      console.log(`[MSTG Debug] RSI calculated, first valid values: ${rsi.slice(20, 25).map(v => v.toFixed(2)).join(', ')}`);
+      const rsi = indicators.calculateRSI(closes, 14);
+      console.log(`[MSTG Debug] RSI calculated, first valid values: ${rsi.slice(20, 25).map((v: number) => v.toFixed(2)).join(', ')}`);
       
-      const momentum = rsi.map(v => isNaN(v) ? NaN : (v - 50) * 2); // Normalize to [-100, 100]
-      console.log(`[MSTG Debug] Momentum calculated, first valid values: ${momentum.slice(20, 25).map(v => isNaN(v) ? 'NaN' : v.toFixed(2)).join(', ')}`);
+      const momentum = rsi.map((v: number) => isNaN(v) ? NaN : (v - 50) * 2); // Normalize to [-100, 100]
+      console.log(`[MSTG Debug] Momentum calculated, first valid values: ${momentum.slice(20, 25).map((v: number) => isNaN(v) ? 'NaN' : v.toFixed(2)).join(', ')}`);
       
       // Trend: EMA10 vs EMA21
-      const ema10 = calculateEMA(closes, 10);
-      const ema21 = calculateEMA(closes, 21);
-      const trendRaw = ema10.map((v, i) => v - ema21[i]);
+      const ema10 = indicators.calculateEMA(closes, 10);
+      const ema21 = indicators.calculateEMA(closes, 21);
+      const trendRaw = ema10.map((v: number, i: number) => v - ema21[i]);
       
       // Simple normalization for trend - filter out NaN values
-      const validTrendValues = trendRaw.filter(v => !isNaN(v) && isFinite(v));
+      const validTrendValues = trendRaw.filter((v: number) => !isNaN(v) && isFinite(v));
       const trendMin = validTrendValues.length > 0 ? Math.min(...validTrendValues) : 0;
       const trendMax = validTrendValues.length > 0 ? Math.max(...validTrendValues) : 100;
       const trendRange = trendMax - trendMin || 1; // Avoid division by zero
-      const trend = trendRaw.map(v => isNaN(v) ? NaN : ((v - trendMin) / trendRange) * 200 - 100);
-      console.log(`[MSTG Debug] Trend calculated, first valid values: ${trend.slice(20, 25).map(v => isNaN(v) ? 'NaN' : v.toFixed(2)).join(', ')}`);
+      const trend = trendRaw.map((v: number) => isNaN(v) ? NaN : ((v - trendMin) / trendRange) * 200 - 100);
+      console.log(`[MSTG Debug] Trend calculated, first valid values: ${trend.slice(20, 25).map((v: number) => isNaN(v) ? 'NaN' : v.toFixed(2)).join(', ')}`);
       
       // Volatility: Simple BB position (0 to 1)
-      const sma20 = calculateSMA(closes, 20);
+      const sma20 = indicators.calculateSMA(closes, 20);
       const volatility = closes.map((c, i) => {
         if (i < 19) return NaN;
         const slice = closes.slice(i - 19, i + 1);
@@ -231,15 +231,15 @@ serve(async (req) => {
       }
       
       // Apply EMA_5 smoothing
-      const tsScore = calculateEMA(tsRaw, 5);
-      const validTs = tsScore.filter(v => !isNaN(v));
+      const tsScore = indicators.calculateEMA(tsRaw, 5);
+      const validTs = tsScore.filter((v: number) => !isNaN(v));
       console.log(`[MSTG Debug] TS Score (smoothed) calculated, ${validTs.length} valid values`);
       if (validTs.length > 0) {
         const minTs = Math.min(...validTs);
         const maxTs = Math.max(...validTs);
-        const avgTs = validTs.reduce((a, b) => a + b, 0) / validTs.length;
+        const avgTs = validTs.reduce((a: number, b: number) => a + b, 0) / validTs.length;
         console.log(`[MSTG Debug] TS Score range: ${minTs.toFixed(2)} to ${maxTs.toFixed(2)}, avg: ${avgTs.toFixed(2)}`);
-        console.log(`[MSTG Debug] First valid TS Scores: ${tsScore.slice(50, 60).filter(v => !isNaN(v)).map(v => v.toFixed(2)).join(', ')}`);
+        console.log(`[MSTG Debug] First valid TS Scores: ${tsScore.slice(50, 60).filter((v: number) => !isNaN(v)).map((v: number) => v.toFixed(2)).join(', ')}`);
         console.log(`[MSTG Debug] Values above longThreshold (20): ${validTs.filter(v => v > 20).length} (${(validTs.filter(v => v > 20).length / validTs.length * 100).toFixed(1)}%)`);
         console.log(`[MSTG Debug] Values below shortThreshold (-20): ${validTs.filter(v => v < -20).length} (${(validTs.filter(v => v < -20).length / validTs.length * 100).toFixed(1)}%)`);
       }

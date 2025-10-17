@@ -175,7 +175,7 @@ Deno.serve(async (req) => {
         
         const { data: strategyData } = await supabaseClient
           .from('strategies')
-          .select('name')
+          .select('id, name')
           .eq('id', liveState.strategy_id)
           .single();
         
@@ -193,7 +193,7 @@ Deno.serve(async (req) => {
             const positionEvent: PositionEvent = {
               id: crypto.randomUUID(),
               signalId: `close_${Date.now()}`,
-              originalSignalId: entryPriceData?.signal_id, // Reference to original signal
+              originalSignalId: (entryPriceData as any)?.signal_id, // Reference to original signal
               eventType: 'closed',
               symbol: position.symbol,
               entryPrice: parseFloat(entryPriceData?.entry_price || '0'),
@@ -203,7 +203,7 @@ Deno.serve(async (req) => {
               pnlAmount: pnlAmount,
               reason: 'Manual Close',
               timestamp: Date.now(),
-              tradingMode: userSettingsData.trading_mode || 'mainnet_only'
+              tradingMode: (userSettingsData as any).trading_mode || 'mainnet_only'
             };
 
             // Send enhanced Telegram notification

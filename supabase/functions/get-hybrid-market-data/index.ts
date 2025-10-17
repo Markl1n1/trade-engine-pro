@@ -140,7 +140,7 @@ serve(async (req) => {
     const errorResponse: MarketDataResponse = {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error occurred',
-      source: 'error',
+      source: 'database',
       quality: 'low',
       warnings: ['Failed to fetch market data']
     };

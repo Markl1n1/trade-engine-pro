@@ -75,12 +75,12 @@ export class JavaScriptStrategyExecutor {
       // Console for debugging (limited)
       console: {
         log: (...args: any[]) => {
-          if (process.env.NODE_ENV === 'development') {
+          if (Deno.env.get('NODE_ENV') === 'development') {
             console.log('[STRATEGY]', ...args);
           }
         },
         error: (...args: any[]) => {
-          if (process.env.NODE_ENV === 'development') {
+          if (Deno.env.get('NODE_ENV') === 'development') {
             console.error('[STRATEGY]', ...args);
           }
         }
@@ -104,9 +104,9 @@ export class JavaScriptStrategyExecutor {
   }
   
   // Inject indicator functions into sandbox
-  private injectIndicatorFunctions(): void {
+  private async injectIndicatorFunctions(): Promise<void> {
     // Import indicator functions
-    const indicators = require('../indicators/all-indicators.ts');
+    const indicators = await import('../indicators/all-indicators.ts');
     
     this.sandbox.calculateRSI = indicators.calculateRSI;
     this.sandbox.calculateEMA = indicators.calculateEMA;

@@ -570,7 +570,7 @@ const Settings = () => {
             </p>
             <Select 
               value={settings.trading_mode || 'hybrid_safe'} 
-              onValueChange={(value) => updateSetting("trading_mode", value)}
+              onValueChange={(value: string) => updateSetting("trading_mode", value as any)}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select trading mode" />

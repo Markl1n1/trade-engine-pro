@@ -79,7 +79,7 @@ async function fetchHybridMarketData(
       console.warn(`[HYBRID] Warnings: ${result.warnings.join(', ')}`);
     }
     
-    return result.data;
+    return result.data as unknown as Candle[];
     
   } catch (error) {
     console.error(`[HYBRID] Error fetching market data:`, error);
@@ -97,7 +97,7 @@ async function fetchMarketData(
   maxRetries = 3
 ): Promise<Candle[]> {
   // Check if we should use hybrid data manager
-  if (process.env.USE_HYBRID_DATA === 'true') {
+  if (Deno.env.get('USE_HYBRID_DATA') === 'true') {
     return await fetchHybridMarketData(symbol, timeframe, limit);
   }
   const exchange = exchangeType as 'binance' | 'bybit';
@@ -574,6 +574,8 @@ Deno.serve(async (req) => {
         // Variables to hold TP/SL data for Telegram
         let signalStopLoss: number | undefined;
         let signalTakeProfit: number | undefined;
+        let signalTakeProfit1: number | undefined;
+        let signalTakeProfit2: number | undefined;
         let signalStopLossPercent: number | undefined;
         let signalTakeProfitPercent: number | undefined;
 
@@ -832,7 +834,7 @@ Deno.serve(async (req) => {
               // Create enhanced trading signal
               const enhancedSignal: TradingSignal = {
                 id: signal.id,
-                userId: user.id,
+                userId: strategy.user_id,
                 strategyId: strategy.id,
                 strategyName: strategy.name,
                 signalType: signalType as 'BUY' | 'SELL' | 'LONG' | 'SHORT',
