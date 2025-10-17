@@ -535,7 +535,7 @@ const Backtest = () => {
                 <Label className="text-xs text-muted-foreground flex items-center gap-2">
                   Trailing Stop (%)
                   <TooltipProvider>
-                    <Tooltip>
+                    <UITooltip>
                       <TooltipTrigger asChild>
                         <Info className="h-3 w-3 text-muted-foreground cursor-help" />
                       </TooltipTrigger>
@@ -543,7 +543,7 @@ const Backtest = () => {
                         <p className="text-xs">Trailing stop activates when profit reaches 50% of TP. Closes position if profit drops by this percentage from the maximum reached.</p>
                         <p className="text-xs mt-1">Example: TP=80%, Trailing=20% → Activates at 40% profit, closes if profit drops to 64% (80% - 20% = 64%)</p>
                       </TooltipContent>
-                    </Tooltip>
+                    </UITooltip>
                   </TooltipProvider>
                 </Label>
                 <Input
