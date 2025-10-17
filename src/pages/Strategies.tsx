@@ -9,10 +9,7 @@ import { StrategyBuilder } from "@/components/StrategyBuilder";
 import { StrategyFormulaBuilder } from "@/components/StrategyFormulaBuilder";
 import { StrategyCloner } from "@/components/StrategyCloner";
 import { MonitoringStatus } from "@/components/MonitoringStatus";
-// Removed visual strategy builder imports - only supporting coded strategies
-import { PerformanceDashboard } from "@/components/PerformanceDashboard";
-import { RiskManagementDashboard } from "@/components/RiskManagementDashboard";
-import { DataQualityDashboard } from "@/components/DataQualityDashboard";
+// Removed unused dashboard components - focusing on core trading functionality
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useLiveMonitoring } from "@/hooks/useLiveMonitoring";
