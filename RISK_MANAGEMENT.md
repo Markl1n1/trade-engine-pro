@@ -1,4 +1,4 @@
-# 🛡️ Risk Management Documentation
+# 🛡️ Trade Engine PRO - Risk Management Documentation
 
 ## Overview
 The Risk Management page provides comprehensive risk control tools, portfolio risk monitoring, and advanced risk management strategies to protect trading capital and optimize risk-adjusted returns.

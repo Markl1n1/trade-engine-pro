@@ -1,4 +1,4 @@
-# ⚙️ Settings Documentation
+# ⚙️ Trade Engine PRO - Settings Documentation
 
 ## Overview
 The Settings page provides comprehensive configuration options for the trading platform, including trading modes, API credentials, risk management, and system preferences.

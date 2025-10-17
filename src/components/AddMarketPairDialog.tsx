@@ -141,7 +141,7 @@ export const AddMarketPairDialog = ({ onPairAdded }: AddMarketPairDialogProps) =
         <DialogHeader>
           <DialogTitle>Add Market Data Pair</DialogTitle>
           <DialogDescription>
-            Search and add Binance Futures trading pairs to your market data view
+            Search and add trading pairs to your market data view
           </DialogDescription>
         </DialogHeader>
         <Command className="border rounded-md">

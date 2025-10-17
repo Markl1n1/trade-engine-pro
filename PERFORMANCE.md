@@ -1,4 +1,4 @@
-# 📈 Performance Documentation
+# 📈 Trade Engine PRO - Performance Documentation
 
 ## Overview
 The Performance page provides comprehensive system performance monitoring, optimization recommendations, and real-time metrics to ensure optimal trading platform operation.

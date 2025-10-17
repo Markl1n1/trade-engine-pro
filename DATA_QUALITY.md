@@ -1,4 +1,4 @@
-# 📊 Data Quality Documentation
+# 📊 Trade Engine PRO - Data Quality Documentation
 
 ## Overview
 The Data Quality page provides comprehensive data validation, cleaning, and monitoring tools to ensure high-quality market data for accurate trading decisions and strategy execution.

@@ -171,7 +171,7 @@ export const TradingPairsManager = () => {
         <div>
           <h2 className="text-xl font-semibold">Trading Pairs</h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Manage your Binance Futures trading pairs
+            Manage your trading pairs
           </p>
         </div>
         <Popover open={open} onOpenChange={setOpen}>

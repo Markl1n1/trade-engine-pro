@@ -1,4 +1,4 @@
-# 📋 Audit Logs Documentation
+# 📋 Trade Engine PRO - Audit Logs Documentation
 
 ## Overview
 The Audit Logs page provides comprehensive tracking and monitoring of all system activities, user actions, and changes to ensure transparency, security, and compliance.

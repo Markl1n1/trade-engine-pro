@@ -1,4 +1,4 @@
-# 🎯 Strategies Documentation
+# 🎯 Trade Engine PRO - Strategies Documentation
 
 ## Overview
 The Strategies page is the core of the trading platform, allowing users to create, manage, and monitor trading strategies with advanced features and comprehensive validation.

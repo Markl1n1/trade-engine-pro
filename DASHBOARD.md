@@ -1,4 +1,4 @@
-# 📊 Dashboard Documentation
+# 📊 Trade Engine PRO - Dashboard Documentation
 
 ## Overview
 The Dashboard is the main control center of the trading platform, providing real-time insights into market conditions, account status, and active strategies.

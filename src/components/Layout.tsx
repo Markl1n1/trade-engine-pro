@@ -50,7 +50,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Zap className="h-6 w-6 text-primary" />
-            <h1 className="text-xl font-bold">Binance Futures Trader</h1>
+            <h1 className="text-xl font-bold">Trade Engine PRO</h1>
           </div>
           <div className="flex items-center gap-3">
             <span className="px-2 py-1 bg-warning/20 text-warning rounded text-xs">TESTNET</span>
@@ -106,7 +106,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
 
       <footer className="border-t border-border bg-card/50 py-4">
         <div className="container mx-auto px-4 text-center text-xs text-muted-foreground">
-          Binance Futures Trading Platform · Phase 1
+          Trade Engine PRO · Advanced Trading Platform
         </div>
       </footer>
     </div>

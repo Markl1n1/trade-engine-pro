@@ -1,4 +1,4 @@
-# 🚀 Advanced Crypto Trading Platform
+# 🚀 Trade Engine PRO
 
 **A sophisticated trading platform for crypto futures with advanced strategy management, risk control, and performance monitoring.**
 

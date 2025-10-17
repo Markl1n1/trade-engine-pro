@@ -1,4 +1,4 @@
-# 📊 Backtest Documentation
+# 📊 Trade Engine PRO - Backtest Documentation
 
 ## Overview
 The Backtest page provides comprehensive historical testing capabilities for trading strategies, allowing users to validate their strategies against historical market data with advanced analytics and risk assessment.
