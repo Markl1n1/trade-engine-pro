@@ -47,3 +47,9 @@ verify_jwt = true
 
 [functions.generate-strategy]
 verify_jwt = true
+
+# Removed unused Edge Functions:
+# - performance-dashboard (returned only mock data)
+# - data-quality (complex system but not integrated)
+# - risk-management (returned only mock data)  
+# - execute-javascript-strategy (created but not called from frontend)
