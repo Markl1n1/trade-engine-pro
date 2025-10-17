@@ -6,18 +6,18 @@ The Strategies page is the core of the trading platform, allowing users to creat
 ## Key Features
 
 ### 🏗️ **Strategy Creation**
-- **Visual Strategy Builder** - Drag-and-drop interface for strategy creation
-- **Custom JavaScript Strategies** - Advanced programming capabilities
-- **Strategy Templates** - Pre-built strategies for quick start
+- **Coded Strategies** - Pre-built, professionally coded trading strategies
+- **Strategy Configuration** - Customize parameters for each strategy type
 - **Strategy Cloning** - Duplicate and modify existing strategies
 
 ### 📊 **Strategy Types**
 
-#### **Standard Strategies**
-- Basic buy/sell conditions
-- Technical indicator combinations
-- Risk management rules
-- Performance tracking
+#### **SMA 20/200 Crossover with RSI Filter**
+- High win rate trend-following strategy
+- Golden Cross / Death Cross detection
+- RSI filter prevents false signals
+- Volume confirmation
+- ATR-based risk management
 
 #### **4h Reentry Breakout**
 - 4-hour timeframe analysis
@@ -37,19 +37,13 @@ The Strategies page is the core of the trading platform, allowing users to creat
 - Quick entry/exit signals
 - High-frequency trading
 
-### 🔧 **Strategy Builder Components**
+### 🔧 **Strategy Configuration**
 
-#### **Visual Editor**
-- **Condition Builder** - Drag-and-drop condition creation
-- **Indicator Selection** - Comprehensive technical indicators
-- **Parameter Configuration** - Customizable strategy parameters
-- **Logic Operators** - AND, OR, NOT operations
-
-#### **JavaScript Editor**
-- **Code Editor** - Syntax highlighting and autocomplete
-- **Sandbox Environment** - Secure code execution
-- **Debugging Tools** - Error detection and correction
-- **Performance Optimization** - Code efficiency monitoring
+#### **Parameter Customization**
+- **SMA Periods** - Configurable fast and slow moving average periods
+- **RSI Settings** - Customizable RSI period and overbought/oversold levels
+- **Volume Multipliers** - Adjustable volume confirmation thresholds
+- **Risk Management** - ATR-based stop loss and take profit settings
 
 ### 📈 **Technical Indicators**
 

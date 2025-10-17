@@ -8,8 +8,7 @@ import { toast } from "@/hooks/use-toast";
 import { StrategyBuilder } from "@/components/StrategyBuilder";
 import { StrategyCloner } from "@/components/StrategyCloner";
 import { MonitoringStatus } from "@/components/MonitoringStatus";
-import { CustomStrategyBuilder } from "@/components/CustomStrategyBuilder";
-import { StrategyTemplateLibrary } from "@/components/StrategyTemplateLibrary";
+// Removed visual strategy builder imports - only supporting coded strategies
 import { PerformanceDashboard } from "@/components/PerformanceDashboard";
 import { RiskManagementDashboard } from "@/components/RiskManagementDashboard";
 import { DataQualityDashboard } from "@/components/DataQualityDashboard";
@@ -41,10 +40,7 @@ const Strategies = () => {
 
       const { data, error } = await supabase
         .from("strategies")
-        .select(`
-          *,
-          strategy_conditions (*)
-        `)
+        .select("*")
         .order("created_at", { ascending: false });
 
       if (error) throw error;

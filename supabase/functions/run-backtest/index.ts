@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as indicators from "../indicators/all-indicators.ts";
 import { evaluateATHGuardStrategy } from '../helpers/ath-guard-strategy.ts';
+import { evaluateSMACrossoverStrategy, defaultSMACrossoverConfig } from '../helpers/sma-crossover-strategy.ts';
 import { EnhancedBacktestEngine } from '../helpers/backtest-engine.ts';
 
 const corsHeaders = {
@@ -694,6 +695,29 @@ serve(async (req) => {
       );
     }
 
+    // Check if this is SMA Crossover strategy
+    const isSMACrossover = strategy.strategy_type === 'sma_crossover';
+    
+    if (isSMACrossover) {
+      console.log('Running SMA 20/200 Crossover strategy backtest...');
+      return await runSMACrossoverBacktest(
+        strategy,
+        candles,
+        initialBalance,
+        productType,
+        leverage,
+        makerFee,
+        takerFee,
+        slippage,
+        executionTiming,
+        supabaseClient,
+        strategyId,
+        startDate,
+        endDate,
+        corsHeaders
+      );
+    }
+
     // Check if this is ATH Guard Scalping strategy
     const isATHGuard = strategy.strategy_type === 'ath_guard_scalping';
     
@@ -1172,6 +1196,208 @@ function evaluateCondition(
       console.warn(`Unsupported operator: ${operator}`);
       return false;
   }
+}
+
+// ============= SMA CROSSOVER STRATEGY IMPLEMENTATION =============
+async function runSMACrossoverBacktest(
+  strategy: any,
+  candles: Candle[],
+  initialBalance: number,
+  productType: string,
+  leverage: number,
+  makerFee: number,
+  takerFee: number,
+  slippage: number,
+  executionTiming: string,
+  supabaseClient: any,
+  strategyId: string,
+  startDate: string,
+  endDate: string,
+  corsHeaders: any
+) {
+  console.log('Initializing SMA Crossover backtest...');
+  
+  let balance = initialBalance || strategy.initial_capital || 10000;
+  let availableBalance = balance;
+  let lockedMargin = 0;
+  let position: Trade | null = null;
+  const trades: Trade[] = [];
+  let maxBalance = balance;
+  let maxDrawdown = 0;
+  const balanceHistory: { time: number; balance: number }[] = [{ time: candles[0].open_time, balance }];
+
+  // Exchange constraints
+  const stepSize = 0.00001;
+  const minQty = 0.001;
+  const minNotional = 10;
+
+  // Strategy configuration
+  const config = {
+    sma_fast_period: strategy.sma_fast_period || 20,
+    sma_slow_period: strategy.sma_slow_period || 200,
+    rsi_period: strategy.rsi_period || 14,
+    rsi_overbought: strategy.rsi_overbought || 70,
+    rsi_oversold: strategy.rsi_oversold || 30,
+    volume_multiplier: strategy.volume_multiplier || 1.2,
+    atr_sl_multiplier: strategy.atr_sl_multiplier || 2.0,
+    atr_tp_multiplier: strategy.atr_tp_multiplier || 3.0
+  };
+
+  console.log(`Processing ${candles.length} candles for SMA Crossover strategy...`);
+  console.log(`Strategy config:`, config);
+
+  for (let i = Math.max(config.sma_slow_period, config.rsi_period); i < candles.length; i++) {
+    const currentCandle = candles[i];
+    const currentPrice = currentCandle.close;
+    const currentTime = currentCandle.open_time;
+    
+    // Convert candles to the format expected by the strategy
+    const strategyCandles = candles.slice(0, i + 1).map(c => ({
+      open: c.open,
+      high: c.high,
+      low: c.low,
+      close: c.close,
+      volume: c.volume,
+      timestamp: c.open_time
+    }));
+
+    // Evaluate strategy
+    const signal = evaluateSMACrossoverStrategy(strategyCandles, config, position !== null);
+    
+    if (signal.signal_type === 'BUY' && !position) {
+      // Calculate position size
+      const positionSize = Math.min(availableBalance * 0.95, balance * 0.1); // Max 10% of balance
+      const quantity = Math.floor(positionSize / currentPrice / stepSize) * stepSize;
+      
+      if (quantity >= minQty && quantity * currentPrice >= minNotional) {
+        const entryPrice = currentPrice * (1 + slippage);
+        const marginRequired = (entryPrice * quantity) / leverage;
+        
+        if (marginRequired <= availableBalance) {
+          position = {
+            entry_price: entryPrice,
+            entry_time: currentTime,
+            type: 'buy',
+            quantity: quantity
+          };
+          
+          availableBalance -= marginRequired;
+          lockedMargin += marginRequired;
+          
+          console.log(`[${i}] BUY at ${entryPrice.toFixed(2)} - Qty: ${quantity.toFixed(6)}, Margin: ${marginRequired.toFixed(2)}`);
+        }
+      }
+    }
+    
+    if (signal.signal_type === 'SELL' && position) {
+      const exitPrice = currentPrice * (1 - slippage);
+      const profit = (exitPrice - position.entry_price) * position.quantity;
+      const fees = (position.entry_price * position.quantity * makerFee) + (exitPrice * position.quantity * takerFee);
+      const netProfit = profit - fees;
+      
+      balance += netProfit;
+      availableBalance += lockedMargin + netProfit;
+      lockedMargin = 0;
+      
+      position.exit_price = exitPrice;
+      position.exit_time = currentTime;
+      position.profit = netProfit;
+      
+      trades.push(position);
+      position = null;
+      
+      console.log(`[${i}] SELL at ${exitPrice.toFixed(2)} - P&L: ${netProfit.toFixed(2)}, Balance: ${balance.toFixed(2)}`);
+    }
+    
+    // Update balance history
+    const currentBalance = balance + (position ? (currentPrice - position.entry_price) * position.quantity : 0);
+    balanceHistory.push({ time: currentTime, balance: currentBalance });
+    
+    // Update max balance and drawdown
+    if (currentBalance > maxBalance) {
+      maxBalance = currentBalance;
+    }
+    const currentDrawdown = ((maxBalance - currentBalance) / maxBalance) * 100;
+    if (currentDrawdown > maxDrawdown) {
+      maxDrawdown = currentDrawdown;
+    }
+  }
+
+  // Close any remaining position
+  if (position) {
+    const finalCandle = candles[candles.length - 1];
+    const exitPrice = finalCandle.close * (1 - slippage);
+    const profit = (exitPrice - position.entry_price) * position.quantity;
+    const fees = (position.entry_price * position.quantity * makerFee) + (exitPrice * position.quantity * takerFee);
+    const netProfit = profit - fees;
+    
+    balance += netProfit;
+    availableBalance += lockedMargin + netProfit;
+    
+    position.exit_price = exitPrice;
+    position.exit_time = finalCandle.close_time;
+    position.profit = netProfit;
+    
+    trades.push(position);
+    
+    console.log(`Final SELL at ${exitPrice.toFixed(2)} - P&L: ${netProfit.toFixed(2)}, Final Balance: ${balance.toFixed(2)}`);
+  }
+
+  // Calculate performance metrics
+  const totalReturn = ((balance - initialBalance) / initialBalance) * 100;
+  const winTrades = trades.filter(t => (t.profit || 0) > 0).length;
+  const totalTrades = trades.length;
+  const winRate = totalTrades > 0 ? (winTrades / totalTrades) * 100 : 0;
+  const avgWin = trades.filter(t => (t.profit || 0) > 0).reduce((sum, t) => sum + (t.profit || 0), 0) / Math.max(winTrades, 1);
+  const avgLoss = trades.filter(t => (t.profit || 0) < 0).reduce((sum, t) => sum + (t.profit || 0), 0) / Math.max(totalTrades - winTrades, 1);
+  const profitFactor = Math.abs(avgWin * winTrades) / Math.abs(avgLoss * (totalTrades - winTrades));
+
+  console.log(`SMA Crossover Backtest Results:`);
+  console.log(`- Total Return: ${totalReturn.toFixed(2)}%`);
+  console.log(`- Total Trades: ${totalTrades}`);
+  console.log(`- Win Rate: ${winRate.toFixed(2)}%`);
+  console.log(`- Max Drawdown: ${maxDrawdown.toFixed(2)}%`);
+  console.log(`- Profit Factor: ${profitFactor.toFixed(2)}`);
+
+  // Save results to database
+  const { error } = await supabaseClient
+    .from('strategy_backtest_results')
+    .insert({
+      strategy_id: strategyId,
+      start_date: startDate,
+      end_date: endDate,
+      initial_balance: initialBalance,
+      final_balance: balance,
+      total_return: totalReturn,
+      total_trades: totalTrades,
+      win_rate: winRate,
+      max_drawdown: maxDrawdown,
+      profit_factor: profitFactor,
+      trades: trades,
+      balance_history: balanceHistory
+    });
+
+  if (error) {
+    console.error('Error saving backtest results:', error);
+  }
+
+  return new Response(
+    JSON.stringify({
+      success: true,
+      results: {
+        initialBalance,
+        finalBalance: balance,
+        totalReturn,
+        totalTrades,
+        winRate,
+        maxDrawdown,
+        profitFactor,
+        trades,
+        balanceHistory
+      }
+    }),
+    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+  );
 }
 
 // ============= MSTG STRATEGY IMPLEMENTATION =============
