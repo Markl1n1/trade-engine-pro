@@ -6,6 +6,7 @@ import { Plus, Zap, Edit, Trash2, Play, Pause, TrendingUp, Radio, CheckCircle, A
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { StrategyBuilder } from "@/components/StrategyBuilder";
+import { StrategyFormulaBuilder } from "@/components/StrategyFormulaBuilder";
 import { StrategyCloner } from "@/components/StrategyCloner";
 import { MonitoringStatus } from "@/components/MonitoringStatus";
 // Removed visual strategy builder imports - only supporting coded strategies
@@ -20,6 +21,7 @@ const Strategies = () => {
   const [strategies, setStrategies] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [builderOpen, setBuilderOpen] = useState(false);
+  const [formulaBuilderOpen, setFormulaBuilderOpen] = useState(false);
   const [editStrategy, setEditStrategy] = useState<any>(null);
   const [liveMonitoringEnabled, setLiveMonitoringEnabled] = useState(false);
   const [validatingStrategy, setValidatingStrategy] = useState<string | null>(null);
@@ -169,9 +171,9 @@ const Strategies = () => {
               )}
             </div>
           </Card>
-          <Button className="gap-2" onClick={() => setBuilderOpen(true)}>
+          <Button className="gap-2" onClick={() => setFormulaBuilderOpen(true)}>
             <Plus className="h-4 w-4" />
-            New Strategy
+            AI Strategy Generator
           </Button>
         </div>
       </div>
@@ -184,11 +186,11 @@ const Strategies = () => {
             <Zap className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
             <h3 className="text-lg font-bold mb-2">No strategies yet</h3>
             <p className="text-sm text-muted-foreground mb-6">
-              Get started by creating your first trading strategy
+              Get started by describing your trading strategy formula
             </p>
-            <Button className="gap-2" onClick={() => setBuilderOpen(true)}>
+            <Button className="gap-2" onClick={() => setFormulaBuilderOpen(true)}>
               <Plus className="h-4 w-4" />
-              Create Strategy
+              AI Strategy Generator
             </Button>
           </div>
         </Card>
@@ -333,6 +335,12 @@ const Strategies = () => {
         onOpenChange={setBuilderOpen}
         onSuccess={loadStrategies}
         editStrategy={editStrategy}
+      />
+
+      <StrategyFormulaBuilder
+        open={formulaBuilderOpen}
+        onOpenChange={setFormulaBuilderOpen}
+        onSuccess={loadStrategies}
       />
     </div>
   );
