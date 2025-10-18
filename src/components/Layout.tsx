@@ -5,15 +5,26 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
-
-const Layout = ({ children }: { children: React.ReactNode }) => {
+const Layout = ({
+  children
+}: {
+  children: React.ReactNode;
+}) => {
   const location = useLocation();
-  const { user, signOut, refreshSession, error } = useAuth();
-  const { toast } = useToast();
+  const {
+    user,
+    signOut,
+    refreshSession,
+    error
+  } = useAuth();
+  const {
+    toast
+  } = useToast();
   const [isRefreshing, setIsRefreshing] = useState(false);
-
   const handleSignOut = async () => {
-    const { error } = await signOut();
+    const {
+      error
+    } = await signOut();
     if (error) {
       toast({
         variant: 'destructive',
@@ -26,24 +37,37 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
       });
     }
   };
-
   const handleRefreshSession = async () => {
     setIsRefreshing(true);
     await refreshSession();
     setIsRefreshing(false);
   };
-
-  const navItems = [
-    { path: "/", label: "Dashboard", icon: Activity },
-    { path: "/strategies", label: "Strategies", icon: Zap },
-    { path: "/backtest", label: "Backtest", icon: BarChart3 },
-    { path: "/data-quality", label: "Data Quality", icon: Database },
-    { path: "/audit-logs", label: "Audit Logs", icon: FileText },
-    { path: "/settings", label: "Settings", icon: Settings },
-  ];
-
-  return (
-    <div className="min-h-screen flex flex-col">
+  const navItems = [{
+    path: "/",
+    label: "Dashboard",
+    icon: Activity
+  }, {
+    path: "/strategies",
+    label: "Strategies",
+    icon: Zap
+  }, {
+    path: "/backtest",
+    label: "Backtest",
+    icon: BarChart3
+  }, {
+    path: "/data-quality",
+    label: "Data Quality",
+    icon: Database
+  }, {
+    path: "/audit-logs",
+    label: "Audit Logs",
+    icon: FileText
+  }, {
+    path: "/settings",
+    label: "Settings",
+    icon: Settings
+  }];
+  return <div className="min-h-screen flex flex-col">
       <header className="border-b border-border bg-card">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -51,25 +75,16 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
             <h1 className="text-xl font-bold">Trade Engine PRO</h1>
           </div>
           <div className="flex items-center gap-3">
-            <span className="px-2 py-1 bg-warning/20 text-warning rounded text-xs">TESTNET</span>
-            {user && (
-              <>
+            
+            {user && <>
                 <span className="text-sm text-muted-foreground">{user.email}</span>
-                {error && (
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    onClick={handleRefreshSession}
-                    disabled={isRefreshing}
-                  >
+                {error && <Button variant="outline" size="sm" onClick={handleRefreshSession} disabled={isRefreshing}>
                     <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
-                  </Button>
-                )}
+                  </Button>}
                 <Button variant="ghost" size="sm" onClick={handleSignOut}>
                   <LogOut className="h-4 w-4" />
                 </Button>
-              </>
-            )}
+              </>}
           </div>
         </div>
       </header>
@@ -77,25 +92,14 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
       <nav className="border-b border-border bg-card/50">
         <div className="container mx-auto px-4">
           <div className="flex gap-6">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = location.pathname === item.path;
-              return (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  className={cn(
-                    "flex items-center gap-2 px-3 py-3 border-b-2 transition-colors",
-                    isActive
-                      ? "border-primary text-primary"
-                      : "border-transparent text-muted-foreground hover:text-foreground"
-                  )}
-                >
+            {navItems.map(item => {
+            const Icon = item.icon;
+            const isActive = location.pathname === item.path;
+            return <Link key={item.path} to={item.path} className={cn("flex items-center gap-2 px-3 py-3 border-b-2 transition-colors", isActive ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground")}>
                   <Icon className="h-4 w-4" />
                   <span className="text-sm font-medium">{item.label}</span>
-                </Link>
-              );
-            })}
+                </Link>;
+          })}
           </div>
         </div>
       </nav>
@@ -107,8 +111,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
           Trade Engine PRO · Advanced Trading Platform
         </div>
       </footer>
-    </div>
-  );
+    </div>;
 };
-
 export default Layout;
