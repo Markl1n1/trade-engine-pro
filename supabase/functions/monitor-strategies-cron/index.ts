@@ -15,6 +15,92 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Валидация режимов торговли
+function validateTradingMode(tradingMode: string, userSettings: any): { valid: boolean; errors: string[]; warnings: string[] } {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  
+  switch (tradingMode) {
+    case 'testnet_only':
+      if (!userSettings?.binance_testnet_api_key || !userSettings?.binance_testnet_api_secret) {
+        errors.push('Testnet API keys required for testnet_only mode');
+      }
+      break;
+      
+    case 'hybrid_safe':
+      if (!userSettings?.binance_testnet_api_key || !userSettings?.binance_testnet_api_secret) {
+        errors.push('Testnet API keys required for hybrid_safe mode');
+      }
+      if (!userSettings?.use_mainnet_data) {
+        warnings.push('Hybrid safe mode should use mainnet data for accuracy');
+      }
+      break;
+      
+    case 'hybrid_live':
+      if (!userSettings?.binance_testnet_api_key || !userSettings?.binance_testnet_api_secret) {
+        errors.push('Testnet API keys required for hybrid_live mode');
+      }
+      if (!userSettings?.use_mainnet_data) {
+        warnings.push('Hybrid live mode should use mainnet data for accuracy');
+      }
+      warnings.push('Hybrid live mode executes real trades via testnet API');
+      break;
+      
+    case 'paper_trading':
+      if (!userSettings?.use_mainnet_data) {
+        warnings.push('Paper trading mode should use mainnet data for accuracy');
+      }
+      break;
+      
+    case 'mainnet_only':
+      if (!userSettings?.binance_mainnet_api_key || !userSettings?.binance_mainnet_api_secret) {
+        errors.push('Mainnet API keys required for mainnet_only mode');
+      }
+      if (userSettings?.use_testnet_api) {
+        warnings.push('Mainnet only mode should not use testnet API');
+      }
+      warnings.push('Mainnet only mode executes real trades with real money');
+      break;
+      
+    default:
+      errors.push(`Unknown trading mode: ${tradingMode}`);
+  }
+  
+  return {
+    valid: errors.length === 0,
+    errors,
+    warnings
+  };
+}
+
+// Определяет, нужно ли проверять позицию на бирже для данного режима
+function shouldCheckExchangePosition(tradingMode: string): boolean {
+  switch (tradingMode) {
+    case 'mainnet_only':
+    case 'hybrid_live':
+      return true; // Режимы с реальным выполнением
+    case 'testnet_only':
+    case 'hybrid_safe':
+    case 'paper_trading':
+    default:
+      return false; // Режимы без реального выполнения
+  }
+}
+
+// Определяет, нужно ли выполнять реальные сделки для данного режима
+function shouldExecuteRealTrades(tradingMode: string): boolean {
+  switch (tradingMode) {
+    case 'mainnet_only':
+    case 'hybrid_live':
+      return true; // Режимы с реальным выполнением
+    case 'testnet_only':
+    case 'hybrid_safe':
+    case 'paper_trading':
+    default:
+      return false; // Режимы без реального выполнения
+  }
+}
+
 const EXCHANGE_URLS = {
   binance: {
     mainnet: 'https://fapi.binance.com',
@@ -508,6 +594,10 @@ Deno.serve(async (req) => {
             telegram_chat_id, 
             exchange_type,
             use_testnet,
+            trading_mode,
+            use_mainnet_data,
+            use_testnet_api,
+            paper_trading_mode,
             binance_api_key,
             binance_api_secret,
             binance_testnet_api_key,
@@ -521,6 +611,19 @@ Deno.serve(async (req) => {
           `)
           .eq('user_id', strategy.user_id)
           .single();
+
+        // Валидация режима торговли
+        const tradingMode = userSettings?.trading_mode || 'hybrid_safe';
+        const validationResult = validateTradingMode(tradingMode, userSettings);
+        
+        if (!validationResult.valid) {
+          console.log(`[CRON] ⚠️ Invalid trading mode configuration for ${strategy.name}: ${validationResult.errors.join(', ')}`);
+          continue;
+        }
+        
+        if (validationResult.warnings.length > 0) {
+          console.log(`[CRON] ⚠️ Trading mode warnings for ${strategy.name}: ${validationResult.warnings.join(', ')}`);
+        }
 
         let { data: liveState } = await supabase
           .from('strategy_live_states')
@@ -739,22 +842,25 @@ Deno.serve(async (req) => {
             apiSecret = useTestnet ? userSettings?.bybit_testnet_api_secret : userSettings?.bybit_mainnet_api_secret;
           }
           
-          if (apiKey && apiSecret) {
-            const positionExists = await checkExchangePosition(
-              apiKey,
-              apiSecret,
-              useTestnet,
-              strategy.symbol,
-              exchangeType
-            );
-            
-            // Only skip if we CONFIRMED position exists (true)
-            // If null (API error), continue with signal generation
-            if (positionExists === true) {
-              console.log(`[CRON] ⚠️ Skipping entry signal for ${strategy.name} - position confirmed open on ${exchangeType.toUpperCase()}`);
-              continue;
-            } else if (positionExists === null) {
-              console.log(`[CRON] ⚠️ Could not verify ${exchangeType.toUpperCase()} position for ${strategy.name} - continuing with signal generation`);
+          // Проверяем позицию только для режимов с реальным выполнением
+          if (shouldCheckExchangePosition(tradingMode)) {
+            if (apiKey && apiSecret) {
+              const positionExists = await checkExchangePosition(
+                apiKey,
+                apiSecret,
+                useTestnet,
+                strategy.symbol,
+                exchangeType
+              );
+              
+              // Only skip if we CONFIRMED position exists (true)
+              // If null (API error), continue with signal generation
+              if (positionExists === true) {
+                console.log(`[CRON] ⚠️ Skipping entry signal for ${strategy.name} - position confirmed open on ${exchangeType.toUpperCase()}`);
+                continue;
+              } else if (positionExists === null) {
+                console.log(`[CRON] ⚠️ Could not verify ${exchangeType.toUpperCase()} position for ${strategy.name} - continuing with signal generation`);
+              }
             }
           }
 
@@ -824,6 +930,25 @@ Deno.serve(async (req) => {
 
           const signal = insertResult.data;
           allSignals.push(signal);
+
+          // Выполняем сделку в зависимости от режима торговли
+          if (shouldExecuteRealTrades(tradingMode)) {
+            try {
+              console.log(`[CRON] Executing real trade for ${strategy.name} in ${tradingMode} mode`);
+              
+              // Здесь должна быть интеграция с instant-signals для выполнения сделки
+              // Пока логируем намерение
+              console.log(`[CRON] Would execute ${signalType} trade for ${strategy.symbol} at ${currentPrice}`);
+              
+              // TODO: Интегрировать с instant-signals Edge Function
+              // const executionResult = await executeTrade(signal, userSettings, tradingMode);
+              
+            } catch (error) {
+              console.error(`[CRON] Trade execution failed for ${strategy.name}:`, error);
+            }
+          } else {
+            console.log(`[CRON] Signal generated for ${strategy.name} in ${tradingMode} mode (no real execution)`);
+          }
 
           // Send enhanced Telegram notification
           if (userSettings?.telegram_enabled && userSettings.telegram_bot_token && userSettings.telegram_chat_id) {
