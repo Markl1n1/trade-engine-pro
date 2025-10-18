@@ -5,10 +5,10 @@
 ## 🎯 **Key Features**
 
 ### **Trading & Strategies**
-- **Advanced Strategy Builder** - Visual and JavaScript-based strategy creation
-- **Strategy Template Library** - Pre-built trading strategies
-- **Custom Strategy Support** - JavaScript code execution for complex strategies
+- **AI Strategy Generator** - Natural language strategy creation
+- **Coded Strategy Support** - Pre-built trading strategies (ATH Guard, 4H Reentry, MSTG, SMA-based)
 - **Strategy Validation** - Automated testing and validation of strategies
+- **Strategy Cloning** - Duplicate and modify existing strategies
 
 ### **Backtesting & Analysis**
 - **Enhanced Backtest Engine** - Look-ahead bias prevention and accurate calculations
@@ -85,8 +85,8 @@ npm run dev
 
 ### **Strategies**
 - Create and manage trading strategies
-- Visual strategy builder
-- Custom JavaScript strategies
+- AI Strategy Generator with natural language
+- Pre-built coded strategies (ATH Guard, 4H Reentry, MSTG, SMA-based)
 - Strategy validation and testing
 
 ### **Backtest**
@@ -174,6 +174,20 @@ Navigate to Project > Settings > Domains and click Connect Domain.
 3. Make your changes
 4. Test thoroughly
 5. Submit a pull request
+
+## 📚 **Documentation**
+
+### **Core Documentation**
+- [📊 Dashboard](guides/DASHBOARD.md) - Real-time trading dashboard and market data
+- [🎯 Strategies](guides/STRATEGIES.md) - Strategy management and AI Generator
+- [📈 Backtest](guides/BACKTEST.md) - Historical strategy testing and analysis
+- [⚙️ Settings](guides/SETTINGS.md) - Configuration and trading modes
+- [🔍 Data Quality](guides/DATA_QUALITY.md) - Data validation and monitoring
+- [📝 Audit Logs](guides/AUDIT_LOGS.md) - Activity tracking and compliance
+
+### **Feature Documentation**
+- [🤖 AI Strategy Generator](guides/AI_STRATEGY_GENERATOR.md) - Natural language strategy creation
+- [🔒 Security](guides/SECURITY.md) - Security guidelines and best practices
 
 ## 📄 **License**
 

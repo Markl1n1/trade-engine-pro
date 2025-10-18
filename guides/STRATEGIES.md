@@ -155,16 +155,17 @@ The Strategies page is the core of the trading platform, allowing users to creat
 
 ### 🔧 **Advanced Features**
 
-#### **Strategy Templates**
-- **Pre-built Strategies** - Ready-to-use configurations
-- **Custom Templates** - User-created templates
-- **Template Library** - Shared strategy collection
-- **Version Control** - Template versioning
+#### **Strategy Management**
+- **Pre-built Strategies** - Ready-to-use coded strategies
+- **Strategy Cloning** - Duplicate and modify existing strategies
+- **Strategy Validation** - Automated testing and validation
+- **Strategy Monitoring** - Real-time performance tracking
 
-#### **Custom Strategies**
-- **JavaScript Support** - Advanced programming
-- **API Integration** - External data sources
-- **Custom Indicators** - User-defined calculations
+#### **AI Strategy Generator**
+- **Natural Language** - Describe strategies in plain English
+- **Automatic Implementation** - AI generates complete strategy code
+- **Parameter Configuration** - Automatic parameter setup
+- **Integration Ready** - Seamless platform integration
 - **Complex Logic** - Multi-condition strategies
 
 #### **Strategy Optimization**
