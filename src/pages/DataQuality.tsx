@@ -35,13 +35,6 @@ interface DataSourceStatus {
   warnings: number;
 }
 
-interface DataQualityMetrics {
-  overall: number;
-  completeness: number;
-  accuracy: number;
-  timeliness: number;
-  consistency: number;
-}
 
 interface ExchangeStatus {
   name: string;
@@ -61,13 +54,7 @@ interface ExchangeStatus {
 const DataQuality = () => {
   const [dataSources, setDataSources] = useState<DataSourceStatus[]>([]);
   const [exchanges, setExchanges] = useState<ExchangeStatus[]>([]);
-  const [metrics, setMetrics] = useState<DataQualityMetrics>({
-    overall: 0,
-    completeness: 0,
-    accuracy: 0,
-    timeliness: 0,
-    consistency: 0
-  });
+  const [overallQuality, setOverallQuality] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const { toast } = useToast();
@@ -88,8 +75,8 @@ const DataQuality = () => {
       // Load exchanges status
       await loadExchangesStatus();
       
-      // Load quality metrics
-      await loadQualityMetrics();
+      // Load overall quality
+      await loadOverallQuality();
       
     } catch (error) {
       console.error('Error loading data quality data:', error);
@@ -299,22 +286,16 @@ const DataQuality = () => {
     }
   };
 
-  const loadQualityMetrics = async () => {
+  const loadOverallQuality = async () => {
     try {
-      // Generate realistic metrics based on data sources
+      // Generate realistic quality based on data sources
       const avgQuality = dataSources.length > 0 
         ? dataSources.reduce((sum, ds) => sum + ds.quality, 0) / dataSources.length 
         : 85;
       
-      setMetrics({
-        overall: avgQuality,
-        completeness: Math.max(90, avgQuality - 5),
-        accuracy: Math.max(95, avgQuality),
-        timeliness: Math.max(85, avgQuality - 10),
-        consistency: Math.max(90, avgQuality - 3)
-      });
+      setOverallQuality(avgQuality);
     } catch (error) {
-      console.error('Error loading quality metrics:', error);
+      console.error('Error loading overall quality:', error);
     }
   };
 
@@ -374,7 +355,6 @@ const DataQuality = () => {
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="sources">Data Sources</TabsTrigger>
           <TabsTrigger value="exchanges">Exchanges</TabsTrigger>
-          <TabsTrigger value="metrics">Quality Metrics</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4">
@@ -385,8 +365,8 @@ const DataQuality = () => {
                 <Shield className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{metrics.overall.toFixed(1)}%</div>
-                <Progress value={metrics.overall} className="mt-2" />
+                <div className="text-2xl font-bold">{overallQuality.toFixed(1)}%</div>
+                <Progress value={overallQuality} className="mt-2" />
               </CardContent>
             </Card>
 
@@ -537,77 +517,6 @@ const DataQuality = () => {
           </div>
         </TabsContent>
 
-        <TabsContent value="metrics" className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Data Completeness</CardTitle>
-                <CardDescription>
-                  Percentage of expected data points that are present
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold mb-2">{metrics.completeness.toFixed(1)}%</div>
-                <Progress value={metrics.completeness} className="mb-2" />
-                <p className="text-sm text-muted-foreground">
-                  {metrics.completeness >= 95 ? 'Excellent' : 
-                   metrics.completeness >= 85 ? 'Good' : 'Needs attention'}
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Data Accuracy</CardTitle>
-                <CardDescription>
-                  Percentage of data points that are accurate and valid
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold mb-2">{metrics.accuracy.toFixed(1)}%</div>
-                <Progress value={metrics.accuracy} className="mb-2" />
-                <p className="text-sm text-muted-foreground">
-                  {metrics.accuracy >= 95 ? 'Excellent' : 
-                   metrics.accuracy >= 85 ? 'Good' : 'Needs attention'}
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Data Timeliness</CardTitle>
-                <CardDescription>
-                  How quickly data is updated and made available
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold mb-2">{metrics.timeliness.toFixed(1)}%</div>
-                <Progress value={metrics.timeliness} className="mb-2" />
-                <p className="text-sm text-muted-foreground">
-                  {metrics.timeliness >= 90 ? 'Excellent' : 
-                   metrics.timeliness >= 75 ? 'Good' : 'Needs attention'}
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Data Consistency</CardTitle>
-                <CardDescription>
-                  How consistent data is across different sources
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold mb-2">{metrics.consistency.toFixed(1)}%</div>
-                <Progress value={metrics.consistency} className="mb-2" />
-                <p className="text-sm text-muted-foreground">
-                  {metrics.consistency >= 90 ? 'Excellent' : 
-                   metrics.consistency >= 80 ? 'Good' : 'Needs attention'}
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
       </Tabs>
     </div>
   );

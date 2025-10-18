@@ -38,18 +38,9 @@ interface AuditLog {
   created_at: string;
 }
 
-interface AuditStats {
-  total_logs: number;
-  logs_last_24h: number;
-  logs_last_7d: number;
-  logs_last_30d: number;
-  oldest_log: string;
-  newest_log: string;
-}
 
 export const AuditLogs = () => {
   const [logs, setLogs] = useState<AuditLog[]>([]);
-  const [stats, setStats] = useState<AuditStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
@@ -94,20 +85,6 @@ export const AuditLogs = () => {
     }
   };
 
-  const loadStats = async () => {
-    try {
-      const { data, error } = await supabase.functions.invoke('get-audit-logs', {
-        body: { action: 'get_stats' }
-      });
-
-      if (error) throw error;
-      if (data?.success && data.data) {
-        setStats(data.data);
-      }
-    } catch (error: any) {
-      console.error('Error loading audit stats:', error);
-    }
-  };
 
   const cleanupLogs = async () => {
     try {
@@ -124,7 +101,6 @@ export const AuditLogs = () => {
           description: `Cleaned up ${data.data.deleted_count || 0} audit logs`,
         });
         await loadAuditLogs();
-        await loadStats();
       }
     } catch (error: any) {
       console.error('Error cleaning up audit logs:', error);
@@ -140,7 +116,6 @@ export const AuditLogs = () => {
 
   useEffect(() => {
     loadAuditLogs();
-    loadStats();
   }, [currentPage, filters]);
 
   const getActionIcon = (actionType: string) => {
@@ -188,7 +163,6 @@ export const AuditLogs = () => {
             size="sm"
             onClick={() => {
               loadAuditLogs();
-              loadStats();
             }}
             disabled={loading}
           >
@@ -210,7 +184,6 @@ export const AuditLogs = () => {
       <Tabs defaultValue="logs" className="space-y-4">
         <TabsList>
           <TabsTrigger value="logs">Audit Logs</TabsTrigger>
-          <TabsTrigger value="stats">Statistics</TabsTrigger>
         </TabsList>
 
         <TabsContent value="logs" className="space-y-4">
@@ -350,87 +323,6 @@ export const AuditLogs = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="stats" className="space-y-4">
-          {stats && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-sm">
-                    <Activity className="h-4 w-4" />
-                    Total Logs
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{stats.total_logs.toLocaleString()}</div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-sm">
-                    <Clock className="h-4 w-4" />
-                    Last 24 Hours
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{stats.logs_last_24h.toLocaleString()}</div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-sm">
-                    <Calendar className="h-4 w-4" />
-                    Last 7 Days
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{stats.logs_last_7d.toLocaleString()}</div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-sm">
-                    <Calendar className="h-4 w-4" />
-                    Last 30 Days
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{stats.logs_last_30d.toLocaleString()}</div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-sm">
-                    <Clock className="h-4 w-4" />
-                    Oldest Log
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-sm text-muted-foreground">
-                    {stats.oldest_log ? formatTimestamp(stats.oldest_log) : 'N/A'}
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-sm">
-                    <Clock className="h-4 w-4" />
-                    Newest Log
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-sm text-muted-foreground">
-                    {stats.newest_log ? formatTimestamp(stats.newest_log) : 'N/A'}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          )}
-        </TabsContent>
       </Tabs>
     </div>
   );

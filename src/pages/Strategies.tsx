@@ -10,8 +10,6 @@ import { StrategyFormulaBuilder } from "@/components/StrategyFormulaBuilder";
 import { StrategyCloner } from "@/components/StrategyCloner";
 import { MonitoringStatus } from "@/components/MonitoringStatus";
 // Removed unused dashboard components - focusing on core trading functionality
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
 import { useLiveMonitoring } from "@/hooks/useLiveMonitoring";
 
 const Strategies = () => {
@@ -20,10 +18,9 @@ const Strategies = () => {
   const [builderOpen, setBuilderOpen] = useState(false);
   const [formulaBuilderOpen, setFormulaBuilderOpen] = useState(false);
   const [editStrategy, setEditStrategy] = useState<any>(null);
-  const [liveMonitoringEnabled, setLiveMonitoringEnabled] = useState(false);
   const [validatingStrategy, setValidatingStrategy] = useState<string | null>(null);
   const [validationResults, setValidationResults] = useState<Map<string, any>>(new Map());
-  const { isActive, lastCheck, inFlight } = useLiveMonitoring(liveMonitoringEnabled);
+  const { isActive, lastCheck, inFlight } = useLiveMonitoring(true);
 
   useEffect(() => {
     loadStrategies();
@@ -146,15 +143,8 @@ const Strategies = () => {
           <Card className="p-3">
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2">
-                <Switch
-                  id="live-monitoring"
-                  checked={liveMonitoringEnabled}
-                  onCheckedChange={setLiveMonitoringEnabled}
-                />
-                <Label htmlFor="live-monitoring" className="flex items-center gap-2 cursor-pointer">
-                  {isActive && <Radio className="h-3 w-3 text-green-500 animate-pulse" />}
-                  <span className="text-sm">Real-time Dashboard ({isActive ? 'ON' : 'OFF'})</span>
-                </Label>
+                <Radio className="h-3 w-3 text-green-500 animate-pulse" />
+                <span className="text-sm">Real-time Dashboard (ON)</span>
               </div>
               {lastCheck && (
                 <span className="text-xs text-muted-foreground">
