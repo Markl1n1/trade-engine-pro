@@ -161,10 +161,10 @@ The Strategies page is the core of the trading platform, allowing users to creat
 - **Strategy Validation** - Automated testing and validation
 - **Strategy Monitoring** - Real-time performance tracking
 
-#### **AI Strategy Generator**
-- **Natural Language** - Describe strategies in plain English
-- **Automatic Implementation** - AI generates complete strategy code
-- **Parameter Configuration** - Automatic parameter setup
+#### **Manual Strategy Development**
+- **Hand-coded Strategies** - Full control over strategy logic
+- **Custom Implementation** - Complete strategy customization
+- **Parameter Configuration** - Manual parameter setup
 - **Integration Ready** - Seamless platform integration
 - **Complex Logic** - Multi-condition strategies
 

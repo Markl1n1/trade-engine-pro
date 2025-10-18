@@ -17,17 +17,6 @@ verify_jwt = true
 [functions.validate-strategy]
 verify_jwt = true
 
-[functions.execute-javascript-strategy]
-verify_jwt = true
-
-[functions.data-quality]
-verify_jwt = true
-
-[functions.risk-management]
-verify_jwt = true
-
-[functions.performance-dashboard]
-verify_jwt = true
 
 [functions.instant-signals]
 verify_jwt = false
@@ -45,13 +34,12 @@ verify_jwt = true
 [functions.get-audit-logs]
 verify_jwt = true
 
-[functions.generate-strategy]
-verify_jwt = true
 
 [functions.data-quality-monitor]
 verify_jwt = true
 
 # Removed unused Edge Functions:
+# - generate-strategy (AI Strategy Generator - removed)
 # - performance-dashboard (returned only mock data)
 # - data-quality (complex system but not integrated)
 # - risk-management (returned only mock data)  

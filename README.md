@@ -5,7 +5,7 @@
 ## 🎯 **Key Features**
 
 ### **Trading & Strategies**
-- **AI Strategy Generator** - Natural language strategy creation
+- **Manual Strategy Coding** - Hand-coded trading strategies
 - **Coded Strategy Support** - Pre-built trading strategies (ATH Guard, 4H Reentry, MSTG, SMA-based)
 - **Strategy Validation** - Automated testing and validation of strategies
 - **Strategy Cloning** - Duplicate and modify existing strategies
@@ -85,7 +85,7 @@ npm run dev
 
 ### **Strategies**
 - Create and manage trading strategies
-- AI Strategy Generator with natural language
+- Manual strategy creation and configuration
 - Pre-built coded strategies (ATH Guard, 4H Reentry, MSTG, SMA-based)
 - Strategy validation and testing
 
@@ -186,7 +186,6 @@ Navigate to Project > Settings > Domains and click Connect Domain.
 - [📝 Audit Logs](guides/AUDIT_LOGS.md) - Activity tracking and compliance
 
 ### **Feature Documentation**
-- [🤖 AI Strategy Generator](guides/AI_STRATEGY_GENERATOR.md) - Natural language strategy creation
 - [🔒 Security](guides/SECURITY.md) - Security guidelines and best practices
 
 ## 📄 **License**

@@ -6,7 +6,6 @@ import { Plus, Zap, Edit, Trash2, Play, Pause, TrendingUp, Radio, CheckCircle, A
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { StrategyBuilder } from "@/components/StrategyBuilder";
-import { StrategyFormulaBuilder } from "@/components/StrategyFormulaBuilder";
 import { StrategyCloner } from "@/components/StrategyCloner";
 import { MonitoringStatus } from "@/components/MonitoringStatus";
 // Removed unused dashboard components - focusing on core trading functionality
@@ -16,7 +15,6 @@ const Strategies = () => {
   const [strategies, setStrategies] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [builderOpen, setBuilderOpen] = useState(false);
-  const [formulaBuilderOpen, setFormulaBuilderOpen] = useState(false);
   const [editStrategy, setEditStrategy] = useState<any>(null);
   const [validatingStrategy, setValidatingStrategy] = useState<string | null>(null);
   const [validationResults, setValidationResults] = useState<Map<string, any>>(new Map());
@@ -158,9 +156,9 @@ const Strategies = () => {
               )}
             </div>
           </Card>
-          <Button className="gap-2" onClick={() => setFormulaBuilderOpen(true)}>
+          <Button className="gap-2" onClick={() => setBuilderOpen(true)}>
             <Plus className="h-4 w-4" />
-            AI Strategy Generator
+            New Strategy
           </Button>
         </div>
       </div>
@@ -175,9 +173,9 @@ const Strategies = () => {
             <p className="text-sm text-muted-foreground mb-6">
               Get started by describing your trading strategy formula
             </p>
-            <Button className="gap-2" onClick={() => setFormulaBuilderOpen(true)}>
+            <Button className="gap-2" onClick={() => setBuilderOpen(true)}>
               <Plus className="h-4 w-4" />
-              AI Strategy Generator
+              New Strategy
             </Button>
           </div>
         </Card>
@@ -324,11 +322,6 @@ const Strategies = () => {
         editStrategy={editStrategy}
       />
 
-      <StrategyFormulaBuilder
-        open={formulaBuilderOpen}
-        onOpenChange={setFormulaBuilderOpen}
-        onSuccess={loadStrategies}
-      />
     </div>
   );
 };
