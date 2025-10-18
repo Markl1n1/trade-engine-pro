@@ -38,6 +38,7 @@ interface AccountData {
   tradingMode: 'testnet_only' | 'hybrid_safe' | 'hybrid_live' | 'paper_trading' | 'mainnet_only';
   dataSource: 'mainnet' | 'testnet' | 'simulated';
   executionMode: 'real' | 'paper' | 'simulated';
+  exchangeType: 'binance' | 'bybit';
 }
 
 interface StrategySignal {
@@ -73,6 +74,10 @@ const Dashboard = () => {
     fetchAccountData();
     fetchStrategySignals();
     loadSignalsPerPage();
+    
+    // Auto-refresh account data every 60 seconds
+    const accountInterval = setInterval(fetchAccountData, 60000);
+    return () => clearInterval(accountInterval);
   }, []);
 
   useEffect(() => {
@@ -370,21 +375,21 @@ const Dashboard = () => {
 
   const stats = [
     { 
-      label: "Balance", 
+      label: `Balance (${accountData?.exchangeType?.toUpperCase() || 'N/A'})`, 
       value: loadingAccount ? "Loading..." : `$${accountData?.totalWalletBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}`,
       change: accountData?.totalUnrealizedProfit ? `${accountData.totalUnrealizedProfit >= 0 ? '+' : ''}$${accountData.totalUnrealizedProfit.toFixed(2)}` : "—",
       trend: accountData?.totalUnrealizedProfit ? (accountData.totalUnrealizedProfit >= 0 ? "up" : "down") : "neutral",
       environment: accountData?.environment,
-      tooltip: `Total wallet balance (${modeInfo.dataSource}, ${modeInfo.executionMode})`,
+      tooltip: `Total wallet balance from ${accountData?.exchangeType?.toUpperCase() || 'exchange'} (${modeInfo.dataSource}, ${modeInfo.executionMode})`,
       timeframe: "Real-time",
       modeInfo: modeInfo
     },
     { 
-      label: "Open Positions", 
+      label: `Open Positions (${accountData?.exchangeType?.toUpperCase() || 'N/A'})`, 
       value: loadingAccount ? "..." : accountData?.openPositionsCount.toString() || "0",
       change: "—",
       trend: "neutral",
-      tooltip: `Active positions (${modeInfo.executionMode})`,
+      tooltip: `Active positions from ${accountData?.exchangeType?.toUpperCase() || 'exchange'} (${modeInfo.dataSource}, ${modeInfo.executionMode})`,
       timeframe: "Real-time",
       modeInfo: modeInfo
     },
@@ -398,11 +403,11 @@ const Dashboard = () => {
       modeInfo: modeInfo
     },
     { 
-      label: "Unrealized P&L", 
+      label: `Unrealized P&L (${accountData?.exchangeType?.toUpperCase() || 'N/A'})`, 
       value: loadingAccount ? "Loading..." : `$${accountData?.totalUnrealizedProfit.toFixed(2) || '0.00'}`,
       change: "—",
       trend: accountData?.totalUnrealizedProfit ? (accountData.totalUnrealizedProfit >= 0 ? "up" : "down") : "neutral",
-      tooltip: `Floating P&L (${modeInfo.executionMode})`,
+      tooltip: `Floating P&L from ${accountData?.exchangeType?.toUpperCase() || 'exchange'} (${modeInfo.dataSource}, ${modeInfo.executionMode})`,
       timeframe: "Real-time",
       modeInfo: modeInfo
     },
@@ -438,20 +443,25 @@ const Dashboard = () => {
             <span>⚡ Execution: {modeInfo.executionMode}</span>
           </div>
         </div>
-        <Button 
-          variant="outline" 
-          size="sm"
-          onClick={() => {
-            loadUserSettings();
-            fetchAccountData();
-            fetchMarketData();
-            fetchStrategySignals();
-          }}
-          disabled={loadingAccount || loading || loadingSignals}
-        >
-          <RefreshCw className={`h-4 w-4 mr-2 ${(loadingAccount || loading || loadingSignals) ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => {
+              loadUserSettings();
+              fetchAccountData();
+              fetchMarketData();
+              fetchStrategySignals();
+            }}
+            disabled={loadingAccount || loading || loadingSignals}
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${(loadingAccount || loading || loadingSignals) ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+          <div className="text-xs text-muted-foreground">
+            Auto-refresh: 60s
+          </div>
+        </div>
       </div>
 
       <TooltipProvider>
@@ -494,7 +504,9 @@ const Dashboard = () => {
 
       <Card className="p-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold">Open Positions</h3>
+          <h3 className="text-lg font-bold">
+            Open Positions {accountData?.exchangeType && `(${accountData.exchangeType.toUpperCase()})`}
+          </h3>
           {accountData && accountData.positions.length > 0 && (
             <AlertDialog>
               <AlertDialogTrigger asChild>
