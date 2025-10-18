@@ -6,8 +6,6 @@ import Layout from "./components/Layout";
 import Dashboard from "./pages/Dashboard";
 import Strategies from "./pages/Strategies";
 import Backtest from "./pages/Backtest";
-import Performance from "./pages/Performance";
-import RiskManagement from "./pages/RiskManagement";
 import DataQuality from "./pages/DataQuality";
 import AuditLogsPage from "./pages/AuditLogs";
 import Settings from "./pages/Settings";
@@ -33,8 +31,6 @@ const App = () => (
                   <Route path="/" element={<Dashboard />} />
                   <Route path="/strategies" element={<Strategies />} />
                   <Route path="/backtest" element={<Backtest />} />
-            <Route path="/performance" element={<Performance />} />
-            <Route path="/risk-management" element={<RiskManagement />} />
             <Route path="/data-quality" element={<DataQuality />} />
             <Route path="/audit-logs" element={<AuditLogsPage />} />
             <Route path="/settings" element={<Settings />} />
