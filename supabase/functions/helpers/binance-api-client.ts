@@ -109,7 +109,7 @@ export class BinanceAPIClient {
   async placeOrder(orderRequest: BinanceOrderRequest): Promise<BinanceOrderResponse> {
     console.log(`[BINANCE-API] Placing ${orderRequest.side} order for ${orderRequest.symbol}`);
     
-    const params = {
+    const params: any = {
       symbol: orderRequest.symbol,
       side: orderRequest.side,
       type: orderRequest.type,

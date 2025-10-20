@@ -21,7 +21,7 @@ interface TestExchangeResponse {
   error?: string;
 }
 
-Deno.serve(async (req) => {
+Deno.serve(async (req): Promise<Response> => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -110,12 +110,22 @@ Deno.serve(async (req) => {
     } else if (actualExchangeType === 'bybit') {
       return await testBybitConnection(apiKey, apiSecret, isTestnet);
     }
-
-  } catch (error) {
-    console.error('[TEST-EXCHANGE] Error:', error);
+    
+    // Fallback (should never reach here due to earlier validation)
     return new Response(JSON.stringify({ 
       success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
+      error: 'Unsupported exchange type' 
+    }), {
+      status: 400,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('[TEST-EXCHANGE] Error:', errorMessage);
+    return new Response(JSON.stringify({ 
+      success: false, 
+      error: errorMessage
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -153,11 +163,12 @@ async function testBinanceConnection(apiKey: string, apiSecret: string, isTestne
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
     
-  } catch (error) {
-    console.error('[TEST-EXCHANGE] Binance connection failed:', error);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('[TEST-EXCHANGE] Binance connection failed:', errorMessage);
     return new Response(JSON.stringify({ 
       success: false, 
-      error: `Binance ${isTestnet ? 'testnet' : 'mainnet'} connection failed: ${error.message}` 
+      error: `Binance ${isTestnet ? 'testnet' : 'mainnet'} connection failed: ${errorMessage}` 
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -231,11 +242,12 @@ async function testBybitConnection(apiKey: string, apiSecret: string, isTestnet:
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
     
-  } catch (error) {
-    console.error('[TEST-EXCHANGE] Bybit connection failed:', error);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('[TEST-EXCHANGE] Bybit connection failed:', errorMessage);
     return new Response(JSON.stringify({ 
       success: false, 
-      error: `Bybit ${isTestnet ? 'testnet' : 'mainnet'} connection failed: ${error.message}` 
+      error: `Bybit ${isTestnet ? 'testnet' : 'mainnet'} connection failed: ${errorMessage}` 
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

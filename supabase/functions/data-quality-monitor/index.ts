@@ -39,7 +39,7 @@ interface ExchangeStatus {
   };
 }
 
-serve(async (req) => {
+serve(async (req): Promise<Response> => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -74,13 +74,14 @@ serve(async (req) => {
         throw new Error(`Unknown action: ${action}`);
     }
 
-  } catch (error) {
-    console.error('[DATA-QUALITY-MONITOR] Error:', error);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    console.error('[DATA-QUALITY-MONITOR] Error:', errorMessage);
     
     return new Response(
       JSON.stringify({
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
+        error: errorMessage
       }),
       { 
         status: 500,
@@ -90,7 +91,7 @@ serve(async (req) => {
   }
 });
 
-async function handleGetQualityReport(supabase: any, userId: string) {
+async function handleGetQualityReport(supabase: any, userId: string): Promise<Response> {
   try {
     // Get latest quality report
     const { data: qualityReport, error } = await supabase
@@ -106,7 +107,14 @@ async function handleGetQualityReport(supabase: any, userId: string) {
 
     if (!qualityReport) {
       // Generate a new quality report
-      return await generateNewQualityReport(supabase, userId);
+      const newReport = await generateNewQualityReport(supabase, userId);
+      return new Response(
+        JSON.stringify({
+          success: true,
+          data: newReport
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     return new Response(
@@ -117,8 +125,9 @@ async function handleGetQualityReport(supabase: any, userId: string) {
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
-  } catch (error) {
-    throw new Error(`Failed to get quality report: ${error.message}`);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    throw new Error(`Failed to get quality report: ${errorMessage}`);
   }
 }
 
@@ -179,8 +188,9 @@ async function handleGetExchangeStatus(supabase: any, userId: string) {
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
-  } catch (error) {
-    throw new Error(`Failed to get exchange status: ${error.message}`);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    throw new Error(`Failed to get exchange status: ${errorMessage}`);
   }
 }
 
@@ -198,8 +208,9 @@ async function handleValidateDataSource(request: any) {
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
-  } catch (error) {
-    throw new Error(`Failed to validate data source: ${error.message}`);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    throw new Error(`Failed to validate data source: ${errorMessage}`);
   }
 }
 
@@ -215,8 +226,9 @@ async function handleGenerateQualityReport(supabase: any, userId: string, reques
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
-  } catch (error) {
-    throw new Error(`Failed to generate quality report: ${error.message}`);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    throw new Error(`Failed to generate quality report: ${errorMessage}`);
   }
 }
 
@@ -314,9 +326,10 @@ async function validateDataSource(exchange: string, type: 'mainnet' | 'testnet',
     };
     
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return {
       valid: false,
-      error: error.message,
+      error: errorMessage,
       quality: 0,
       dataPoints: 0,
       lastUpdate: new Date().toISOString()
@@ -428,7 +441,8 @@ async function generateNewQualityReport(supabase: any, userId: string, request?:
     
     return qualityReport;
     
-  } catch (error) {
-    throw new Error(`Failed to generate quality report: ${error.message}`);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    throw new Error(`Failed to generate quality report: ${errorMessage}`);
   }
 }

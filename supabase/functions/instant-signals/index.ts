@@ -264,11 +264,12 @@ class PositionExecutionManager {
         message: 'Hybrid live position executed via testnet API',
         details: orderResult
       };
-    } catch (error) {
-      console.error(`[INSTANT-SIGNALS] Hybrid live execution failed:`, error);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error(`[INSTANT-SIGNALS] Hybrid live execution failed:`, errorMessage);
       return {
         success: false,
-        error: error.message,
+        error: errorMessage,
         mode: 'hybrid_live',
         risk: 'low',
         message: 'Hybrid live execution failed'
@@ -297,11 +298,12 @@ class PositionExecutionManager {
         message: 'Mainnet position executed via mainnet API',
         details: orderResult
       };
-    } catch (error) {
-      console.error(`[INSTANT-SIGNALS] Mainnet execution failed:`, error);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error(`[INSTANT-SIGNALS] Mainnet execution failed:`, errorMessage);
       return {
         success: false,
-        error: error.message,
+        error: errorMessage,
         mode: 'mainnet',
         risk: 'high',
         message: 'Mainnet execution failed'
@@ -331,9 +333,9 @@ class PositionExecutionManager {
       // Place the order
       const orderRequest = {
         symbol: signal.symbol,
-        side: signal.signal_type as 'BUY' | 'SELL',
+        side: signal.signal.toUpperCase() as 'BUY' | 'SELL',
         type: 'MARKET' as const,
-        quantity: signal.quantity || 0.001
+        quantity: 0.001 // Default quantity, should be calculated based on risk management
       };
       
       const orderResult = await client.placeOrder(orderRequest);
@@ -468,7 +470,7 @@ Deno.serve(async (req) => {
         if (userSettings) {
           // Calculate priority
           const priority = priorityManager.calculatePriority(signal, userSettings);
-          signal.priority = priority;
+          signal.priority = priority as 'critical' | 'high' | 'medium' | 'low';
           
           // Broadcast signal
           await signalManager.broadcastSignal(signal, userSettings);
@@ -491,9 +493,10 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
       
-    } catch (error) {
-      console.error('[INSTANT-SIGNALS] HTTP request error:', error);
-      return new Response(JSON.stringify({ error: error.message }), {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('[INSTANT-SIGNALS] HTTP request error:', errorMessage);
+      return new Response(JSON.stringify({ error: errorMessage }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });

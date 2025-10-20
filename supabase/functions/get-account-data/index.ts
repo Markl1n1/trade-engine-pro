@@ -73,13 +73,15 @@ Deno.serve(async (req) => {
 
     let accountData;
     
+    // Initialize encoder for HMAC signatures (used by both Binance and Bybit)
+    const encoder = new TextEncoder();
+    
     if (exchangeType === 'bybit') {
       // Bybit API request
       const timestamp = Date.now();
       const recvWindow = '5000';
       
       // Create Bybit signature
-      const encoder = new TextEncoder();
       const key = await crypto.subtle.importKey(
         'raw',
         encoder.encode(apiSecret),
