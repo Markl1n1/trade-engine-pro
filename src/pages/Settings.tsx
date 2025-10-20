@@ -130,6 +130,7 @@ const Settings = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [testingTelegram, setTestingTelegram] = useState(false);
   const [testingBinance, setTestingBinance] = useState(false);
+  const [activeApiTab, setActiveApiTab] = useState<'mainnet' | 'testnet'>('mainnet');
   const [appSettings, setAppSettings] = useState<AppSettings>({
     signalsPerPage: 10
   });
@@ -394,14 +395,16 @@ const Settings = () => {
       setTestingTelegram(false);
     }
   };
-  const handleTestExchange = async () => {
+  const handleTestExchange = async (useTestnet: boolean) => {
     setTestingBinance(true);
     try {
       const {
         data,
         error
       } = await supabase.functions.invoke('test-exchange', {
-        body: {}
+        body: {
+          useTestnet
+        }
       });
       if (error) throw error;
       if (data.success) {
@@ -612,7 +615,7 @@ const Settings = () => {
           </AlertDescription>
         </Alert>
 
-        {settings.exchange_type === 'binance' ? <Tabs defaultValue="mainnet" className="w-full">
+        {settings.exchange_type === 'binance' ? <Tabs defaultValue="mainnet" className="w-full" onValueChange={(value) => setActiveApiTab(value as 'mainnet' | 'testnet')}>
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="mainnet">Mainnet API Keys</TabsTrigger>
               <TabsTrigger value="testnet">Testnet API Keys</TabsTrigger>
@@ -639,7 +642,7 @@ const Settings = () => {
                 <Input id="testnet-api-secret" type="password" placeholder="Enter your Binance testnet API secret" value={settings.binance_testnet_api_secret} onChange={e => updateSetting("binance_testnet_api_secret", e.target.value)} />
               </div>
             </TabsContent>
-          </Tabs> : <Tabs defaultValue="mainnet" className="w-full">
+          </Tabs> : <Tabs defaultValue="mainnet" className="w-full" onValueChange={(value) => setActiveApiTab(value as 'mainnet' | 'testnet')}>
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="mainnet">Mainnet API Keys</TabsTrigger>
               <TabsTrigger value="testnet">Testnet API Keys</TabsTrigger>
@@ -668,13 +671,13 @@ const Settings = () => {
             </TabsContent>
           </Tabs>}
 
-        <Button variant="outline" onClick={handleTestExchange} disabled={testingBinance || (settings.use_testnet ? settings.exchange_type === 'binance' ? !settings.binance_testnet_api_key || !settings.binance_testnet_api_secret : !settings.bybit_testnet_api_key || !settings.bybit_testnet_api_secret : settings.exchange_type === 'binance' ? !settings.binance_mainnet_api_key || !settings.binance_mainnet_api_secret : !settings.bybit_mainnet_api_key || !settings.bybit_mainnet_api_secret)} className="mt-4">
+        <Button variant="outline" onClick={() => handleTestExchange(activeApiTab === 'testnet')} disabled={testingBinance || (activeApiTab === 'testnet' ? settings.exchange_type === 'binance' ? !settings.binance_testnet_api_key || !settings.binance_testnet_api_secret : !settings.bybit_testnet_api_key || !settings.bybit_testnet_api_secret : settings.exchange_type === 'binance' ? !settings.binance_mainnet_api_key || !settings.binance_mainnet_api_secret : !settings.bybit_mainnet_api_key || !settings.bybit_mainnet_api_secret)} className="mt-4">
           {testingBinance ? <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               Testing...
             </> : <>
               <CheckCircle className="mr-2 h-4 w-4" />
-              Test {settings.exchange_type === 'binance' ? 'Binance' : 'Bybit'} {settings.use_testnet ? 'Testnet' : 'Mainnet'} Connection
+              Test {settings.exchange_type === 'binance' ? 'Binance' : 'Bybit'} {activeApiTab === 'testnet' ? 'Testnet' : 'Mainnet'} Connection
             </>}
         </Button>
       </Card>

@@ -40,7 +40,7 @@ Deno.serve(async (req) => {
     // Fetch user's Binance API credentials
     const { data: settings } = await supabaseClient
       .from('user_settings')
-      .select('binance_api_key, binance_api_secret, use_testnet, binance_testnet_api_key, binance_testnet_api_secret')
+      .select('binance_mainnet_api_key, binance_mainnet_api_secret, use_testnet, binance_testnet_api_key, binance_testnet_api_secret')
       .eq('user_id', user.id)
       .single();
 
@@ -51,8 +51,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    const apiKey = settings.use_testnet ? settings.binance_testnet_api_key : settings.binance_api_key;
-    const apiSecret = settings.use_testnet ? settings.binance_testnet_api_secret : settings.binance_api_secret;
+    const apiKey = settings.use_testnet ? settings.binance_testnet_api_key : settings.binance_mainnet_api_key;
+    const apiSecret = settings.use_testnet ? settings.binance_testnet_api_secret : settings.binance_mainnet_api_secret;
 
     if (!apiKey || !apiSecret) {
       return new Response(JSON.stringify({ error: 'Binance API credentials not set' }), {

@@ -508,12 +508,6 @@ export function evaluateATHGuardStrategy(
       atr: currentATR.toFixed(2),
       ratio: `1:2 (SL=${config.atr_sl_multiplier}x, TP2=${config.atr_tp2_multiplier}x ATR)`
     });
-      entry: currentPrice.toFixed(2),
-      stopLoss: stopLoss.toFixed(2),
-      tp1: takeProfit1.toFixed(2),
-      tp2: takeProfit2.toFixed(2),
-      atr: currentATR.toFixed(2)
-    });
     
     return {
       signal_type: 'SELL',
