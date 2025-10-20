@@ -103,6 +103,52 @@ function shouldExecuteRealTrades(tradingMode: string): boolean {
   }
 }
 
+// Triggers instant signal execution via instant-signals Edge Function
+async function triggerInstantSignalExecution(signal: any, userSettings: any, tradingMode: string) {
+  try {
+    console.log(`[CRON] Triggering instant signal execution for signal ${signal.id}`);
+    
+    const instantSignalsUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/instant-signals`;
+    
+    const signalPayload = {
+      type: 'signal',
+      signal: {
+        id: signal.id,
+        strategyId: signal.strategy_id,
+        userId: signal.user_id,
+        symbol: signal.symbol,
+        signal_type: signal.signal_type,
+        price: signal.price,
+        quantity: 0.001, // Default for scalping
+        reason: signal.reason,
+        timestamp: signal.created_at,
+        channels: ['websocket', 'telegram'],
+        priority: 'high'
+      }
+    };
+    
+    const response = await fetch(instantSignalsUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+      },
+      body: JSON.stringify(signalPayload)
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Instant signals API error: ${response.status}`);
+    }
+    
+    const result = await response.json();
+    console.log(`[CRON] Instant signal execution result:`, result);
+    
+  } catch (error) {
+    console.error(`[CRON] Failed to trigger instant signal execution:`, error);
+    throw error;
+  }
+}
+
 const EXCHANGE_URLS = {
   binance: {
     mainnet: 'https://fapi.binance.com',
@@ -967,12 +1013,8 @@ Deno.serve(async (req) => {
             try {
               console.log(`[CRON] Executing real trade for ${strategy.name} in ${tradingMode} mode`);
               
-              // Здесь должна быть интеграция с instant-signals для выполнения сделки
-              // Пока логируем намерение
-              console.log(`[CRON] Would execute ${signalType} trade for ${strategy.symbol} at ${currentPrice}`);
-              
-              // TODO: Интегрировать с instant-signals Edge Function
-              // const executionResult = await executeTrade(signal, userSettings, tradingMode);
+              // Trigger instant-signals for real-time execution
+              await triggerInstantSignalExecution(signal, userSettings, tradingMode);
               
             } catch (error) {
               console.error(`[CRON] Trade execution failed for ${strategy.name}:`, error);

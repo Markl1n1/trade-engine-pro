@@ -38,6 +38,9 @@ verify_jwt = true
 [functions.data-quality-monitor]
 verify_jwt = true
 
+[functions.test-exchange]
+verify_jwt = true
+
 # Removed unused Edge Functions:
 # - generate-strategy (AI Strategy Generator - removed)
 # - performance-dashboard (returned only mock data)

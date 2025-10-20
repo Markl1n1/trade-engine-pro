@@ -3,6 +3,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../helpers/cors.ts';
+import { BinanceAPIClient } from '../helpers/binance-api-client.ts';
 
 interface TradingSignal {
   id: string;
@@ -309,24 +310,51 @@ class PositionExecutionManager {
   }
   
   private async executeRealOrder(signal: TradingSignal, settings: any, useTestnet: boolean) {
-    // Универсальный метод для выполнения реальных ордеров
-    const apiKey = useTestnet ? settings.binance_testnet_api_key : settings.binance_mainnet_api_key;
-    const apiSecret = useTestnet ? settings.binance_testnet_api_secret : settings.binance_mainnet_api_secret;
-    const baseUrl = useTestnet ? 'https://testnet.binancefuture.com' : 'https://fapi.binance.com';
-    
     console.log(`[INSTANT-SIGNALS] Executing real order via ${useTestnet ? 'testnet' : 'mainnet'} API`);
     
-    // Здесь должна быть реальная интеграция с Binance API
-    // Пока возвращаем симуляцию
-    return {
-      orderId: `real_${useTestnet ? 'testnet' : 'mainnet'}_${Date.now()}`,
-      symbol: signal.symbol,
-      side: signal.signal_type,
-      quantity: signal.quantity || 0.001,
-      price: signal.price,
-      status: 'FILLED',
-      executedAt: new Date().toISOString()
-    };
+    try {
+      const apiKey = useTestnet ? settings.binance_testnet_api_key : settings.binance_mainnet_api_key;
+      const apiSecret = useTestnet ? settings.binance_testnet_api_secret : settings.binance_mainnet_api_secret;
+      
+      if (!apiKey || !apiSecret) {
+        throw new Error(`API credentials not found for ${useTestnet ? 'testnet' : 'mainnet'}`);
+      }
+      
+      const client = new BinanceAPIClient(apiKey, apiSecret, useTestnet);
+      
+      // Test connectivity first
+      const isConnected = await client.testConnectivity();
+      if (!isConnected) {
+        throw new Error('Failed to connect to Binance API');
+      }
+      
+      // Place the order
+      const orderRequest = {
+        symbol: signal.symbol,
+        side: signal.signal_type as 'BUY' | 'SELL',
+        type: 'MARKET' as const,
+        quantity: signal.quantity || 0.001
+      };
+      
+      const orderResult = await client.placeOrder(orderRequest);
+      
+      console.log(`[INSTANT-SIGNALS] Order placed successfully:`, orderResult);
+      
+      return {
+        orderId: orderResult.orderId.toString(),
+        symbol: orderResult.symbol,
+        side: orderResult.side,
+        quantity: parseFloat(orderResult.origQty),
+        price: parseFloat(orderResult.price),
+        status: orderResult.status,
+        executedAt: new Date(orderResult.time).toISOString(),
+        clientOrderId: orderResult.clientOrderId
+      };
+      
+    } catch (error) {
+      console.error(`[INSTANT-SIGNALS] Real order execution failed:`, error);
+      throw error;
+    }
   }
 }
 
@@ -417,9 +445,65 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Handle HTTP POST requests for signal execution
+  if (req.method === 'POST') {
+    try {
+      const body = await req.json();
+      
+      if (body.type === 'signal' && body.signal) {
+        const signal: TradingSignal = body.signal;
+        
+        // Get user settings
+        const supabase = createClient(
+          Deno.env.get('SUPABASE_URL')!,
+          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+        );
+        
+        const { data: userSettings } = await supabase
+          .from('user_settings')
+          .select('*')
+          .eq('user_id', signal.userId)
+          .single();
+        
+        if (userSettings) {
+          // Calculate priority
+          const priority = priorityManager.calculatePriority(signal, userSettings);
+          signal.priority = priority;
+          
+          // Broadcast signal
+          await signalManager.broadcastSignal(signal, userSettings);
+          
+          // Execute position
+          const execution = await positionManager.executeSignal(signal, userSettings);
+          
+          return new Response(JSON.stringify({
+            success: true,
+            signalId: signal.id,
+            execution: execution
+          }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          });
+        }
+      }
+      
+      return new Response(JSON.stringify({ error: 'Invalid request' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+      
+    } catch (error) {
+      console.error('[INSTANT-SIGNALS] HTTP request error:', error);
+      return new Response(JSON.stringify({ error: error.message }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+  }
+
+  // Handle WebSocket connections
   const upgradeHeader = req.headers.get('Upgrade');
   if (upgradeHeader !== 'websocket') {
-    return new Response('Expected WebSocket upgrade', { status: 426 });
+    return new Response('Expected WebSocket upgrade or POST request', { status: 426 });
   }
 
   const { socket, response } = Deno.upgradeWebSocket(req);

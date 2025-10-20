@@ -403,15 +403,17 @@ const Settings = () => {
         error
       } = await supabase.functions.invoke('test-exchange', {
         body: {
-          useTestnet
+          useTestnet,
+          exchangeType: settings.exchange_type
         }
       });
       if (error) throw error;
       if (data.success) {
         const exchangeName = settings.exchange_type === 'binance' ? 'Binance' : 'Bybit';
+        const networkType = useTestnet ? 'Testnet' : 'Mainnet';
         toast({
           title: "Success",
-          description: `Connected to ${exchangeName} ${data.data.environment}! Balance: $${data.data.totalWalletBalance}`
+          description: `Connected to ${exchangeName} ${networkType}! Balance: $${data.data.totalWalletBalance.toFixed(2)}`
         });
       } else {
         throw new Error(data.error || `Failed to connect to ${settings.exchange_type}`);
@@ -674,7 +676,7 @@ const Settings = () => {
         <Button variant="outline" onClick={() => handleTestExchange(activeApiTab === 'testnet')} disabled={testingBinance || (activeApiTab === 'testnet' ? settings.exchange_type === 'binance' ? !settings.binance_testnet_api_key || !settings.binance_testnet_api_secret : !settings.bybit_testnet_api_key || !settings.bybit_testnet_api_secret : settings.exchange_type === 'binance' ? !settings.binance_mainnet_api_key || !settings.binance_mainnet_api_secret : !settings.bybit_mainnet_api_key || !settings.bybit_mainnet_api_secret)} className="mt-4">
           {testingBinance ? <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Testing...
+              Testing {activeApiTab === 'testnet' ? 'Testnet' : 'Mainnet'}...
             </> : <>
               <CheckCircle className="mr-2 h-4 w-4" />
               Test {settings.exchange_type === 'binance' ? 'Binance' : 'Bybit'} {activeApiTab === 'testnet' ? 'Testnet' : 'Mainnet'} Connection
