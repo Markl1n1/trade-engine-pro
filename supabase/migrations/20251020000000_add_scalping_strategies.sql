@@ -92,5 +92,3 @@ SELECT
   now(), now()
 WHERE EXISTS (SELECT 1 FROM auth.users)
 ON CONFLICT DO NOTHING;
-
-
