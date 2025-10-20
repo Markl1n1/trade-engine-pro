@@ -678,16 +678,17 @@ Deno.serve(async (req) => {
           .select('*')
           .eq('strategy_id', strategy.id)
           .eq('user_id', strategy.user_id)
-          .single();
+          .maybeSingle();
 
         if (!liveState) {
           const { data: newState } = await supabase
             .from('strategy_live_states')
-            .insert({
+            .upsert({
               strategy_id: strategy.id,
               user_id: strategy.user_id,
-              position_open: false
-            })
+              position_open: false,
+              updated_at: new Date().toISOString()
+            }, { onConflict: 'strategy_id' })
             .select()
             .single();
           liveState = newState;
