@@ -684,15 +684,16 @@ Deno.serve(async (req) => {
 
         // Check if this is an ATH Guard Scalping strategy
         if (strategy.strategy_type === 'ath_guard_scalping') {
+          // Updated ATH Guard config with 1:2 ratio defaults
           const athGuardConfig = {
             ema_slope_threshold: strategy.ath_guard_ema_slope_threshold || 0.15,
             pullback_tolerance: strategy.ath_guard_pullback_tolerance || 0.15,
             volume_multiplier: strategy.ath_guard_volume_multiplier || 1.8,
             stoch_oversold: strategy.ath_guard_stoch_oversold || 25,
             stoch_overbought: strategy.ath_guard_stoch_overbought || 75,
-            atr_sl_multiplier: strategy.ath_guard_atr_sl_multiplier || 1.5,
-            atr_tp1_multiplier: strategy.ath_guard_atr_tp1_multiplier || 1.0,
-            atr_tp2_multiplier: strategy.ath_guard_atr_tp2_multiplier || 2.0,
+            atr_sl_multiplier: strategy.ath_guard_atr_sl_multiplier || 1.0,  // 1:2 ratio - SL = 1.0x ATR
+            atr_tp1_multiplier: strategy.ath_guard_atr_tp1_multiplier || 1.0, // Partial TP = 1.0x ATR
+            atr_tp2_multiplier: strategy.ath_guard_atr_tp2_multiplier || 2.0, // Full TP = 2.0x ATR (1:2 ratio)
             ath_safety_distance: strategy.ath_guard_ath_safety_distance || 0.2,
             rsi_threshold: strategy.ath_guard_rsi_threshold || 70,
           };
@@ -782,6 +783,17 @@ Deno.serve(async (req) => {
         else if (strategy.strategy_type === 'market_sentiment_trend_gauge') {
           console.log(`[CRON] 🎯 Evaluating MSTG strategy for ${strategy.symbol}`);
           
+          // Check signal cooldown to prevent signals every hour
+          const SIGNAL_COOLDOWN_MS = 15 * 60 * 1000; // 15 minutes
+          const lastSignalTime = liveState?.last_signal_time ? new Date(liveState.last_signal_time).getTime() : 0;
+          const timeSinceLastSignal = Date.now() - lastSignalTime;
+          
+          if (lastSignalTime > 0 && timeSinceLastSignal < SIGNAL_COOLDOWN_MS) {
+            const remainingMinutes = Math.ceil((SIGNAL_COOLDOWN_MS - timeSinceLastSignal) / 60000);
+            console.log(`[CRON] ⏸️ MSTG signal cooldown active. ${remainingMinutes} minutes remaining until next signal allowed`);
+            continue;
+          }
+          
           // Fetch benchmark data
           const benchmarkSymbol = strategy.benchmark_symbol || 'BTCUSDT';
           console.log(`[CRON] Fetching benchmark data for ${benchmarkSymbol}...`);
@@ -817,12 +829,22 @@ Deno.serve(async (req) => {
           if (mstgSignal.signal_type) {
             signalType = mstgSignal.signal_type;
             signalReason = mstgSignal.reason;
-            signalStopLossPercent = strategy.stop_loss_percent;
-            signalTakeProfitPercent = strategy.take_profit_percent;
+            // Use 1:2 ratio for MSTG: SL = -1%, TP = +2%
+            signalStopLossPercent = strategy.stop_loss_percent || 1.0;
+            signalTakeProfitPercent = strategy.take_profit_percent || 2.0;
             
-            console.log(`[CRON] MSTG signal generated: ${signalType} - ${signalReason}`);
+            // Update last_signal_time to enforce cooldown
+            await supabase
+              .from('strategy_live_states')
+              .update({
+                last_signal_time: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+              })
+              .eq('strategy_id', strategy.id);
+            
+            console.log(`[CRON] ✅ MSTG signal generated: ${signalType} - ${signalReason} (cooldown reset)`);
           } else {
-            console.log(`[CRON] No MSTG signal: ${mstgSignal.reason}`);
+            console.log(`[CRON] ⏸️ No MSTG signal: ${mstgSignal.reason}`);
           }
         }
         else if (!liveState.position_open) {
@@ -870,9 +892,10 @@ Deno.serve(async (req) => {
           if (buyConditionsMet) {
             signalType = 'BUY';
             signalReason = 'Entry conditions met';
-            signalStopLossPercent = strategy.stop_loss_percent;
-            signalTakeProfitPercent = strategy.take_profit_percent;
-            console.log(`[CRON] ✅ BUY signal generated for ${strategy.name}`);
+            // Use 1:2 ratio for custom strategies: SL = -1%, TP = +2%
+            signalStopLossPercent = strategy.stop_loss_percent || 1.0;
+            signalTakeProfitPercent = strategy.take_profit_percent || 2.0;
+            console.log(`[CRON] ✅ BUY signal generated for ${strategy.name} (SL: ${signalStopLossPercent}%, TP: ${signalTakeProfitPercent}%)`);
             
             await supabase
               .from('strategy_live_states')
@@ -891,9 +914,10 @@ Deno.serve(async (req) => {
           if (sellConditionsMet) {
             signalType = 'SELL';
             signalReason = 'Exit conditions met';
-            signalStopLossPercent = strategy.stop_loss_percent;
-            signalTakeProfitPercent = strategy.take_profit_percent;
-            console.log(`[CRON] ✅ SELL signal generated for ${strategy.name}`);
+            // Use 1:2 ratio for custom strategies: SL = -1%, TP = +2%
+            signalStopLossPercent = strategy.stop_loss_percent || 1.0;
+            signalTakeProfitPercent = strategy.take_profit_percent || 2.0;
+            console.log(`[CRON] ✅ SELL signal generated for ${strategy.name} (SL: ${signalStopLossPercent}%, TP: ${signalTakeProfitPercent}%)`);
             
             await supabase
               .from('strategy_live_states')
@@ -950,11 +974,11 @@ Deno.serve(async (req) => {
             console.log(`[CRON] Signal generated for ${strategy.name} in ${tradingMode} mode (no real execution)`);
           }
 
-          // Send enhanced Telegram notification
+          // Send enhanced Telegram notification IMMEDIATELY
           if (userSettings?.telegram_enabled && userSettings.telegram_bot_token && userSettings.telegram_chat_id) {
             try {
-              console.log(`[ENHANCED-TELEGRAM] Attempting to send ${signalType} signal for ${strategy.name}...`);
               const telegramStartTime = Date.now();
+              console.log(`[TELEGRAM-TIMING] ⏱️ Starting Telegram delivery for ${signalType} signal (${strategy.name}) at ${new Date(telegramStartTime).toISOString()}`);
               
               // Create enhanced trading signal
               const enhancedSignal: TradingSignal = {
@@ -978,13 +1002,16 @@ Deno.serve(async (req) => {
               
               const telegramSent = await enhancedTelegramSignaler.sendTradingSignal(enhancedSignal, userSettings);
               
-              const telegramLatency = Date.now() - telegramStartTime;
+              const telegramEndTime = Date.now();
+              const telegramLatency = telegramEndTime - telegramStartTime;
               
               if (telegramSent) {
                 await markSignalAsDelivered(supabase, signal.id);
-                console.log(`[ENHANCED-TELEGRAM] ✅ ${signalType} signal sent for ${strategy.name} (${telegramLatency}ms)`);
+                console.log(`[TELEGRAM-TIMING] ✅ ${signalType} signal DELIVERED for ${strategy.name}`);
+                console.log(`[TELEGRAM-TIMING] ⏱️ Total delivery time: ${telegramLatency}ms (${(telegramLatency / 1000).toFixed(2)}s)`);
+                console.log(`[TELEGRAM-TIMING] 📤 Signal sent at: ${new Date(telegramEndTime).toISOString()}`);
               } else {
-                console.error(`[ENHANCED-TELEGRAM] ❌ Failed to send ${signalType} signal for ${strategy.name} (${telegramLatency}ms)`);
+                console.error(`[TELEGRAM-TIMING] ❌ Failed to send ${signalType} signal for ${strategy.name} after ${telegramLatency}ms`);
               }
             } catch (telegramError) {
               console.error(`[ENHANCED-TELEGRAM] ❌ Error sending Telegram notification for ${strategy.name}:`, telegramError);

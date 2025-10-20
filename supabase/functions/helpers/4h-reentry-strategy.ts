@@ -217,13 +217,14 @@ export function evaluate4hReentry(
   // LONG setup: C_{t-1} < L_4h AND C_t >= L_4h
   if (C_prev < rangeLow && C_curr >= rangeLow) {
     const entryPrice = C_curr;
-    const stopLoss = entryPrice * (1 - 0.20);  // Fixed -20% SL
-    const takeProfit = entryPrice * (1 + 0.35);  // Fixed +35% TP
+    // Updated to 1:2 ratio: SL = -1%, TP = +2%
+    const stopLoss = entryPrice * (1 - 0.01);  // -1% SL
+    const takeProfit = entryPrice * (1 + 0.02);  // +2% TP (1:2 ratio)
     
     console.log(`[4H-REENTRY] 🟢 LONG reentry detected!`);
     console.log(`  - Previous close (${C_prev.toFixed(2)}) < L_4h (${rangeLow.toFixed(2)})`);
     console.log(`  - Current close (${C_curr.toFixed(2)}) >= L_4h (${rangeLow.toFixed(2)})`);
-    console.log(`  - Entry: ${entryPrice.toFixed(2)}, SL: ${stopLoss.toFixed(2)} (-20%), TP: ${takeProfit.toFixed(2)} (+35%)`);
+    console.log(`  - Entry: ${entryPrice.toFixed(2)}, SL: ${stopLoss.toFixed(2)} (-1%), TP: ${takeProfit.toFixed(2)} (+2%) [1:2 ratio]`);
     
     return {
       signal_type: 'BUY',
@@ -238,13 +239,14 @@ export function evaluate4hReentry(
   // SHORT setup: C_{t-1} > H_4h AND C_t <= H_4h
   if (C_prev > rangeHigh && C_curr <= rangeHigh) {
     const entryPrice = C_curr;
-    const stopLoss = entryPrice * (1 + 0.20);  // Fixed +20% SL (higher price for SHORT)
-    const takeProfit = entryPrice * (1 - 0.35);  // Fixed -35% TP (lower price for SHORT)
+    // Updated to 1:2 ratio: SL = +1%, TP = -2%
+    const stopLoss = entryPrice * (1 + 0.01);  // +1% SL (higher price for SHORT)
+    const takeProfit = entryPrice * (1 - 0.02);  // -2% TP (lower price for SHORT, 1:2 ratio)
     
     console.log(`[4H-REENTRY] 🔴 SHORT reentry detected!`);
     console.log(`  - Previous close (${C_prev.toFixed(2)}) > H_4h (${rangeHigh.toFixed(2)})`);
     console.log(`  - Current close (${C_curr.toFixed(2)}) <= H_4h (${rangeHigh.toFixed(2)})`);
-    console.log(`  - Entry: ${entryPrice.toFixed(2)}, SL: ${stopLoss.toFixed(2)} (+20%), TP: ${takeProfit.toFixed(2)} (-35%)`);
+    console.log(`  - Entry: ${entryPrice.toFixed(2)}, SL: ${stopLoss.toFixed(2)} (+1%), TP: ${takeProfit.toFixed(2)} (-2%) [1:2 ratio]`);
     
     return {
       signal_type: 'SELL',

@@ -471,6 +471,7 @@ export function evaluateATHGuardStrategy(
   console.log('[ATH-GUARD] ✅ ALL CONDITIONS PASSED!');
   
   if (!positionOpen && bias === 'LONG') {
+    // Updated to 1:2 ratio: SL = 1.0x ATR, TP1 = 1.0x ATR (partial), TP2 = 2.0x ATR (full 1:2)
     const stopLoss = currentPrice - (config.atr_sl_multiplier * currentATR);
     const takeProfit1 = currentPrice + (config.atr_tp1_multiplier * currentATR);
     const takeProfit2 = currentPrice + (config.atr_tp2_multiplier * currentATR);
@@ -480,7 +481,8 @@ export function evaluateATHGuardStrategy(
       stopLoss: stopLoss.toFixed(2),
       tp1: takeProfit1.toFixed(2),
       tp2: takeProfit2.toFixed(2),
-      atr: currentATR.toFixed(2)
+      atr: currentATR.toFixed(2),
+      ratio: `1:2 (SL=${config.atr_sl_multiplier}x, TP2=${config.atr_tp2_multiplier}x ATR)`
     });
     
     return {
@@ -493,11 +495,19 @@ export function evaluateATHGuardStrategy(
   }
   
   if (!positionOpen && bias === 'SHORT') {
+    // Updated to 1:2 ratio: SL = 1.0x ATR, TP1 = 1.0x ATR (partial), TP2 = 2.0x ATR (full 1:2)
     const stopLoss = currentPrice + (config.atr_sl_multiplier * currentATR);
     const takeProfit1 = currentPrice - (config.atr_tp1_multiplier * currentATR);
     const takeProfit2 = currentPrice - (config.atr_tp2_multiplier * currentATR);
     
     console.log('[ATH-GUARD] 🚀 GENERATING SELL SIGNAL', {
+      entry: currentPrice.toFixed(2),
+      stopLoss: stopLoss.toFixed(2),
+      tp1: takeProfit1.toFixed(2),
+      tp2: takeProfit2.toFixed(2),
+      atr: currentATR.toFixed(2),
+      ratio: `1:2 (SL=${config.atr_sl_multiplier}x, TP2=${config.atr_tp2_multiplier}x ATR)`
+    });
       entry: currentPrice.toFixed(2),
       stopLoss: stopLoss.toFixed(2),
       tp1: takeProfit1.toFixed(2),
