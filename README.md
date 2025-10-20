@@ -3,7 +3,6 @@
 **A sophisticated trading platform for crypto futures with advanced strategy management, risk control, and performance monitoring.**
 
 ## 🎯 **Key Features**
-
 ### **Trading & Strategies**
 - **Manual Strategy Coding** - Hand-coded trading strategies
 - **Coded Strategy Support** - Pre-built trading strategies (ATH Guard, 4H Reentry, MSTG, SMA-based)
@@ -29,7 +28,6 @@
 - **Real-time Monitoring** - Live strategy execution and signal generation
 
 ## 🏗️ **Architecture**
-
 ### **Frontend**
 - **React 18** with TypeScript
 - **Vite** for fast development

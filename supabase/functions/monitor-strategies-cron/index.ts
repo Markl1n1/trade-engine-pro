@@ -8,6 +8,8 @@ import {
 import { evaluateATHGuardStrategy } from '../helpers/ath-guard-strategy.ts';
 import { evaluate4hReentry } from '../helpers/4h-reentry-strategy.ts';
 import { evaluateMSTG } from '../helpers/mstg-strategy.ts';
+import { evaluateSMACrossoverStrategy, defaultSMACrossoverConfig } from '../helpers/sma-crossover-strategy.ts';
+import { evaluateMTFMomentum, defaultMTFMomentumConfig } from '../helpers/mtf-momentum-strategy.ts';
 import { enhancedTelegramSignaler, TradingSignal } from '../helpers/enhanced-telegram-signaler.ts';
 
 const corsHeaders = {
@@ -780,60 +782,40 @@ Deno.serve(async (req) => {
             }
           }
         } 
-        else if (strategy.strategy_type === 'market_sentiment_trend_gauge') {
-          console.log(`[CRON] 🎯 Evaluating MSTG strategy for ${strategy.symbol}`);
+        else if (strategy.strategy_type === 'market_sentiment_trend_gauge' || strategy.strategy_type === 'mtf_momentum') {
+          // Replace legacy MSTG with new Multi-Timeframe Momentum for scalping (1m/5m/15m)
+          console.log(`[CRON] 🎯 Evaluating MTF Momentum strategy for ${strategy.symbol}`);
           
-          // Check signal cooldown to prevent signals every hour
-          const SIGNAL_COOLDOWN_MS = 15 * 60 * 1000; // 15 minutes
+          // Short cooldown for scalping to avoid signal spam
+          const SIGNAL_COOLDOWN_MS = 2 * 60 * 1000; // 2 minutes
           const lastSignalTime = liveState?.last_signal_time ? new Date(liveState.last_signal_time).getTime() : 0;
           const timeSinceLastSignal = Date.now() - lastSignalTime;
-          
           if (lastSignalTime > 0 && timeSinceLastSignal < SIGNAL_COOLDOWN_MS) {
-            const remainingMinutes = Math.ceil((SIGNAL_COOLDOWN_MS - timeSinceLastSignal) / 60000);
-            console.log(`[CRON] ⏸️ MSTG signal cooldown active. ${remainingMinutes} minutes remaining until next signal allowed`);
+            const remaining = Math.ceil((SIGNAL_COOLDOWN_MS - timeSinceLastSignal) / 1000);
+            console.log(`[CRON] ⏸️ MTF cooldown active. ${remaining}s remaining`);
             continue;
           }
           
-          // Fetch benchmark data
-          const benchmarkSymbol = strategy.benchmark_symbol || 'BTCUSDT';
-          console.log(`[CRON] Fetching benchmark data for ${benchmarkSymbol}...`);
+          // Force scalping timeframes: 1m/5m/15m
+          const candles1m = await getCandlesWithHistory(supabase, strategy.symbol, '1m', exchangeType, useTestnet);
+          const candles5m = await getCandlesWithHistory(supabase, strategy.symbol, '5m', exchangeType, useTestnet);
+          const candles15m = await getCandlesWithHistory(supabase, strategy.symbol, '15m', exchangeType, useTestnet);
           
-          const benchmarkCandles = await getCandlesWithHistory(
-            supabase,
-            benchmarkSymbol,
-            strategy.timeframe,
-            exchangeType,
-            useTestnet
-          );
-          
-          console.log(`[CRON] Fetched ${benchmarkCandles.length} benchmark candles`);
-          
-          const mstgConfig = {
-            long_threshold: strategy.mstg_long_threshold || 30,
-            short_threshold: strategy.mstg_short_threshold || -30,
-            exit_threshold: strategy.mstg_exit_threshold || 0,
-            extreme_threshold: strategy.mstg_extreme_threshold || 60,
-            weight_momentum: strategy.mstg_weight_momentum || 0.25,
-            weight_trend: strategy.mstg_weight_trend || 0.35,
-            weight_volatility: strategy.mstg_weight_volatility || 0.20,
-            weight_relative: strategy.mstg_weight_relative || 0.20,
-          };
-          
-          const mstgSignal = evaluateMSTG(
-            candles,
-            benchmarkCandles,
-            mstgConfig,
+          const mtfSignal = evaluateMTFMomentum(
+            candles1m,
+            candles5m,
+            candles15m,
+            defaultMTFMomentumConfig,
             liveState?.position_open || false
           );
           
-          if (mstgSignal.signal_type) {
-            signalType = mstgSignal.signal_type;
-            signalReason = mstgSignal.reason;
-            // Use 1:2 ratio for MSTG: SL = -1%, TP = +2%
-            signalStopLossPercent = strategy.stop_loss_percent || 1.0;
-            signalTakeProfitPercent = strategy.take_profit_percent || 2.0;
+          if (mtfSignal.signal_type) {
+            signalType = mtfSignal.signal_type;
+            signalReason = mtfSignal.reason;
+            // Tight SL/TP for scalping 1:1.5
+            signalStopLossPercent = strategy.stop_loss_percent || 0.5;
+            signalTakeProfitPercent = strategy.take_profit_percent || 0.75;
             
-            // Update last_signal_time to enforce cooldown
             await supabase
               .from('strategy_live_states')
               .update({
@@ -842,9 +824,9 @@ Deno.serve(async (req) => {
               })
               .eq('strategy_id', strategy.id);
             
-            console.log(`[CRON] ✅ MSTG signal generated: ${signalType} - ${signalReason} (cooldown reset)`);
+            console.log(`[CRON] ✅ MTF signal generated: ${signalType} - ${signalReason}`);
           } else {
-            console.log(`[CRON] ⏸️ No MSTG signal: ${mstgSignal.reason}`);
+            console.log(`[CRON] ⏸️ No MTF signal: ${mtfSignal.reason}`);
           }
         }
         else if (!liveState.position_open) {
@@ -883,6 +865,31 @@ Deno.serve(async (req) => {
               } else if (positionExists === null) {
                 console.log(`[CRON] ⚠️ Could not verify ${exchangeType.toUpperCase()} position for ${strategy.name} - continuing with signal generation`);
               }
+            }
+          }
+
+          // Support code-defined strategies: SMA 20/200 with RSI filter (scalping)
+          if (strategy.strategy_type === 'sma_20_200_rsi') {
+            const smaSignal = evaluateSMACrossoverStrategy(
+              candles.map(c => ({
+                open: c.open,
+                high: c.high,
+                low: c.low,
+                close: c.close,
+                volume: c.volume,
+                timestamp: c.timestamp,
+              })),
+              defaultSMACrossoverConfig,
+              false
+            );
+            if (smaSignal.signal_type) {
+              signalType = smaSignal.signal_type;
+              signalReason = smaSignal.reason;
+              signalStopLoss = smaSignal.stop_loss;
+              signalTakeProfit = smaSignal.take_profit;
+              console.log(`[CRON] ✅ SMA 20/200 with RSI signal: ${signalType} - ${signalReason}`);
+            } else {
+              console.log(`[CRON] ⏸️ SMA: ${smaSignal.reason}`);
             }
           }
 
