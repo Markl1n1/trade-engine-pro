@@ -282,6 +282,8 @@ export type Database = {
           ath_guard_stoch_overbought: number | null
           ath_guard_stoch_oversold: number | null
           ath_guard_volume_multiplier: number | null
+          atr_sl_multiplier: number | null
+          atr_tp_multiplier: number | null
           benchmark_symbol: string | null
           created_at: string
           description: string | null
@@ -295,8 +297,19 @@ export type Database = {
           mstg_weight_relative: number | null
           mstg_weight_trend: number | null
           mstg_weight_volatility: number | null
+          mtf_macd_fast: number | null
+          mtf_macd_signal: number | null
+          mtf_macd_slow: number | null
+          mtf_rsi_entry_threshold: number | null
+          mtf_rsi_period: number | null
+          mtf_volume_multiplier: number | null
           name: string
           position_size_percent: number | null
+          rsi_overbought: number | null
+          rsi_oversold: number | null
+          rsi_period: number | null
+          sma_fast_period: number | null
+          sma_slow_period: number | null
           status: Database["public"]["Enums"]["strategy_status"]
           stop_loss_percent: number | null
           strategy_type: string | null
@@ -305,6 +318,7 @@ export type Database = {
           timeframe: string
           updated_at: string
           user_id: string
+          volume_multiplier: number | null
         }
         Insert: {
           ath_guard_ath_safety_distance?: number | null
@@ -317,6 +331,8 @@ export type Database = {
           ath_guard_stoch_overbought?: number | null
           ath_guard_stoch_oversold?: number | null
           ath_guard_volume_multiplier?: number | null
+          atr_sl_multiplier?: number | null
+          atr_tp_multiplier?: number | null
           benchmark_symbol?: string | null
           created_at?: string
           description?: string | null
@@ -330,8 +346,19 @@ export type Database = {
           mstg_weight_relative?: number | null
           mstg_weight_trend?: number | null
           mstg_weight_volatility?: number | null
+          mtf_macd_fast?: number | null
+          mtf_macd_signal?: number | null
+          mtf_macd_slow?: number | null
+          mtf_rsi_entry_threshold?: number | null
+          mtf_rsi_period?: number | null
+          mtf_volume_multiplier?: number | null
           name: string
           position_size_percent?: number | null
+          rsi_overbought?: number | null
+          rsi_oversold?: number | null
+          rsi_period?: number | null
+          sma_fast_period?: number | null
+          sma_slow_period?: number | null
           status?: Database["public"]["Enums"]["strategy_status"]
           stop_loss_percent?: number | null
           strategy_type?: string | null
@@ -340,6 +367,7 @@ export type Database = {
           timeframe?: string
           updated_at?: string
           user_id: string
+          volume_multiplier?: number | null
         }
         Update: {
           ath_guard_ath_safety_distance?: number | null
@@ -352,6 +380,8 @@ export type Database = {
           ath_guard_stoch_overbought?: number | null
           ath_guard_stoch_oversold?: number | null
           ath_guard_volume_multiplier?: number | null
+          atr_sl_multiplier?: number | null
+          atr_tp_multiplier?: number | null
           benchmark_symbol?: string | null
           created_at?: string
           description?: string | null
@@ -365,8 +395,19 @@ export type Database = {
           mstg_weight_relative?: number | null
           mstg_weight_trend?: number | null
           mstg_weight_volatility?: number | null
+          mtf_macd_fast?: number | null
+          mtf_macd_signal?: number | null
+          mtf_macd_slow?: number | null
+          mtf_rsi_entry_threshold?: number | null
+          mtf_rsi_period?: number | null
+          mtf_volume_multiplier?: number | null
           name?: string
           position_size_percent?: number | null
+          rsi_overbought?: number | null
+          rsi_oversold?: number | null
+          rsi_period?: number | null
+          sma_fast_period?: number | null
+          sma_slow_period?: number | null
           status?: Database["public"]["Enums"]["strategy_status"]
           stop_loss_percent?: number | null
           strategy_type?: string | null
@@ -375,6 +416,7 @@ export type Database = {
           timeframe?: string
           updated_at?: string
           user_id?: string
+          volume_multiplier?: number | null
         }
         Relationships: []
       }
