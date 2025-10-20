@@ -695,12 +695,14 @@ Deno.serve(async (req) => {
 
         const exchangeType = userSettings?.exchange_type || 'binance';
         const useTestnet = userSettings?.use_testnet || false;
+        // For Hybrid Live mode, always use mainnet data (useTestnet = false)
+        const useMainnetData = tradingMode === 'hybrid_live' ? false : useTestnet;
         const candles = await getCandlesWithHistory(
           supabase, 
           strategy.symbol, 
-          strategy.timeframe,
-          exchangeType,
-          useTestnet
+          strategy.timeframe, 
+          exchangeType, 
+          useMainnetData
         );
         
         if (candles.length === 0) {
@@ -828,7 +830,7 @@ Deno.serve(async (req) => {
             }
           }
         } 
-        else if (strategy.strategy_type === 'market_sentiment_trend_gauge' || strategy.strategy_type === 'mtf_momentum') {
+        else if (strategy.strategy_type === 'market_sentiment_trend_gauge' || strategy.strategy_type === 'mtf_momentum' || strategy.strategy_type === 'mstg') {
           // Replace legacy MSTG with new Multi-Timeframe Momentum for scalping (1m/5m/15m)
           console.log(`[CRON] 🎯 Evaluating MTF Momentum strategy for ${strategy.symbol}`);
           
@@ -843,9 +845,11 @@ Deno.serve(async (req) => {
           }
           
           // Force scalping timeframes: 1m/5m/15m
-          const candles1m = await getCandlesWithHistory(supabase, strategy.symbol, '1m', exchangeType, useTestnet);
-          const candles5m = await getCandlesWithHistory(supabase, strategy.symbol, '5m', exchangeType, useTestnet);
-          const candles15m = await getCandlesWithHistory(supabase, strategy.symbol, '15m', exchangeType, useTestnet);
+          // For Hybrid Live mode, always use mainnet data (useTestnet = false)
+          const useMainnetData = tradingMode === 'hybrid_live' ? false : useTestnet;
+          const candles1m = await getCandlesWithHistory(supabase, strategy.symbol, '1m', exchangeType, useMainnetData);
+          const candles5m = await getCandlesWithHistory(supabase, strategy.symbol, '5m', exchangeType, useMainnetData);
+          const candles15m = await getCandlesWithHistory(supabase, strategy.symbol, '15m', exchangeType, useMainnetData);
           
           const mtfSignal = evaluateMTFMomentum(
             candles1m,
