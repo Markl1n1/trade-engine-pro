@@ -634,7 +634,7 @@ const Backtest = () => {
                 <ResponsiveContainer width="100%" height={250}>
                   <LineChart data={results.balance_history?.map((point: any) => ({
                     time: new Date(point.time).toLocaleDateString(),
-                    balance: point.balance.toFixed(2),
+                    balance: point.balance ? parseFloat(point.balance.toFixed(2)) : 0,
                   })) || []}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="time" tick={{ fontSize: 10 }} />
@@ -650,13 +650,13 @@ const Backtest = () => {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="p-3 bg-secondary/50 rounded">
                   <div className="text-xs text-muted-foreground">Total Return</div>
-                  <div className={`text-xl font-bold ${results.total_return >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                    {results.total_return >= 0 ? '+' : ''}{results.total_return.toFixed(2)}%
+                  <div className={`text-xl font-bold ${(results.total_return ?? 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                    {(results.total_return ?? 0) >= 0 ? '+' : ''}{(results.total_return ?? 0).toFixed(2)}%
                   </div>
                 </div>
                 <div className="p-3 bg-secondary/50 rounded">
                   <div className="text-xs text-muted-foreground">Win Rate</div>
-                  <div className="text-xl font-bold">{results.win_rate.toFixed(1)}%</div>
+                  <div className="text-xl font-bold">{(results.win_rate ?? 0).toFixed(1)}%</div>
                 </div>
                 <div className="p-3 bg-secondary/50 rounded">
                   <div className="text-xs text-muted-foreground flex items-center gap-1">
@@ -674,11 +674,11 @@ const Backtest = () => {
                       </UITooltip>
                     </TooltipProvider>
                   </div>
-                  <div className="text-xl font-bold text-red-500">-{results.max_drawdown.toFixed(2)}%</div>
+                  <div className="text-xl font-bold text-red-500">-{(results.max_drawdown ?? 0).toFixed(2)}%</div>
                 </div>
                 <div className="p-3 bg-secondary/50 rounded">
                   <div className="text-xs text-muted-foreground">Profit Factor</div>
-                  <div className="text-xl font-bold">{results.profit_factor?.toFixed(2) || 'N/A'}</div>
+                  <div className="text-xl font-bold">{(results.profit_factor ?? 0).toFixed(2)}</div>
                 </div>
               </div>
 
@@ -698,15 +698,15 @@ const Backtest = () => {
                 </div>
                 <div className="flex justify-between p-2 bg-secondary/30 rounded">
                   <span className="text-muted-foreground">Avg Win:</span>
-                  <span className="font-semibold text-green-500">${results.avg_win?.toFixed(2) || '0'}</span>
+                  <span className="font-semibold text-green-500">${(results.avg_win ?? 0).toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between p-2 bg-secondary/30 rounded">
                   <span className="text-muted-foreground">Avg Loss:</span>
-                  <span className="font-semibold text-red-500">-${results.avg_loss?.toFixed(2) || '0'}</span>
+                  <span className="font-semibold text-red-500">-${(results.avg_loss ?? 0).toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between p-2 bg-secondary/30 rounded">
                   <span className="text-muted-foreground">Final Balance:</span>
-                  <span className="font-semibold">${results.final_balance.toFixed(2)}</span>
+                  <span className="font-semibold">${(results.final_balance ?? 0).toFixed(2)}</span>
                 </div>
               </div>
 
@@ -780,19 +780,19 @@ const Backtest = () => {
             <div>
               <p className="text-xs text-muted-foreground">Final Balance</p>
               <p className="text-xl font-bold mt-1">
-                {results ? `$${results.final_balance.toFixed(2)}` : "—"}
+                {results ? `$${(results.final_balance ?? 0).toFixed(2)}` : "—"}
               </p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Total Return</p>
-              <p className={`text-xl font-bold mt-1 ${results && results.total_return >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                {results ? `${results.total_return >= 0 ? '+' : ''}${results.total_return.toFixed(2)}%` : "—"}
+              <p className={`text-xl font-bold mt-1 ${results && (results.total_return ?? 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                {results ? `${(results.total_return ?? 0) >= 0 ? '+' : ''}${(results.total_return ?? 0).toFixed(2)}%` : "—"}
               </p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Win Rate</p>
               <p className="text-xl font-bold mt-1">
-                {results ? `${results.win_rate.toFixed(1)}%` : "—"}
+                {results ? `${(results.win_rate ?? 0).toFixed(1)}%` : "—"}
               </p>
             </div>
             <div>
@@ -812,7 +812,7 @@ const Backtest = () => {
                 </UITooltip>
               </div>
               <p className="text-xl font-bold mt-1 text-red-500">
-                {results ? `${results.max_drawdown.toFixed(2)}%` : "—"}
+                {results ? `${(results.max_drawdown ?? 0).toFixed(2)}%` : "—"}
               </p>
             </div>
           </div>
@@ -830,7 +830,7 @@ const Backtest = () => {
                 <li>• Take profit hit: Price rises {takeProfitPercent}% from entry</li>
                 <li>• Sell signal: ALL sell conditions are met</li>
               </ul>
-              <p><strong>Position Sizing:</strong> {((parseFloat(initialBalance) * (selectedStrategyData?.position_size_percent || 100)) / 100).toFixed(2)} per trade</p>
+              <p><strong>Position Sizing:</strong> ${((parseFloat(initialBalance || '0') * (selectedStrategyData?.position_size_percent || 100)) / 100).toFixed(2)} per trade</p>
               <p className="mt-2 pt-2 border-t border-border"><strong>Total Processed:</strong> {results.total_trades} trades from {startDate} to {endDate}</p>
             </div>
           </div>

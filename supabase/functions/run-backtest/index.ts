@@ -1716,9 +1716,9 @@ function evaluateMTFMomentum(
   const rsi15m = calculateRSI(candles15m.map(c => c.close), config.mtf_rsi_period);
 
   // Calculate MACD for all timeframes
-  const macd1m = calculateMACD(candles1m.map(c => c.close), config.mtf_macd_fast, config.mtf_macd_slow, config.mtf_macd_signal);
-  const macd5m = calculateMACD(candles5m.map(c => c.close), config.mtf_macd_fast, config.mtf_macd_slow, config.mtf_macd_signal);
-  const macd15m = calculateMACD(candles15m.map(c => c.close), config.mtf_macd_fast, config.mtf_macd_slow, config.mtf_macd_signal);
+  const macd1m = calculateMACDCustom(candles1m.map(c => c.close), config.mtf_macd_fast, config.mtf_macd_slow, config.mtf_macd_signal);
+  const macd5m = calculateMACDCustom(candles5m.map(c => c.close), config.mtf_macd_fast, config.mtf_macd_slow, config.mtf_macd_signal);
+  const macd15m = calculateMACDCustom(candles15m.map(c => c.close), config.mtf_macd_fast, config.mtf_macd_slow, config.mtf_macd_signal);
 
   // Calculate volume confirmation
   const volume1m = candles1m.slice(-20).map(c => c.volume);
@@ -1781,59 +1781,17 @@ function evaluateMTFMomentum(
   return { signal_type: 'HOLD', confidence: 0.3 };
 }
 
-// Helper functions for MTF Momentum
-function calculateRSI(prices: number[], period: number): number[] {
-  if (prices.length < period + 1) return new Array(prices.length).fill(NaN);
-  
-  const rsi: number[] = new Array(prices.length).fill(NaN);
-  let gains = 0;
-  let losses = 0;
-  
-  for (let i = 1; i <= period; i++) {
-    const change = prices[i] - prices[i - 1];
-    if (change > 0) gains += change;
-    else losses -= change;
-  }
-  
-  let avgGain = gains / period;
-  let avgLoss = losses / period;
-  
-  if (avgLoss === 0) {
-    rsi[period] = 100;
-  } else {
-    const rs = avgGain / avgLoss;
-    rsi[period] = 100 - (100 / (1 + rs));
-  }
-  
-  for (let i = period + 1; i < prices.length; i++) {
-    const change = prices[i] - prices[i - 1];
-    const gain = change > 0 ? change : 0;
-    const loss = change < 0 ? -change : 0;
-    
-    avgGain = (avgGain * (period - 1) + gain) / period;
-    avgLoss = (avgLoss * (period - 1) + loss) / period;
-    
-    if (avgLoss === 0) {
-      rsi[i] = 100;
-    } else {
-      const rs = avgGain / avgLoss;
-      rsi[i] = 100 - (100 / (1 + rs));
-    }
-  }
-  
-  return rsi;
-}
-
-function calculateMACD(prices: number[], fastPeriod: number, slowPeriod: number, signalPeriod: number): { macd: number[]; signal: number[]; histogram: number[] } {
-  const emaFast = calculateEMA(prices, fastPeriod);
-  const emaSlow = calculateEMA(prices, slowPeriod);
+// Helper functions for MTF Momentum (with custom parameters)
+function calculateMACDCustom(prices: number[], fastPeriod: number, slowPeriod: number, signalPeriod: number): { macd: number[]; signal: number[]; histogram: number[] } {
+  const emaFast = calculateEMACustom(prices, fastPeriod);
+  const emaSlow = calculateEMACustom(prices, slowPeriod);
   
   const macd: number[] = [];
   for (let i = 0; i < prices.length; i++) {
     macd[i] = emaFast[i] - emaSlow[i];
   }
   
-  const signal = calculateEMA(macd, signalPeriod);
+  const signal = calculateEMACustom(macd, signalPeriod);
   const histogram: number[] = [];
   
   for (let i = 0; i < macd.length; i++) {
@@ -1843,7 +1801,7 @@ function calculateMACD(prices: number[], fastPeriod: number, slowPeriod: number,
   return { macd, signal, histogram };
 }
 
-function calculateEMA(prices: number[], period: number): number[] {
+function calculateEMACustom(prices: number[], period: number): number[] {
   if (prices.length < period) return new Array(prices.length).fill(NaN);
   
   const ema: number[] = new Array(prices.length).fill(NaN);
