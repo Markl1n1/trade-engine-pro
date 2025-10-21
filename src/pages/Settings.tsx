@@ -768,46 +768,7 @@ const Settings = () => {
         <p className="text-sm text-muted-foreground mb-4">
           Global monitoring control - runs automatically every {systemSettings.monitoringInterval} seconds on the server
         </p>
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <Label htmlFor="monitoring-toggle" className="text-base">Enable System Monitoring</Label>
-              <p className="text-sm text-muted-foreground">
-                Automatically monitor all active strategies for all users
-              </p>
-            </div>
-            <Switch id="monitoring-toggle" checked={systemSettings.monitoringEnabled} onCheckedChange={handleToggleMonitoring} />
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label>System Status</Label>
-              <Badge variant={systemSettings.monitoringEnabled ? "default" : "secondary"}>
-                {systemSettings.monitoringEnabled ? "🟢 Active" : "⚫ Inactive"}
-              </Badge>
-            </div>
-            {systemSettings.lastRun && <p className="text-sm text-muted-foreground">
-                Last run: {new Date(systemSettings.lastRun).toLocaleString()}
-              </p>}
-          </div>
-
-          <div className="space-y-2">
-            <Label>Monitoring Interval</Label>
-            <p className="text-sm text-muted-foreground">
-              Every {systemSettings.monitoringInterval} seconds (automated via cron)
-            </p>
-          </div>
-
-          <Alert className="bg-primary/10 border-primary/30">
-            <AlertCircle className="h-4 w-4 text-primary" />
-            
-          </Alert>
-
-          <Button variant="destructive" onClick={handleEmergencyStop} className="w-full" size="lg">
-            <AlertTriangle className="w-5 h-5 mr-2" />
-            Emergency Stop All Monitoring
-          </Button>
-        </div>
+        
       </Card>
 
       {/* Save Button */}
