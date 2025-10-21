@@ -200,10 +200,10 @@ const Settings = () => {
       description: "Application settings have been saved"
     });
   };
-  const checkEncryptedCredentials = async (userId: string) => {
+  const checkApiCredentials = async (userId: string) => {
     try {
       const { data } = await supabase
-        .from('encrypted_credentials')
+        .from('api_credentials')
         .select('credential_type')
         .eq('user_id', userId);
       
@@ -216,7 +216,7 @@ const Settings = () => {
         });
       }
     } catch (error) {
-      console.error("Error checking encrypted credentials:", error);
+      console.error("Error checking API credentials:", error);
     }
   };
 
@@ -229,8 +229,8 @@ const Settings = () => {
       } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Check encrypted credentials status
-      await checkEncryptedCredentials(user.id);
+      // Check API credentials status
+      await checkApiCredentials(user.id);
 
       const {
         data,
@@ -413,7 +413,7 @@ const Settings = () => {
       if (error) throw error;
 
       // Refresh credential status
-      await checkEncryptedCredentials(user.id);
+      await checkApiCredentials(user.id);
 
       toast({
         title: "Success",
@@ -450,7 +450,7 @@ const Settings = () => {
       if (!user) throw new Error("User not authenticated");
 
       const { error } = await supabase
-        .from('encrypted_credentials')
+        .from('api_credentials')
         .delete()
         .eq('user_id', user.id)
         .eq('credential_type', credentialType);
@@ -458,7 +458,7 @@ const Settings = () => {
       if (error) throw error;
 
       // Refresh credential status
-      await checkEncryptedCredentials(user.id);
+      await checkApiCredentials(user.id);
 
       toast({
         title: "Success",
