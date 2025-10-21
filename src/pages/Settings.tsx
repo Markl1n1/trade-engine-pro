@@ -427,10 +427,12 @@ const Settings = () => {
       
       let errorMessage = error.message || "Failed to save credentials";
       
-      // Provide specific guidance for permission errors
-      if (error.message?.includes('permission denied') || error.message?.includes('vault')) {
-        errorMessage = "Failed to store credentials securely. Please try again.";
-      } else if (error.message?.includes('authenticate')) {
+      // Provide specific guidance for different error types
+      if (error.message?.includes('permission denied')) {
+        errorMessage = "Permission error. Please refresh the page and try again.";
+      } else if (error.message?.includes('vault')) {
+        errorMessage = "Failed to store credentials securely. Please contact support.";
+      } else if (error.message?.includes('Unauthorized')) {
         errorMessage = "Authentication error. Please log out and log back in.";
       }
       
