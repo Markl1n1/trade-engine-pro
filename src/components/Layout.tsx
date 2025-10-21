@@ -2,6 +2,7 @@ import { Link, useLocation } from "react-router-dom";
 import { Activity, BarChart3, Settings, Zap, LogOut, RefreshCw, Database, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
+import { useUserRole } from "@/hooks/useUserRole";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
@@ -17,6 +18,7 @@ const Layout = ({
     refreshSession,
     error
   } = useAuth();
+  const { isAdmin } = useUserRole();
   const {
     toast
   } = useToast();
@@ -93,6 +95,9 @@ const Layout = ({
         <div className="container mx-auto px-4">
           <div className="flex gap-6">
             {navItems.map(item => {
+            // Hide Settings link for non-admin users
+            if (item.path === '/settings' && !isAdmin) return null;
+            
             const Icon = item.icon;
             const isActive = location.pathname === item.path;
             return <Link key={item.path} to={item.path} className={cn("flex items-center gap-2 px-3 py-3 border-b-2 transition-colors", isActive ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground")}>

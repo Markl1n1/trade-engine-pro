@@ -16,7 +16,7 @@ const authSchema = z.object({
     .email({ message: "Invalid email address" })
     .max(255, { message: "Email too long" }),
   password: z.string()
-    .min(12, { message: "Password must be at least 12 characters" })
+    .min(10, { message: "Password must be at least 10 characters" })
     .regex(/[A-Z]/, { message: "Password must contain at least one uppercase letter" })
     .regex(/[a-z]/, { message: "Password must contain at least one lowercase letter" })
     .regex(/[0-9]/, { message: "Password must contain at least one number" })
@@ -195,14 +195,14 @@ const Auth = () => {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
-                    minLength={12}
+                    minLength={10}
                     autoComplete="new-password"
                   />
                   {validationErrors.password && (
                     <p className="text-sm text-destructive">{validationErrors.password}</p>
                   )}
                   <p className="text-xs text-muted-foreground">
-                    Password must be at least 12 characters and contain uppercase, lowercase, number, and special character.
+                    Password must be at least 10 characters and contain uppercase, lowercase, number, and special character.
                   </p>
                 </div>
                 <Button type="submit" className="w-full" disabled={isLoading}>

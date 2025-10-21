@@ -12,6 +12,7 @@ import Settings from "./pages/Settings";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 import ProtectedRoute from "./components/ProtectedRoute";
+import AdminRoute from "./components/AdminRoute";
 
 const queryClient = new QueryClient();
 
@@ -33,7 +34,7 @@ const App = () => (
                   <Route path="/backtest" element={<Backtest />} />
             <Route path="/data-quality" element={<DataQuality />} />
             <Route path="/audit-logs" element={<AuditLogsPage />} />
-            <Route path="/settings" element={<Settings />} />
+            <Route path="/settings" element={<AdminRoute><Settings /></AdminRoute>} />
                   {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                   <Route path="*" element={<NotFound />} />
                 </Routes>
