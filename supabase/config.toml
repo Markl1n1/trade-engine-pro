@@ -1,27 +1,34 @@
 project_id = "wnkjtkigpyfnthnfmdlk"
 
-# Core trading functions
+# ===========================================
+# TRADE ENGINE PRO - Edge Functions Config
+# ===========================================
+
+# CORE TRADING FUNCTIONS
 [functions.monitor-strategies-cron]
 verify_jwt = true
 
 [functions.run-backtest]
 verify_jwt = true
 
-[functions.run-backtest-simple]
-verify_jwt = true
-
 [functions.close-position]
 verify_jwt = true
 
-# Advanced functions
-[functions.instant-signals]
+# ACCOUNT AND POSITION MANAGEMENT
+[functions.get-account-data]
+verify_jwt = true
+
+[functions.check-binance-positions-cron]
+verify_jwt = true
+
+# MARKET DATA COLLECTION
+[functions.binance-market-data]
 verify_jwt = false
 
-# Market data functions
-[functions.binance-api-status]
+[functions.bybit-market-data]
 verify_jwt = false
 
-[functions.binance-websocket-monitor]
+[functions.binance-ticker]
 verify_jwt = false
 
 [functions.exchange-websocket-monitor]
@@ -30,11 +37,16 @@ verify_jwt = false
 [functions.get-hybrid-market-data]
 verify_jwt = true
 
+# MONITORING AND QUALITY
+[functions.data-quality-monitor]
+verify_jwt = true
+
 [functions.get-audit-logs]
 verify_jwt = true
 
-[functions.data-quality-monitor]
-verify_jwt = true
+# UTILITY FUNCTIONS
+[functions.instant-signals]
+verify_jwt = false
 
 [functions.test-exchange]
 verify_jwt = true
