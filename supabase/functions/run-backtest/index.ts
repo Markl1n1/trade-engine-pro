@@ -535,8 +535,19 @@ serve(async (req) => {
 
     console.log(`Strategy: ${strategy.name}, Symbol: ${strategy.symbol}, Timeframe: ${strategy.timeframe}, Type: ${strategy.strategy_type || 'standard'}`);
 
+    // Fetch user settings to get exchange_type
+    const { data: userSettings, error: settingsError } = await supabaseClient
+      .from('user_settings')
+      .select('exchange_type')
+      .eq('user_id', strategy.user_id)
+      .single();
+
+    if (settingsError) {
+      console.warn('[BACKTEST] Could not fetch user settings, defaulting to binance:', settingsError);
+    }
+
     // ✅ ПРАВИЛЬНО: Determine exchange-specific fees
-    const exchangeType = strategy.exchange_type || 'binance';
+    const exchangeType = userSettings?.exchange_type || 'binance';
     let exchangeMakerFee = makerFee;
     let exchangeTakerFee = takerFee;
     
@@ -609,6 +620,7 @@ serve(async (req) => {
         .select('*')
         .eq('symbol', strategy.symbol)
         .eq('timeframe', strategy.timeframe)
+        .eq('exchange_type', exchangeType)
         .gte('open_time', new Date(startDate).getTime())
         .lte('open_time', new Date(endDate).getTime())
         .order('open_time', { ascending: true })

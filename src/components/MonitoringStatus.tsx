@@ -36,7 +36,7 @@ export function MonitoringStatus() {
     // Connect to WebSocket monitor
     const connectWebSocket = () => {
       setWsStatus('connecting');
-      const ws = new WebSocket(`wss://wnkjtkigpyfnthnfmdlk.supabase.co/functions/v1/binance-websocket-monitor`);
+      const ws = new WebSocket(`wss://wnkjtkigpyfnthnfmdlk.supabase.co/functions/v1/exchange-websocket-monitor`);
       ws.onopen = () => {
         console.log('[MONITOR] WebSocket connected');
         setWsStatus('connected');
