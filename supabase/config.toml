@@ -41,6 +41,9 @@ verify_jwt = true
 [functions.test-exchange]
 verify_jwt = true
 
+[functions.migrate-credentials]
+verify_jwt = false
+
 # Removed unused Edge Functions:
 # - generate-strategy (AI Strategy Generator - removed)
 # - performance-dashboard (returned only mock data)
