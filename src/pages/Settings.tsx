@@ -763,13 +763,7 @@ const Settings = () => {
       </Card>
 
       {/* System Monitoring (24/7) */}
-      <Card className="p-6">
-        <h2 className="text-xl font-semibold mb-4">System Monitoring (24/7)</h2>
-        <p className="text-sm text-muted-foreground mb-4">
-          Global monitoring control - runs automatically every {systemSettings.monitoringInterval} seconds on the server
-        </p>
-        
-      </Card>
+      
 
       {/* Save Button */}
       <div className="flex justify-end">
