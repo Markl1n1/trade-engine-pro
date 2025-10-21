@@ -217,15 +217,15 @@ const Backtest = () => {
 
       if (error) throw error;
 
-      if (data.success) {
+      if (data.success && data.results) {
         setResults(data.results);
         toast({
           title: `Backtest completed (${engine})`,
-          description: `Processed ${data.results.total_trades} trades`,
+          description: `Processed ${data.results.total_trades || 0} trades`,
         });
         return data.results;
       } else {
-        throw new Error(data.error);
+        throw new Error(data.error || 'Backtest failed: Invalid response structure');
       }
     } catch (error: any) {
       toast({

@@ -4,6 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as indicators from "../indicators/all-indicators.ts";
 import { evaluateATHGuardStrategy } from '../helpers/ath-guard-strategy.ts';
 import { evaluateSMACrossoverStrategy, defaultSMACrossoverConfig } from '../helpers/sma-crossover-strategy.ts';
+import { evaluateMTFMomentum } from '../helpers/mtf-momentum-strategy.ts';
 import { EnhancedBacktestEngine } from '../helpers/backtest-engine.ts';
 
 const corsHeaders = {
@@ -149,11 +150,31 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
     maxDrawdown = Math.max(maxDrawdown, ((maxBalance - balance) / maxBalance) * 100);
   }
 
-  console.log(`[ATH-GUARD] Backtest complete: ${trades.length} trades, ${balance.toFixed(2)} final balance`);
-
   const totalReturn = ((balance - initialBalance) / initialBalance) * 100;
   const winningTrades = trades.filter(t => t.profit && t.profit > 0).length;
+  const losingTrades = trades.length - winningTrades;
   const winRate = trades.length > 0 ? (winningTrades / trades.length) * 100 : 0;
+  
+  const avgWin = winningTrades > 0 
+    ? trades.filter(t => t.profit && t.profit > 0).reduce((sum, t) => sum + (t.profit || 0), 0) / winningTrades 
+    : 0;
+  const avgLoss = losingTrades > 0
+    ? Math.abs(trades.filter(t => (t.profit || 0) <= 0).reduce((sum, t) => sum + (t.profit || 0), 0) / losingTrades)
+    : 0;
+  const profitFactor = avgLoss > 0 ? (avgWin * winningTrades) / (avgLoss * losingTrades) : 0;
+
+  const balanceHistory: { time: number; balance: number }[] = [];
+  let runningBalance = initialBalance;
+  for (const trade of trades) {
+    if (trade.exit_time) {
+      runningBalance += (trade.profit || 0);
+      balanceHistory.push({ time: trade.exit_time, balance: runningBalance });
+    }
+  }
+
+  console.log(`[ATH-GUARD] Backtest complete: ${trades.length} trades, ${balance.toFixed(2)} final balance`);
+  console.log(`[ATH-GUARD] Trades breakdown: ${winningTrades} wins, ${losingTrades} losses`);
+  console.log(`[ATH-GUARD] Balance history: ${balanceHistory.length} entries`);
 
   await supabaseClient.from('strategy_backtest_results').insert({ 
     strategy_id: strategyId, 
@@ -164,13 +185,42 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
     total_return: totalReturn, 
     total_trades: trades.length, 
     winning_trades: winningTrades, 
-    losing_trades: trades.length - winningTrades, 
+    losing_trades: losingTrades, 
     win_rate: winRate, 
     max_drawdown: maxDrawdown, 
     sharpe_ratio: 0 
   });
 
-  return new Response(JSON.stringify({ success: true, balance, totalReturn, trades: trades.length, winRate, maxDrawdown }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  return new Response(
+    JSON.stringify({
+      success: true,
+      results: {
+        initial_balance: initialBalance,
+        final_balance: balance,
+        total_return: totalReturn,
+        total_trades: trades.length,
+        winning_trades: winningTrades,
+        losing_trades: losingTrades,
+        win_rate: winRate,
+        max_drawdown: maxDrawdown,
+        profit_factor: profitFactor,
+        avg_win: avgWin,
+        avg_loss: avgLoss,
+        balance_history: balanceHistory,
+        trades: trades,
+        config: {
+          strategy_type: 'ath_guard_scalping',
+          product_type: productType,
+          leverage,
+          maker_fee: makerFee,
+          taker_fee: takerFee,
+          slippage,
+          execution_timing: executionTiming
+        }
+      }
+    }),
+    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+  );
 }
 
 // Helper functions for ATH Guard (imported from helper but duplicated here for performance)
@@ -1605,11 +1655,20 @@ async function runMTFMomentumBacktest(
     }));
 
     // Evaluate MTF Momentum strategy
+    const mtfConfig = {
+      rsi_period: config.mtf_rsi_period,
+      rsi_entry_threshold: config.mtf_rsi_entry_threshold,
+      macd_fast: config.mtf_macd_fast,
+      macd_slow: config.mtf_macd_slow,
+      macd_signal: config.mtf_macd_signal,
+      volume_multiplier: config.mtf_volume_multiplier
+    };
+    
     const signal = evaluateMTFMomentum(
       strategyCandles1m,
       strategyCandles5m,
       strategyCandles15m,
-      config,
+      mtfConfig,
       position !== null
     );
     
@@ -1772,123 +1831,6 @@ function resampleCandles(candles: Candle[], timeframe: string): Candle[] {
   return resampled;
 }
 
-// MTF Momentum strategy evaluation
-function evaluateMTFMomentum(
-  candles1m: any[],
-  candles5m: any[],
-  candles15m: any[],
-  config: any,
-  hasPosition: boolean
-): { signal_type: 'BUY' | 'SELL' | 'HOLD'; confidence: number } {
-  if (candles1m.length < config.mtf_rsi_period || candles5m.length < config.mtf_rsi_period || candles15m.length < config.mtf_rsi_period) {
-    return { signal_type: 'HOLD', confidence: 0 };
-  }
-
-  // Calculate RSI for all timeframes
-  const rsi1m = calculateRSI(candles1m.map(c => c.close), config.mtf_rsi_period);
-  const rsi5m = calculateRSI(candles5m.map(c => c.close), config.mtf_rsi_period);
-  const rsi15m = calculateRSI(candles15m.map(c => c.close), config.mtf_rsi_period);
-
-  // Calculate MACD for all timeframes
-  const macd1m = calculateMACDCustom(candles1m.map(c => c.close), config.mtf_macd_fast, config.mtf_macd_slow, config.mtf_macd_signal);
-  const macd5m = calculateMACDCustom(candles5m.map(c => c.close), config.mtf_macd_fast, config.mtf_macd_slow, config.mtf_macd_signal);
-  const macd15m = calculateMACDCustom(candles15m.map(c => c.close), config.mtf_macd_fast, config.mtf_macd_slow, config.mtf_macd_signal);
-
-  // Calculate volume confirmation
-  const volume1m = candles1m.slice(-20).map(c => c.volume);
-  const avgVolume = volume1m.reduce((sum, v) => sum + v, 0) / volume1m.length;
-  const currentVolume = candles1m[candles1m.length - 1].volume;
-  const volumeConfirmation = currentVolume > (avgVolume * config.mtf_volume_multiplier);
-
-  // Get current values
-  const currentRsi1m = rsi1m[rsi1m.length - 1];
-  const currentRsi5m = rsi5m[rsi5m.length - 1];
-  const currentRsi15m = rsi15m[rsi15m.length - 1];
-  const currentMacd1m = macd1m.macd[macd1m.macd.length - 1];
-  const currentMacd5m = macd5m.macd[macd5m.macd.length - 1];
-  const currentMacd15m = macd15m.macd[macd15m.macd.length - 1];
-  const currentSignal1m = macd1m.signal[macd1m.signal.length - 1];
-  const currentSignal5m = macd5m.signal[macd5m.signal.length - 1];
-  const currentSignal15m = macd15m.signal[macd15m.signal.length - 1];
-
-  // Check for NaN values
-  if (isNaN(currentRsi1m) || isNaN(currentRsi5m) || isNaN(currentRsi15m) ||
-      isNaN(currentMacd1m) || isNaN(currentMacd5m) || isNaN(currentMacd15m) ||
-      isNaN(currentSignal1m) || isNaN(currentSignal5m) || isNaN(currentSignal15m)) {
-    return { signal_type: 'HOLD', confidence: 0 };
-  }
-
-  // Multi-timeframe momentum conditions
-  const rsiThreshold = config.mtf_rsi_entry_threshold;
-  const rsiShortThreshold = 100 - rsiThreshold;
-
-  // Long conditions: All timeframes bullish
-  const longRsi = currentRsi1m > rsiThreshold && currentRsi5m > rsiThreshold && currentRsi15m > rsiThreshold;
-  const longMacd = currentMacd1m > currentSignal1m && currentMacd5m > currentSignal5m && currentMacd15m > currentSignal15m;
-  const longMomentum = currentMacd1m > 0 && currentMacd5m > 0 && currentMacd15m > 0;
-
-  // Short conditions: All timeframes bearish
-  const shortRsi = currentRsi1m < rsiShortThreshold && currentRsi5m < rsiShortThreshold && currentRsi15m < rsiShortThreshold;
-  const shortMacd = currentMacd1m < currentSignal1m && currentMacd5m < currentSignal5m && currentMacd15m < currentSignal15m;
-  const shortMomentum = currentMacd1m < 0 && currentMacd5m < 0 && currentMacd15m < 0;
-
-  // Exit conditions
-  const exitLong = currentRsi1m < 50 || currentMacd1m < currentSignal1m;
-  const exitShort = currentRsi1m > 50 || currentMacd1m > currentSignal1m;
-
-  if (hasPosition) {
-    if (exitLong || exitShort) {
-      return { signal_type: 'SELL', confidence: 0.8 };
-    }
-    return { signal_type: 'HOLD', confidence: 0.5 };
-  }
-
-  // Entry signals
-  if (longRsi && longMacd && longMomentum && volumeConfirmation) {
-    return { signal_type: 'BUY', confidence: 0.9 };
-  }
-
-  if (shortRsi && shortMacd && shortMomentum && volumeConfirmation) {
-    return { signal_type: 'BUY', confidence: 0.9 };
-  }
-
-  return { signal_type: 'HOLD', confidence: 0.3 };
-}
-
-// Helper functions for MTF Momentum (with custom parameters)
-function calculateMACDCustom(prices: number[], fastPeriod: number, slowPeriod: number, signalPeriod: number): { macd: number[]; signal: number[]; histogram: number[] } {
-  const emaFast = calculateEMACustom(prices, fastPeriod);
-  const emaSlow = calculateEMACustom(prices, slowPeriod);
-  
-  const macd: number[] = [];
-  for (let i = 0; i < prices.length; i++) {
-    macd[i] = emaFast[i] - emaSlow[i];
-  }
-  
-  const signal = calculateEMACustom(macd, signalPeriod);
-  const histogram: number[] = [];
-  
-  for (let i = 0; i < macd.length; i++) {
-    histogram[i] = macd[i] - signal[i];
-  }
-  
-  return { macd, signal, histogram };
-}
-
-function calculateEMACustom(prices: number[], period: number): number[] {
-  if (prices.length < period) return new Array(prices.length).fill(NaN);
-  
-  const ema: number[] = new Array(prices.length).fill(NaN);
-  const multiplier = 2 / (period + 1);
-  
-  ema[period - 1] = prices.slice(0, period).reduce((sum, price) => sum + price, 0) / period;
-  
-  for (let i = period; i < prices.length; i++) {
-    ema[i] = (prices[i] * multiplier) + (ema[i - 1] * (1 - multiplier));
-  }
-  
-  return ema;
-}
 
 // ============= MSTG (Multi-Strategy Trading Grid) IMPLEMENTATION =============
 async function runMSTGBacktest(
