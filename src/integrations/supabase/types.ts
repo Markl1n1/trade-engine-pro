@@ -1077,18 +1077,6 @@ export type Database = {
         Args: { "": string }
         Returns: string
       }
-      migrate_all_credentials: {
-        Args: Record<PropertyKey, never>
-        Returns: {
-          error_message: string
-          success: boolean
-          user_id: string
-        }[]
-      }
-      migrate_user_credentials_to_encrypted: {
-        Args: { p_user_id: string }
-        Returns: boolean
-      }
       retrieve_credential: {
         Args: { p_credential_type: string; p_user_id: string }
         Returns: {
@@ -1104,15 +1092,6 @@ export type Database = {
           p_user_id: string
         }
         Returns: string
-      }
-      verify_credentials_encrypted: {
-        Args: Record<PropertyKey, never>
-        Returns: {
-          credential_types: string[]
-          has_encrypted: boolean
-          has_plaintext: boolean
-          user_id: string
-        }[]
       }
     }
     Enums: {
