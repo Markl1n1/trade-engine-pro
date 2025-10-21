@@ -37,10 +37,10 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Fetch user's Binance API credentials
+    // Fetch user's settings
     const { data: settings } = await supabaseClient
       .from('user_settings')
-      .select('binance_mainnet_api_key, binance_mainnet_api_secret, use_testnet, binance_testnet_api_key, binance_testnet_api_secret')
+      .select('use_testnet, binance_mainnet_api_key, binance_mainnet_api_secret, binance_testnet_api_key, binance_testnet_api_secret')
       .eq('user_id', user.id)
       .single();
 
@@ -51,8 +51,28 @@ Deno.serve(async (req) => {
       });
     }
 
-    const apiKey = settings.use_testnet ? settings.binance_testnet_api_key : settings.binance_mainnet_api_key;
-    const apiSecret = settings.use_testnet ? settings.binance_testnet_api_secret : settings.binance_mainnet_api_secret;
+    // Decrypt API credentials using secure vault
+    const credentialType = settings.use_testnet ? 'binance_testnet' : 'binance_mainnet';
+    const { data: credentials, error: credError } = await supabaseClient
+      .rpc('decrypt_credential', {
+        p_user_id: user.id,
+        p_credential_type: credentialType,
+        p_access_source: 'binance-api-status'
+      });
+
+    let apiKey: string | null = null;
+    let apiSecret: string | null = null;
+
+    if (credError || !credentials || credentials.length === 0) {
+      // Fallback to plaintext during migration period
+      console.log(`[API-STATUS] No encrypted credentials, using plaintext fallback`);
+      apiKey = settings.use_testnet ? settings.binance_testnet_api_key : settings.binance_mainnet_api_key;
+      apiSecret = settings.use_testnet ? settings.binance_testnet_api_secret : settings.binance_mainnet_api_secret;
+    } else {
+      // Use decrypted credentials
+      apiKey = credentials[0].api_key;
+      apiSecret = credentials[0].api_secret;
+    }
 
     if (!apiKey || !apiSecret) {
       return new Response(JSON.stringify({ error: 'Binance API credentials not set' }), {

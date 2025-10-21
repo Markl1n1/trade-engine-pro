@@ -196,6 +196,41 @@ ${riskLevel}
 }
 
 class PositionExecutionManager {
+  // Helper method to decrypt API credentials
+  private async getDecryptedCredentials(userId: string, credentialType: string, settings: any) {
+    // Create service role client for RPC
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+    
+    const { data: credentials, error: credError } = await supabase
+      .rpc('decrypt_credential', {
+        p_user_id: userId,
+        p_credential_type: credentialType,
+        p_access_source: 'instant-signals'
+      });
+
+    if (credError || !credentials || credentials.length === 0) {
+      // Fallback to plaintext during migration period
+      console.log(`[INSTANT-SIGNALS] No encrypted credentials, using plaintext fallback for ${credentialType}`);
+      
+      const apiKey = credentialType === 'binance_testnet' 
+        ? settings.binance_testnet_api_key 
+        : settings.binance_mainnet_api_key;
+      const apiSecret = credentialType === 'binance_testnet'
+        ? settings.binance_testnet_api_secret
+        : settings.binance_mainnet_api_secret;
+      
+      return { apiKey, apiSecret };
+    }
+    
+    return {
+      apiKey: credentials[0].api_key,
+      apiSecret: credentials[0].api_secret
+    };
+  }
+  
   async executeSignal(signal: TradingSignal, userSettings: any) {
     const mode = userSettings.trading_mode || 'hybrid_safe';
     
@@ -248,13 +283,15 @@ class PositionExecutionManager {
     console.log(`[INSTANT-SIGNALS] Executing hybrid live position for ${signal.symbol}`);
     
     try {
-      // Проверяем наличие testnet API ключей
-      if (!settings.binance_testnet_api_key || !settings.binance_testnet_api_secret) {
+      // Получаем зашифрованные testnet ключи
+      const credentials = await this.getDecryptedCredentials(signal.userId, 'binance_testnet', settings);
+      
+      if (!credentials.apiKey || !credentials.apiSecret) {
         throw new Error('Testnet API keys required for hybrid live mode');
       }
       
       // Выполняем реальную сделку через testnet API
-      const orderResult = await this.executeRealOrder(signal, settings, true);
+      const orderResult = await this.executeRealOrder(signal, credentials, true);
       
       return {
         success: true,
@@ -282,13 +319,15 @@ class PositionExecutionManager {
     console.log(`[INSTANT-SIGNALS] Executing mainnet position for ${signal.symbol}`);
     
     try {
-      // Проверяем наличие mainnet API ключей
-      if (!settings.binance_mainnet_api_key || !settings.binance_mainnet_api_secret) {
+      // Получаем зашифрованные mainnet ключи
+      const credentials = await this.getDecryptedCredentials(signal.userId, 'binance_mainnet', settings);
+      
+      if (!credentials.apiKey || !credentials.apiSecret) {
         throw new Error('Mainnet API keys required for mainnet trading');
       }
       
       // Выполняем реальную сделку через mainnet API
-      const orderResult = await this.executeRealOrder(signal, settings, false);
+      const orderResult = await this.executeRealOrder(signal, credentials, false);
       
       return {
         success: true,
@@ -311,12 +350,11 @@ class PositionExecutionManager {
     }
   }
   
-  private async executeRealOrder(signal: TradingSignal, settings: any, useTestnet: boolean) {
+  private async executeRealOrder(signal: TradingSignal, credentials: {apiKey: string, apiSecret: string}, useTestnet: boolean) {
     console.log(`[INSTANT-SIGNALS] Executing real order via ${useTestnet ? 'testnet' : 'mainnet'} API`);
     
     try {
-      const apiKey = useTestnet ? settings.binance_testnet_api_key : settings.binance_mainnet_api_key;
-      const apiSecret = useTestnet ? settings.binance_testnet_api_secret : settings.binance_mainnet_api_secret;
+      const { apiKey, apiSecret } = credentials;
       
       if (!apiKey || !apiSecret) {
         throw new Error(`API credentials not found for ${useTestnet ? 'testnet' : 'mainnet'}`);
