@@ -1,10 +1,6 @@
 -- Fix user_id for new strategies created by migration
 -- This migration updates the user_id for strategies created with wrong user_id
 
--- First, let's see what strategies exist and their user_ids
--- Update strategies that were created with wrong user_id to current user
--- This is a temporary fix - in production you'd want to be more specific
-
 -- Delete strategies that were created with wrong user_id (from migration)
 -- and recreate them for the current user
 DELETE FROM public.strategies 
@@ -16,7 +12,7 @@ WHERE strategy_type IN ('sma_20_200_rsi', 'mtf_momentum')
     LIMIT 1
   );
 
--- Recreate the strategies for the current user
+-- Recreate the strategies for the current user (only if they don't exist)
 -- SMA 20/200 + RSI (Scalp)
 INSERT INTO public.strategies (
   user_id, name, description, symbol, timeframe, status,
@@ -38,7 +34,11 @@ SELECT
   0.6, 0.9,
   now(), now()
 WHERE EXISTS (SELECT 1 FROM auth.users WHERE email IS NOT NULL)
-ON CONFLICT (user_id, name) DO NOTHING;
+  AND NOT EXISTS (
+    SELECT 1 FROM public.strategies 
+    WHERE user_id = (SELECT id FROM auth.users WHERE email IS NOT NULL ORDER BY created_at DESC LIMIT 1)
+      AND name = 'SMA 20/200 RSI (Scalp)'
+  );
 
 -- MTF Momentum (Scalp)
 INSERT INTO public.strategies (
@@ -61,15 +61,17 @@ SELECT
   0.5, 0.75,
   now(), now()
 WHERE EXISTS (SELECT 1 FROM auth.users WHERE email IS NOT NULL)
-ON CONFLICT (user_id, name) DO NOTHING;
+  AND NOT EXISTS (
+    SELECT 1 FROM public.strategies 
+    WHERE user_id = (SELECT id FROM auth.users WHERE email IS NOT NULL ORDER BY created_at DESC LIMIT 1)
+      AND name = 'MTF Momentum (Scalp)'
+  );
 
 -- Add comment to track this migration
-INSERT INTO system_settings (setting_key, setting_value, description, created_at)
+INSERT INTO system_settings (setting_key, setting_value)
 VALUES (
   'new_strategies_user_id_fix', 
-  NOW()::text, 
-  'Fixed user_id for new strategies created by migration',
-  NOW()
+  NOW()::text
 ) ON CONFLICT (setting_key) DO UPDATE SET 
   setting_value = NOW()::text,
   updated_at = NOW();
