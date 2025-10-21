@@ -111,8 +111,9 @@ Deno.serve(async (req) => {
       // Bybit API request
       const timestamp = Date.now();
       const recvWindow = '5000';
+      const queryString = 'accountType=UNIFIED';
       
-      // Create Bybit signature
+      // Create Bybit signature: timestamp + apiKey + recvWindow + queryString
       const key = await crypto.subtle.importKey(
         'raw',
         encoder.encode(apiSecret),
@@ -124,7 +125,7 @@ Deno.serve(async (req) => {
       const signature = await crypto.subtle.sign(
         'HMAC',
         key,
-        encoder.encode(timestamp + apiKey + recvWindow)
+        encoder.encode(timestamp + apiKey + recvWindow + queryString)
       );
       
       const signatureHex = Array.from(new Uint8Array(signature))
@@ -132,7 +133,7 @@ Deno.serve(async (req) => {
         .join('');
 
       // Fetch account data from Bybit
-      const accountUrl = `${baseUrl}/v5/account/wallet-balance?accountType=UNIFIED`;
+      const accountUrl = `${baseUrl}/v5/account/wallet-balance?${queryString}`;
       const accountResponse = await fetch(accountUrl, {
         method: 'GET',
         headers: {
@@ -204,6 +205,7 @@ Deno.serve(async (req) => {
       // Bybit trades request
       const tradesTimestamp = Date.now();
       const tradesRecvWindow = '5000';
+      const tradesQueryString = 'accountType=UNIFIED';
       
       const tradesKey = await crypto.subtle.importKey(
         'raw',
@@ -216,14 +218,14 @@ Deno.serve(async (req) => {
       const tradesSignature = await crypto.subtle.sign(
         'HMAC',
         tradesKey,
-        encoder.encode(tradesTimestamp + apiKey + tradesRecvWindow)
+        encoder.encode(tradesTimestamp + apiKey + tradesRecvWindow + tradesQueryString)
       );
       
       const tradesSignatureHex = Array.from(new Uint8Array(tradesSignature))
         .map(b => b.toString(16).padStart(2, '0'))
         .join('');
 
-      const tradesUrl = `${baseUrl}/v5/execution/list?accountType=UNIFIED`;
+      const tradesUrl = `${baseUrl}/v5/execution/list?${tradesQueryString}`;
       const tradesResponse = await fetch(tradesUrl, {
         method: 'GET',
         headers: {
@@ -312,6 +314,7 @@ Deno.serve(async (req) => {
       // For Bybit, we need to fetch positions separately
       const positionsTimestamp = Date.now();
       const positionsRecvWindow = '5000';
+      const positionsQueryString = 'accountType=UNIFIED';
       
       const positionsKey = await crypto.subtle.importKey(
         'raw',
@@ -324,14 +327,14 @@ Deno.serve(async (req) => {
       const positionsSignature = await crypto.subtle.sign(
         'HMAC',
         positionsKey,
-        encoder.encode(positionsTimestamp + apiKey + positionsRecvWindow)
+        encoder.encode(positionsTimestamp + apiKey + positionsRecvWindow + positionsQueryString)
       );
       
       const positionsSignatureHex = Array.from(new Uint8Array(positionsSignature))
         .map(b => b.toString(16).padStart(2, '0'))
         .join('');
 
-      const positionsUrl = `${baseUrl}/v5/position/list?accountType=UNIFIED`;
+      const positionsUrl = `${baseUrl}/v5/position/list?${positionsQueryString}`;
       const positionsResponse = await fetch(positionsUrl, {
         method: 'GET',
         headers: {
