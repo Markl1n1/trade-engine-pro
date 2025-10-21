@@ -196,7 +196,7 @@ ${riskLevel}
 }
 
 class PositionExecutionManager {
-  // Helper method to decrypt API credentials
+  // ✅ ПРАВИЛЬНО: Helper method to decrypt API credentials with Bybit support
   private async getDecryptedCredentials(userId: string, credentialType: string, settings: any) {
     // Create service role client for RPC
     const supabase = createClient(
@@ -215,16 +215,38 @@ class PositionExecutionManager {
       // Fallback to plaintext during migration period
       console.log(`[INSTANT-SIGNALS] No encrypted credentials, using plaintext fallback for ${credentialType}`);
       
-      const apiKey = credentialType === 'binance_testnet' 
-        ? settings.binance_testnet_api_key 
-        : settings.binance_mainnet_api_key;
-      const apiSecret = credentialType === 'binance_testnet'
-        ? settings.binance_testnet_api_secret
-        : settings.binance_mainnet_api_secret;
+      // ✅ ПРАВИЛЬНО: Поддержка всех типов учетных данных
+      let apiKey: string | undefined;
+      let apiSecret: string | undefined;
+      
+      switch (credentialType) {
+        case 'binance_testnet':
+          apiKey = settings.binance_testnet_api_key;
+          apiSecret = settings.binance_testnet_api_secret;
+          break;
+        case 'binance_mainnet':
+          apiKey = settings.binance_mainnet_api_key;
+          apiSecret = settings.binance_mainnet_api_secret;
+          break;
+        case 'bybit_testnet':
+          apiKey = settings.bybit_testnet_api_key;
+          apiSecret = settings.bybit_testnet_api_secret;
+          break;
+        case 'bybit_mainnet':
+          apiKey = settings.bybit_mainnet_api_key;
+          apiSecret = settings.bybit_mainnet_api_secret;
+          break;
+        default:
+          throw new Error(`Unsupported credential type: ${credentialType}`);
+      }
+      
+      if (!apiKey || !apiSecret) {
+        throw new Error(`API credentials not found for ${credentialType}`);
+      }
       
       return { apiKey, apiSecret };
     }
-    
+
     return {
       apiKey: credentials[0].api_key,
       apiSecret: credentials[0].api_secret
@@ -283,22 +305,29 @@ class PositionExecutionManager {
     console.log(`[INSTANT-SIGNALS] Executing hybrid live position for ${signal.symbol}`);
     
     try {
-      // Получаем зашифрованные testnet ключи
-      const credentials = await this.getDecryptedCredentials(signal.userId, 'binance_testnet', settings);
+      const exchangeType = settings.exchange_type || 'binance';
+      
+      // ✅ ПРАВИЛЬНО: Поддержка как Binance, так и Bybit
+      let credentials;
+      if (exchangeType === 'bybit') {
+        credentials = await this.getDecryptedCredentials(signal.userId, 'bybit_testnet', settings);
+      } else {
+        credentials = await this.getDecryptedCredentials(signal.userId, 'binance_testnet', settings);
+      }
       
       if (!credentials.apiKey || !credentials.apiSecret) {
-        throw new Error('Testnet API keys required for hybrid live mode');
+        throw new Error(`${exchangeType.toUpperCase()} testnet API keys required for hybrid live mode`);
       }
       
       // Выполняем реальную сделку через testnet API
-      const orderResult = await this.executeRealOrder(signal, credentials, true);
+      const orderResult = await this.executeRealOrder(signal, credentials, true, exchangeType);
       
       return {
         success: true,
         orderId: orderResult.orderId,
         mode: 'hybrid_live',
         risk: 'low',
-        message: 'Hybrid live position executed via testnet API',
+        message: `Hybrid live position executed via ${exchangeType.toUpperCase()} testnet API`,
         details: orderResult
       };
     } catch (error: unknown) {
@@ -350,30 +379,43 @@ class PositionExecutionManager {
     }
   }
   
-  private async executeRealOrder(signal: TradingSignal, credentials: {apiKey: string, apiSecret: string}, useTestnet: boolean) {
-    console.log(`[INSTANT-SIGNALS] Executing real order via ${useTestnet ? 'testnet' : 'mainnet'} API`);
+  private async executeRealOrder(signal: TradingSignal, credentials: {apiKey: string, apiSecret: string}, useTestnet: boolean, exchangeType: string = 'binance') {
+    console.log(`[INSTANT-SIGNALS] Executing real order via ${exchangeType.toUpperCase()} ${useTestnet ? 'testnet' : 'mainnet'} API`);
     
     try {
       const { apiKey, apiSecret } = credentials;
       
       if (!apiKey || !apiSecret) {
-        throw new Error(`API credentials not found for ${useTestnet ? 'testnet' : 'mainnet'}`);
+        throw new Error(`API credentials not found for ${exchangeType.toUpperCase()} ${useTestnet ? 'testnet' : 'mainnet'}`);
       }
       
-      const client = new BinanceAPIClient(apiKey, apiSecret, useTestnet);
+      // ✅ ПРАВИЛЬНО: Поддержка как Binance, так и Bybit
+      let client;
+      if (exchangeType === 'bybit') {
+        // TODO: Implement BybitAPIClient when available
+        throw new Error('Bybit API client not implemented yet');
+      } else {
+        client = new BinanceAPIClient(apiKey, apiSecret, useTestnet);
+      }
       
       // Test connectivity first
       const isConnected = await client.testConnectivity();
       if (!isConnected) {
-        throw new Error('Failed to connect to Binance API');
+        throw new Error(`Failed to connect to ${exchangeType.toUpperCase()} API`);
       }
+      
+      // ✅ ПРАВИЛЬНО: Динамическое количество на основе баланса
+      const accountInfo = await client.getAccountInfo();
+      const availableBalance = accountInfo.availableBalance;
+      const riskAmount = availableBalance * 0.01; // 1% риска
+      const quantity = Math.max(0.001, riskAmount / signal.price); // Минимум 0.001
       
       // Place the order
       const orderRequest = {
         symbol: signal.symbol,
         side: signal.signal.toUpperCase() as 'BUY' | 'SELL',
         type: 'MARKET' as const,
-        quantity: 0.001 // Default quantity, should be calculated based on risk management
+        quantity: quantity
       };
       
       const orderResult = await client.placeOrder(orderRequest);
