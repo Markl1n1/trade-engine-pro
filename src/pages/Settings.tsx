@@ -295,13 +295,11 @@ const Settings = () => {
         });
         return;
       }
-      
+
       // Get current settings for audit log
-      const { data: currentSettings } = await supabase
-        .from("user_settings")
-        .select("*")
-        .maybeSingle();
-      
+      const {
+        data: currentSettings
+      } = await supabase.from("user_settings").select("*").maybeSingle();
       setSaving(true);
       const {
         data: {
@@ -349,17 +347,16 @@ const Settings = () => {
         throw new Error(`Database error: ${error.message} (Code: ${error.code || 'unknown'})`);
       }
       console.log("Settings saved successfully");
-      
+
       // Log settings change
       if (currentSettings) {
         await logSettingsChange(currentSettings, settingsData);
-        
+
         // Special log for trading mode switch
         if (currentSettings.trading_mode !== settings.trading_mode) {
           await logTradingModeSwitch(currentSettings.trading_mode, settings.trading_mode);
         }
       }
-      
       toast({
         title: "Success",
         description: "Settings saved successfully"
@@ -636,7 +633,7 @@ const Settings = () => {
           </AlertDescription>
         </Alert>
 
-        {settings.exchange_type === 'binance' ? <Tabs defaultValue="mainnet" className="w-full" onValueChange={(value) => setActiveApiTab(value as 'mainnet' | 'testnet')}>
+        {settings.exchange_type === 'binance' ? <Tabs defaultValue="mainnet" className="w-full" onValueChange={value => setActiveApiTab(value as 'mainnet' | 'testnet')}>
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="mainnet">Mainnet API Keys</TabsTrigger>
               <TabsTrigger value="testnet">Testnet API Keys</TabsTrigger>
@@ -663,7 +660,7 @@ const Settings = () => {
                 <Input id="testnet-api-secret" type="password" placeholder="Enter your Binance testnet API secret" value={settings.binance_testnet_api_secret} onChange={e => updateSetting("binance_testnet_api_secret", e.target.value)} />
               </div>
             </TabsContent>
-          </Tabs> : <Tabs defaultValue="mainnet" className="w-full" onValueChange={(value) => setActiveApiTab(value as 'mainnet' | 'testnet')}>
+          </Tabs> : <Tabs defaultValue="mainnet" className="w-full" onValueChange={value => setActiveApiTab(value as 'mainnet' | 'testnet')}>
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="mainnet">Mainnet API Keys</TabsTrigger>
               <TabsTrigger value="testnet">Testnet API Keys</TabsTrigger>
@@ -803,9 +800,7 @@ const Settings = () => {
 
           <Alert className="bg-primary/10 border-primary/30">
             <AlertCircle className="h-4 w-4 text-primary" />
-            <AlertDescription className="text-sm">
-              <strong>24/7 Autonomous Trading:</strong> The monitoring system runs independently on the server every {systemSettings.monitoringInterval} seconds. It processes ALL active strategies from ALL users automatically, regardless of browser activity.
-            </AlertDescription>
+            
           </Alert>
 
           <Button variant="destructive" onClick={handleEmergencyStop} className="w-full" size="lg">
