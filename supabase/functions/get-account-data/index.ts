@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.58.0';
+import { sanitizeError, handleError } from '../helpers/error-sanitizer.ts';
 
 // Input validation
 const validateUserId = (userId: string): boolean => {
@@ -78,28 +79,18 @@ Deno.serve(async (req) => {
     let baseUrl: string;
 
     if (credError || !credentials || credentials.length === 0) {
-      // Fallback to plaintext during migration period
-      console.log(`[ACCOUNT-DATA] No encrypted credentials, using plaintext fallback for ${credentialType}`);
-      
-      if (exchangeType === 'bybit') {
-        apiKey = shouldUseTestnetAPI ? settings.bybit_testnet_api_key : settings.bybit_mainnet_api_key;
-        apiSecret = shouldUseTestnetAPI ? settings.bybit_testnet_api_secret : settings.bybit_mainnet_api_secret;
-        baseUrl = shouldUseTestnetAPI ? 'https://api-testnet.bybit.com' : 'https://api.bybit.com';
-      } else {
-        apiKey = shouldUseTestnetAPI ? settings.binance_testnet_api_key : settings.binance_mainnet_api_key;
-        apiSecret = shouldUseTestnetAPI ? settings.binance_testnet_api_secret : settings.binance_mainnet_api_secret;
-        baseUrl = shouldUseTestnetAPI ? 'https://testnet.binancefuture.com' : 'https://fapi.binance.com';
-      }
+      const sanitizedError = sanitizeError(credError);
+      throw new Error(`API credentials not found or could not be decrypted. Please configure your API keys in Settings. ${sanitizedError}`);
+    }
+
+    // Use decrypted credentials
+    apiKey = credentials[0].api_key;
+    apiSecret = credentials[0].api_secret;
+    
+    if (exchangeType === 'bybit') {
+      baseUrl = shouldUseTestnetAPI ? 'https://api-testnet.bybit.com' : 'https://api.bybit.com';
     } else {
-      // Use decrypted credentials
-      apiKey = credentials[0].api_key;
-      apiSecret = credentials[0].api_secret;
-      
-      if (exchangeType === 'bybit') {
-        baseUrl = shouldUseTestnetAPI ? 'https://api-testnet.bybit.com' : 'https://api.bybit.com';
-      } else {
-        baseUrl = shouldUseTestnetAPI ? 'https://testnet.binancefuture.com' : 'https://fapi.binance.com';
-      }
+      baseUrl = shouldUseTestnetAPI ? 'https://testnet.binancefuture.com' : 'https://fapi.binance.com';
     }
 
     if (!apiKey || !apiSecret) {

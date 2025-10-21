@@ -911,14 +911,6 @@ export type Database = {
         Row: {
           binance_api_key: string | null
           binance_api_secret: string | null
-          binance_mainnet_api_key: string | null
-          binance_mainnet_api_secret: string | null
-          binance_testnet_api_key: string | null
-          binance_testnet_api_secret: string | null
-          bybit_mainnet_api_key: string | null
-          bybit_mainnet_api_secret: string | null
-          bybit_testnet_api_key: string | null
-          bybit_testnet_api_secret: string | null
           cache_indicators: boolean
           created_at: string
           credentials_migrated_at: string | null
@@ -950,14 +942,6 @@ export type Database = {
         Insert: {
           binance_api_key?: string | null
           binance_api_secret?: string | null
-          binance_mainnet_api_key?: string | null
-          binance_mainnet_api_secret?: string | null
-          binance_testnet_api_key?: string | null
-          binance_testnet_api_secret?: string | null
-          bybit_mainnet_api_key?: string | null
-          bybit_mainnet_api_secret?: string | null
-          bybit_testnet_api_key?: string | null
-          bybit_testnet_api_secret?: string | null
           cache_indicators?: boolean
           created_at?: string
           credentials_migrated_at?: string | null
@@ -989,14 +973,6 @@ export type Database = {
         Update: {
           binance_api_key?: string | null
           binance_api_secret?: string | null
-          binance_mainnet_api_key?: string | null
-          binance_mainnet_api_secret?: string | null
-          binance_testnet_api_key?: string | null
-          binance_testnet_api_secret?: string | null
-          bybit_mainnet_api_key?: string | null
-          bybit_mainnet_api_secret?: string | null
-          bybit_testnet_api_key?: string | null
-          bybit_testnet_api_secret?: string | null
           cache_indicators?: boolean
           created_at?: string
           credentials_migrated_at?: string | null
@@ -1144,6 +1120,15 @@ export type Database = {
       migrate_user_credentials_to_encrypted: {
         Args: { p_user_id: string }
         Returns: boolean
+      }
+      verify_credentials_encrypted: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          credential_types: string[]
+          has_encrypted: boolean
+          has_plaintext: boolean
+          user_id: string
+        }[]
       }
     }
     Enums: {

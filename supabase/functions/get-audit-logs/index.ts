@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.58.0';
+import { auditLogsSchema, validateInput } from '../helpers/input-validation.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -54,7 +55,8 @@ Deno.serve(async (req) => {
       throw new Error('Unauthorized');
     }
 
-    const request: AuditLogRequest = await req.json();
+    const rawRequest = await req.json();
+    const request: AuditLogRequest = validateInput(auditLogsSchema, rawRequest);
 
     switch (request.action) {
       case 'get_stats':

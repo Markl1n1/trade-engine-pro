@@ -2,6 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.58.0';
 import { createHmac } from 'https://deno.land/std@0.168.0/node/crypto.ts';
 import { enhancedTelegramSignaler, PositionEvent } from '../helpers/enhanced-telegram-signaler.ts';
 import { closePositionSchema, validateInput } from '../helpers/input-validation.ts';
+import { sanitizeError, handleError } from '../helpers/error-sanitizer.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -62,19 +63,13 @@ Deno.serve(async (req) => {
     let apiSecret: string | null = null;
 
     if (credError || !credentials || credentials.length === 0) {
-      // Fallback to plaintext during migration period
-      console.log(`[CLOSE-POSITION] No encrypted credentials, using plaintext fallback`);
-      apiKey = settings.use_testnet 
-        ? settings.binance_testnet_api_key 
-        : settings.binance_mainnet_api_key;
-      apiSecret = settings.use_testnet 
-        ? settings.binance_testnet_api_secret 
-        : settings.binance_mainnet_api_secret;
-    } else {
-      // Use decrypted credentials
-      apiKey = credentials[0].api_key;
-      apiSecret = credentials[0].api_secret;
+      const sanitizedError = sanitizeError(credError);
+      throw new Error(`API credentials not found or could not be decrypted. Please configure your API keys in Settings. ${sanitizedError}`);
     }
+
+    // Use decrypted credentials
+    apiKey = credentials[0].api_key;
+    apiSecret = credentials[0].api_secret;
 
     if (!apiKey || !apiSecret) {
       throw new Error('Binance API credentials not configured');

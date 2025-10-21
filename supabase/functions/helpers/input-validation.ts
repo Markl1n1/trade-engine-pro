@@ -63,6 +63,21 @@ export const tradingModeSchema = z.enum([
   'mainnet_only'
 ]);
 
+// Test exchange validation schema
+export const testExchangeSchema = z.object({
+  useTestnet: z.boolean(),
+  exchangeType: z.enum(['binance', 'bybit']).default('binance')
+});
+
+// Audit logs validation schema
+export const auditLogsSchema = z.object({
+  action: z.enum(['get_logs', 'get_stats', 'cleanup']).optional(),
+  action_type: z.string().max(50).optional(),
+  entity_type: z.string().max(50).optional(),
+  offset: z.number().int().min(0).default(0).optional(),
+  limit: z.number().int().min(1).max(100).default(50).optional()
+});
+
 // Validate input and return typed result or throw error
 export function validateInput<T>(schema: z.ZodSchema<T>, data: unknown): T {
   try {

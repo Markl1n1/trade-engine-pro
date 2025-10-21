@@ -210,8 +210,16 @@ const DataQuality = () => {
 
       const exchanges: ExchangeStatus[] = [];
 
+      // Check for encrypted credentials
+      const { data: encryptedCreds } = await supabase
+        .from('encrypted_credentials')
+        .select('credential_type');
+
+      const hasCredential = (type: string) => 
+        encryptedCreds?.some(cred => cred.credential_type === type);
+
       // Check Binance APIs
-      if (userSettings?.binance_mainnet_api_key) {
+      if (hasCredential('binance_mainnet')) {
         exchanges.push({
           name: 'Binance Mainnet API',
           type: 'mainnet',
@@ -228,7 +236,7 @@ const DataQuality = () => {
         });
       }
 
-      if (userSettings?.binance_testnet_api_key) {
+      if (hasCredential('binance_testnet')) {
         exchanges.push({
           name: 'Binance Testnet API',
           type: 'testnet',
@@ -246,7 +254,7 @@ const DataQuality = () => {
       }
 
       // Check Bybit APIs
-      if (userSettings?.bybit_mainnet_api_key) {
+      if (hasCredential('bybit_mainnet')) {
         exchanges.push({
           name: 'Bybit Mainnet API',
           type: 'mainnet',
@@ -263,7 +271,7 @@ const DataQuality = () => {
         });
       }
 
-      if (userSettings?.bybit_testnet_api_key) {
+      if (hasCredential('bybit_testnet')) {
         exchanges.push({
           name: 'Bybit Testnet API',
           type: 'testnet',

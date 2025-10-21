@@ -208,14 +208,14 @@ const Settings = () => {
       if (data) {
         setSettings({
           exchange_type: data.exchange_type as 'binance' | 'bybit' || 'binance',
-          binance_mainnet_api_key: data.binance_mainnet_api_key || "",
-          binance_mainnet_api_secret: data.binance_mainnet_api_secret || "",
-          binance_testnet_api_key: data.binance_testnet_api_key || "",
-          binance_testnet_api_secret: data.binance_testnet_api_secret || "",
-          bybit_mainnet_api_key: data.bybit_mainnet_api_key || "",
-          bybit_mainnet_api_secret: data.bybit_mainnet_api_secret || "",
-          bybit_testnet_api_key: data.bybit_testnet_api_key || "",
-          bybit_testnet_api_secret: data.bybit_testnet_api_secret || "",
+          binance_mainnet_api_key: "", // Credentials now stored encrypted
+          binance_mainnet_api_secret: "",
+          binance_testnet_api_key: "",
+          binance_testnet_api_secret: "",
+          bybit_mainnet_api_key: "",
+          bybit_mainnet_api_secret: "",
+          bybit_testnet_api_key: "",
+          bybit_testnet_api_secret: "",
           use_testnet: data.use_testnet,
           telegram_bot_token: data.telegram_bot_token || "",
           telegram_chat_id: data.telegram_chat_id || "",

@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { BinanceAPIClient } from '../helpers/binance-api-client.ts';
+import { sanitizeError, handleError } from '../helpers/error-sanitizer.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -92,31 +93,13 @@ Deno.serve(async (req): Promise<Response> => {
     let apiSecret: string | null = null;
 
     if (credError || !credentials || credentials.length === 0) {
-      // Fallback to plaintext during migration period
-      console.log(`[TEST-EXCHANGE] No encrypted credentials, using plaintext fallback for ${credentialType}`);
-      
-      if (actualExchangeType === 'binance') {
-        if (useTestnet) {
-          apiKey = settings.binance_testnet_api_key;
-          apiSecret = settings.binance_testnet_api_secret;
-        } else {
-          apiKey = settings.binance_mainnet_api_key;
-          apiSecret = settings.binance_mainnet_api_secret;
-        }
-      } else if (actualExchangeType === 'bybit') {
-        if (useTestnet) {
-          apiKey = settings.bybit_testnet_api_key;
-          apiSecret = settings.bybit_testnet_api_secret;
-        } else {
-          apiKey = settings.bybit_mainnet_api_key;
-          apiSecret = settings.bybit_mainnet_api_secret;
-        }
-      }
-    } else {
-      // Use decrypted credentials
-      apiKey = credentials[0].api_key;
-      apiSecret = credentials[0].api_secret;
+      const sanitizedError = sanitizeError(credError);
+      throw new Error(`API credentials not found or could not be decrypted. Please configure your API keys in Settings. ${sanitizedError}`);
     }
+
+    // Use decrypted credentials
+    apiKey = credentials[0].api_key;
+    apiSecret = credentials[0].api_secret;
 
     if (!apiKey || !apiSecret) {
       throw new Error(`${actualExchangeType.toUpperCase()} ${useTestnet ? 'testnet' : 'mainnet'} API credentials not configured`);
