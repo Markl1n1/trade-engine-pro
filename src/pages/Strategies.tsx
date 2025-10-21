@@ -36,6 +36,7 @@ const Strategies = () => {
       const { data, error } = await supabase
         .from("strategies")
         .select("*")
+        .eq("user_id", user.id)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
@@ -227,6 +228,10 @@ const Strategies = () => {
                           ? "MSTG"
                           : strategy.strategy_type === "ath_guard_scalping"
                           ? "ATH Guard - 1min Scalping"
+                          : strategy.strategy_type === "sma_20_200_rsi"
+                          ? "SMA 20/200 RSI"
+                          : strategy.strategy_type === "mtf_momentum"
+                          ? "MTF Momentum"
                           : strategy.strategy_type || "Standard"}
                       </div>
                     </div>
@@ -244,10 +249,10 @@ const Strategies = () => {
                     </div>
                     <div>
                       <div className="text-muted-foreground">
-                        {(strategy.strategy_type === "4h_reentry" || strategy.strategy_type === "market_sentiment_trend_gauge" || strategy.strategy_type === "ath_guard_scalping") ? "Logic" : "Conditions"}
+                        {(strategy.strategy_type === "4h_reentry" || strategy.strategy_type === "market_sentiment_trend_gauge" || strategy.strategy_type === "ath_guard_scalping" || strategy.strategy_type === "sma_20_200_rsi" || strategy.strategy_type === "mtf_momentum") ? "Logic" : "Conditions"}
                       </div>
                       <div className="font-medium">
-                        {(strategy.strategy_type === "4h_reentry" || strategy.strategy_type === "market_sentiment_trend_gauge" || strategy.strategy_type === "ath_guard_scalping")
+                        {(strategy.strategy_type === "4h_reentry" || strategy.strategy_type === "market_sentiment_trend_gauge" || strategy.strategy_type === "ath_guard_scalping" || strategy.strategy_type === "sma_20_200_rsi" || strategy.strategy_type === "mtf_momentum")
                           ? "Custom" 
                           : strategy.strategy_conditions?.length || 0}
                       </div>
