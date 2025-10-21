@@ -9,7 +9,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-
 interface TickerData {
   symbol: string;
   price: number;
@@ -20,7 +19,6 @@ interface TickerData {
   volume: number;
   quoteVolume: number;
 }
-
 interface AccountData {
   totalWalletBalance: number;
   totalUnrealizedProfit: number;
@@ -40,7 +38,6 @@ interface AccountData {
   executionMode: 'real' | 'paper' | 'simulated';
   exchangeType: 'binance' | 'bybit';
 }
-
 interface StrategySignal {
   id: string;
   strategy_name: string;
@@ -49,7 +46,6 @@ interface StrategySignal {
   entry_time: string;
   signal_type: string;
 }
-
 const Dashboard = () => {
   const [marketData, setMarketData] = useState<TickerData[]>([]);
   const [accountData, setAccountData] = useState<AccountData | null>(null);
@@ -63,23 +59,26 @@ const Dashboard = () => {
   const [clearingSignals, setClearingSignals] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [signalsPerPage, setSignalsPerPage] = useState(10);
-  const [tickerErrors, setTickerErrors] = useState<Array<{ symbol: string; error: string }>>([]);
+  const [tickerErrors, setTickerErrors] = useState<Array<{
+    symbol: string;
+    error: string;
+  }>>([]);
   const [tradingMode, setTradingMode] = useState<string>('unknown');
   const [userSettings, setUserSettings] = useState<any>(null);
-  const { toast } = useToast();
-
+  const {
+    toast
+  } = useToast();
   useEffect(() => {
     loadUserPairs();
     loadUserSettings();
     fetchAccountData();
     fetchStrategySignals();
     loadSignalsPerPage();
-    
+
     // Auto-refresh account data every 60 seconds
     const accountInterval = setInterval(fetchAccountData, 60000);
     return () => clearInterval(accountInterval);
   }, []);
-
   useEffect(() => {
     if (userPairs.length > 0) {
       fetchMarketData();
@@ -87,20 +86,18 @@ const Dashboard = () => {
       return () => clearInterval(interval);
     }
   }, [userPairs]);
-
   const loadSignalsPerPage = () => {
     const saved = localStorage.getItem('signalsPerPage');
     if (saved) {
       setSignalsPerPage(parseInt(saved));
     }
   };
-
   const loadUserPairs = async () => {
     try {
-      const { data, error } = await supabase
-        .from("user_trading_pairs")
-        .select("symbol");
-      
+      const {
+        data,
+        error
+      } = await supabase.from("user_trading_pairs").select("symbol");
       if (error) throw error;
       const symbols = data?.map(p => p.symbol) || ['BTCUSDT', 'ETHUSDT'];
       setUserPairs(symbols);
@@ -109,14 +106,12 @@ const Dashboard = () => {
       setUserPairs(['BTCUSDT', 'ETHUSDT']);
     }
   };
-
   const loadUserSettings = async () => {
     try {
-      const { data, error } = await supabase
-        .from("user_settings")
-        .select("*")
-        .single();
-      
+      const {
+        data,
+        error
+      } = await supabase.from("user_settings").select("*").single();
       if (error) throw error;
       setUserSettings(data);
       // Only set trading mode if not already set from account data
@@ -130,14 +125,14 @@ const Dashboard = () => {
       }
     }
   };
-
   const fetchAccountData = async () => {
     setLoadingAccount(true);
     try {
-      const { data, error } = await supabase.functions.invoke('get-account-data');
-      
+      const {
+        data,
+        error
+      } = await supabase.functions.invoke('get-account-data');
       if (error) throw error;
-      
       if (data?.success && data?.data) {
         setAccountData(data.data);
         // Update trading mode from account data
@@ -158,25 +153,28 @@ const Dashboard = () => {
         toast({
           title: "Account Data Error",
           description: "Unable to fetch account data. Please check your API credentials in Settings.",
-          variant: "destructive",
+          variant: "destructive"
         });
       }
     } finally {
       setLoadingAccount(false);
     }
   };
-
   const fetchMarketData = async () => {
     try {
-      const { data, error } = await supabase.functions.invoke('binance-ticker', {
-        body: { symbols: userPairs }
+      const {
+        data,
+        error
+      } = await supabase.functions.invoke('binance-ticker', {
+        body: {
+          symbols: userPairs
+        }
       });
-
       if (error) throw error;
       if (data?.success) {
         // Accept partial data
         setMarketData(data.data || []);
-        
+
         // Handle errors for invalid symbols
         if (data.errors && data.errors.length > 0) {
           setTickerErrors(data.errors);
@@ -191,20 +189,21 @@ const Dashboard = () => {
       setLoading(false);
     }
   };
-
   const fetchStrategySignals = async () => {
     setLoadingSignals(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: {
+          user
+        }
+      } = await supabase.auth.getUser();
       if (!user) return;
 
       // Fetch open positions from strategy_live_states
-      const { data: states, error: statesError } = await supabase
-        .from('strategy_live_states')
-        .select('strategy_id, entry_price, entry_time')
-        .eq('user_id', user.id)
-        .eq('position_open', true);
-
+      const {
+        data: states,
+        error: statesError
+      } = await supabase.from('strategy_live_states').select('strategy_id, entry_price, entry_time').eq('user_id', user.id).eq('position_open', true);
       if (statesError) throw statesError;
       if (!states || states.length === 0) {
         setStrategySignals([]);
@@ -213,11 +212,10 @@ const Dashboard = () => {
 
       // Fetch strategy details
       const strategyIds = states.map(s => s.strategy_id);
-      const { data: strategies, error: strategiesError } = await supabase
-        .from('strategies')
-        .select('id, name, symbol')
-        .in('id', strategyIds);
-
+      const {
+        data: strategies,
+        error: strategiesError
+      } = await supabase.from('strategies').select('id, name, symbol').in('id', strategyIds);
       if (strategiesError) throw strategiesError;
 
       // Combine data
@@ -229,10 +227,9 @@ const Dashboard = () => {
           symbol: strategy?.symbol || 'Unknown',
           entry_price: state.entry_price,
           entry_time: state.entry_time,
-          signal_type: 'BUY',
+          signal_type: 'BUY'
         };
       });
-
       setStrategySignals(signals);
     } catch (error) {
       console.error('Error fetching strategy signals:', error);
@@ -240,20 +237,23 @@ const Dashboard = () => {
       setLoadingSignals(false);
     }
   };
-
   const handleClosePosition = async (symbol: string) => {
     setClosingPosition(symbol);
     try {
-      const { data, error } = await supabase.functions.invoke('close-position', {
-        body: { symbol, closeAll: false }
+      const {
+        data,
+        error
+      } = await supabase.functions.invoke('close-position', {
+        body: {
+          symbol,
+          closeAll: false
+        }
       });
-
       if (error) throw error;
-
       if (data.success) {
         toast({
           title: "Position Closed",
-          description: `Successfully closed position for ${symbol}`,
+          description: `Successfully closed position for ${symbol}`
         });
         await fetchAccountData();
         await fetchStrategySignals();
@@ -263,26 +263,28 @@ const Dashboard = () => {
       toast({
         title: "Error",
         description: error.message || "Failed to close position",
-        variant: "destructive",
+        variant: "destructive"
       });
     } finally {
       setClosingPosition(null);
     }
   };
-
   const handleCloseAllPositions = async () => {
     setClosingPosition('all');
     try {
-      const { data, error } = await supabase.functions.invoke('close-position', {
-        body: { closeAll: true }
+      const {
+        data,
+        error
+      } = await supabase.functions.invoke('close-position', {
+        body: {
+          closeAll: true
+        }
       });
-
       if (error) throw error;
-
       if (data.success) {
         toast({
           title: "All Positions Closed",
-          description: data.message,
+          description: data.message
         });
         await fetchAccountData();
         await fetchStrategySignals();
@@ -292,31 +294,34 @@ const Dashboard = () => {
       toast({
         title: "Error",
         description: error.message || "Failed to close positions",
-        variant: "destructive",
+        variant: "destructive"
       });
     } finally {
       setClosingPosition(null);
     }
   };
-
   const handleClearAllSignals = async () => {
     setClearingSignals(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: {
+          user
+        }
+      } = await supabase.auth.getUser();
       if (!user) return;
 
       // Close all open strategy positions
-      const { error } = await supabase
-        .from('strategy_live_states')
-        .update({ position_open: false, entry_price: null, entry_time: null })
-        .eq('user_id', user.id)
-        .eq('position_open', true);
-
+      const {
+        error
+      } = await supabase.from('strategy_live_states').update({
+        position_open: false,
+        entry_price: null,
+        entry_time: null
+      }).eq('user_id', user.id).eq('position_open', true);
       if (error) throw error;
-
       toast({
         title: "Signals Cleared",
-        description: "All strategy signals have been cleared",
+        description: "All strategy signals have been cleared"
       });
       await fetchStrategySignals();
     } catch (error: any) {
@@ -324,7 +329,7 @@ const Dashboard = () => {
       toast({
         title: "Error",
         description: error.message || "Failed to clear signals",
-        variant: "destructive",
+        variant: "destructive"
       });
     } finally {
       setClearingSignals(false);
@@ -384,73 +389,58 @@ const Dashboard = () => {
         };
     }
   };
-
   const modeInfo = getTradingModeInfo(tradingMode);
-
-  const stats = [
-    { 
-      label: `Balance (${accountData?.exchangeType?.toUpperCase() || 'N/A'})`, 
-      value: loadingAccount ? "Loading..." : `$${accountData?.totalWalletBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}`,
-      change: accountData?.totalUnrealizedProfit ? `${accountData.totalUnrealizedProfit >= 0 ? '+' : ''}$${accountData.totalUnrealizedProfit.toFixed(2)}` : "—",
-      trend: accountData?.totalUnrealizedProfit ? (accountData.totalUnrealizedProfit >= 0 ? "up" : "down") : "neutral",
-      environment: accountData?.environment,
-      tooltip: `Total wallet balance from ${accountData?.exchangeType?.toUpperCase() || 'exchange'} (${modeInfo.dataSource}, ${modeInfo.executionMode})`,
-      timeframe: "Real-time",
-      modeInfo: modeInfo
-    },
-    { 
-      label: `Open Positions (${accountData?.exchangeType?.toUpperCase() || 'N/A'})`, 
-      value: loadingAccount ? "..." : accountData?.openPositionsCount.toString() || "0",
-      change: "—",
-      trend: "neutral",
-      tooltip: `Active positions from ${accountData?.exchangeType?.toUpperCase() || 'exchange'} (${modeInfo.dataSource}, ${modeInfo.executionMode})`,
-      timeframe: "Real-time",
-      modeInfo: modeInfo
-    },
-    { 
-      label: "Win Rate", 
-      value: loadingAccount ? "..." : accountData ? `${accountData.winRate.toFixed(1)}%` : "—",
-      change: "—",
-      trend: "neutral",
-      tooltip: `Historical performance (${modeInfo.dataSource})`,
-      timeframe: "All-time",
-      modeInfo: modeInfo
-    },
-    { 
-      label: `Unrealized P&L (${accountData?.exchangeType?.toUpperCase() || 'N/A'})`, 
-      value: loadingAccount ? "Loading..." : `$${accountData?.totalUnrealizedProfit.toFixed(2) || '0.00'}`,
-      change: "—",
-      trend: accountData?.totalUnrealizedProfit ? (accountData.totalUnrealizedProfit >= 0 ? "up" : "down") : "neutral",
-      tooltip: `Floating P&L from ${accountData?.exchangeType?.toUpperCase() || 'exchange'} (${modeInfo.dataSource}, ${modeInfo.executionMode})`,
-      timeframe: "Real-time",
-      modeInfo: modeInfo
-    },
-  ];
-
-  return (
-    <div className="space-y-6">
+  const stats = [{
+    label: `Balance (${accountData?.exchangeType?.toUpperCase() || 'N/A'})`,
+    value: loadingAccount ? "Loading..." : `$${accountData?.totalWalletBalance.toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }) || '0.00'}`,
+    change: accountData?.totalUnrealizedProfit ? `${accountData.totalUnrealizedProfit >= 0 ? '+' : ''}$${accountData.totalUnrealizedProfit.toFixed(2)}` : "—",
+    trend: accountData?.totalUnrealizedProfit ? accountData.totalUnrealizedProfit >= 0 ? "up" : "down" : "neutral",
+    environment: accountData?.environment,
+    tooltip: `Total wallet balance from ${accountData?.exchangeType?.toUpperCase() || 'exchange'} (${modeInfo.dataSource}, ${modeInfo.executionMode})`,
+    timeframe: "Real-time",
+    modeInfo: modeInfo
+  }, {
+    label: `Open Positions (${accountData?.exchangeType?.toUpperCase() || 'N/A'})`,
+    value: loadingAccount ? "..." : accountData?.openPositionsCount.toString() || "0",
+    change: "—",
+    trend: "neutral",
+    tooltip: `Active positions from ${accountData?.exchangeType?.toUpperCase() || 'exchange'} (${modeInfo.dataSource}, ${modeInfo.executionMode})`,
+    timeframe: "Real-time",
+    modeInfo: modeInfo
+  }, {
+    label: "Win Rate",
+    value: loadingAccount ? "..." : accountData ? `${accountData.winRate.toFixed(1)}%` : "—",
+    change: "—",
+    trend: "neutral",
+    tooltip: `Historical performance (${modeInfo.dataSource})`,
+    timeframe: "All-time",
+    modeInfo: modeInfo
+  }, {
+    label: `Unrealized P&L (${accountData?.exchangeType?.toUpperCase() || 'N/A'})`,
+    value: loadingAccount ? "Loading..." : `$${accountData?.totalUnrealizedProfit.toFixed(2) || '0.00'}`,
+    change: "—",
+    trend: accountData?.totalUnrealizedProfit ? accountData.totalUnrealizedProfit >= 0 ? "up" : "down" : "neutral",
+    tooltip: `Floating P&L from ${accountData?.exchangeType?.toUpperCase() || 'exchange'} (${modeInfo.dataSource}, ${modeInfo.executionMode})`,
+    timeframe: "Real-time",
+    modeInfo: modeInfo
+  }];
+  return <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-3 mb-2">
             <h2 className="text-2xl font-bold">Dashboard</h2>
-            <Badge 
-              variant={
-                tradingMode === 'mainnet_only' ? 'destructive' : 
-                tradingMode === 'testnet_only' ? 'secondary' : 
-                'default'
-              }
-              className="text-sm px-3 py-1"
-            >
+            <Badge variant={tradingMode === 'mainnet_only' ? 'destructive' : tradingMode === 'testnet_only' ? 'secondary' : 'default'} className="text-sm px-3 py-1">
               {modeInfo.emoji} {modeInfo.name}
             </Badge>
           </div>
           <p className="text-sm text-muted-foreground">
             {modeInfo.description}
-            {lastUpdated && (
-              <span className="ml-2 text-xs">
+            {lastUpdated && <span className="ml-2 text-xs">
                 • Last updated: {lastUpdated.toLocaleTimeString()}
-              </span>
-            )}
+              </span>}
           </p>
           <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
             <span>📊 Data: {modeInfo.dataSource}</span>
@@ -458,18 +448,13 @@ const Dashboard = () => {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={() => {
-              loadUserSettings();
-              fetchAccountData();
-              fetchMarketData();
-              fetchStrategySignals();
-            }}
-            disabled={loadingAccount || loading || loadingSignals}
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${(loadingAccount || loading || loadingSignals) ? 'animate-spin' : ''}`} />
+          <Button variant="outline" size="sm" onClick={() => {
+          loadUserSettings();
+          fetchAccountData();
+          fetchMarketData();
+          fetchStrategySignals();
+        }} disabled={loadingAccount || loading || loadingSignals}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${loadingAccount || loading || loadingSignals ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
           <div className="text-xs text-muted-foreground">
@@ -480,8 +465,7 @@ const Dashboard = () => {
 
       <TooltipProvider>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {stats.map((stat) => (
-            <Card key={stat.label} className="p-4">
+          {stats.map(stat => <Card key={stat.label} className="p-4">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
@@ -511,8 +495,7 @@ const Dashboard = () => {
                 {stat.trend === "neutral" && <TrendingUp className="h-4 w-4 text-muted-foreground" />}
               </div>
               <p className="text-xs text-muted-foreground mt-2">{stat.change}</p>
-            </Card>
-          ))}
+            </Card>)}
         </div>
       </TooltipProvider>
 
@@ -521,8 +504,7 @@ const Dashboard = () => {
           <h3 className="text-lg font-bold">
             Open Positions {accountData?.exchangeType && `(${accountData.exchangeType.toUpperCase()})`}
           </h3>
-          {accountData && accountData.positions.length > 0 && (
-            <AlertDialog>
+          {accountData && accountData.positions.length > 0 && <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button variant="destructive" size="sm" disabled={closingPosition === 'all'}>
                   <Trash2 className="h-4 w-4 mr-2" />
@@ -543,15 +525,11 @@ const Dashboard = () => {
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
-            </AlertDialog>
-          )}
+            </AlertDialog>}
         </div>
-        {loadingAccount ? (
-          <div className="text-center py-12">
+        {loadingAccount ? <div className="text-center py-12">
             <div className="text-sm text-muted-foreground">Loading positions...</div>
-          </div>
-        ) : !accountData || accountData.positions.length === 0 ? (
-          <div className="text-center py-12">
+          </div> : !accountData || accountData.positions.length === 0 ? <div className="text-center py-12">
             <TrendingUp className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
             <p className="text-sm text-muted-foreground">No open positions</p>
             <p className="text-xs text-muted-foreground mt-1">
@@ -565,11 +543,8 @@ const Dashboard = () => {
                 Data Source: {modeInfo.dataSource}
               </p>
             </div>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {accountData.positions.map((position, idx) => (
-              <div key={idx} className="p-4 bg-secondary/50 rounded-lg border border-border">
+          </div> : <div className="space-y-3">
+            {accountData.positions.map((position, idx) => <div key={idx} className="p-4 bg-secondary/50 rounded-lg border border-border">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <h4 className="font-bold">{position.symbol}</h4>
@@ -584,11 +559,7 @@ const Dashboard = () => {
                     </span>
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
-                        <Button 
-                          variant="ghost" 
-                          size="sm"
-                          disabled={closingPosition === position.symbol}
-                        >
+                        <Button variant="ghost" size="sm" disabled={closingPosition === position.symbol}>
                           <X className="h-4 w-4" />
                         </Button>
                       </AlertDialogTrigger>
@@ -619,149 +590,27 @@ const Dashboard = () => {
                     <span className="font-medium">${position.entryPrice.toFixed(2)}</span>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
+              </div>)}
+          </div>}
       </Card>
 
-      <Card className="p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold">Strategy Signals (Open)</h3>
-          {strategySignals.length > 0 && (
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="outline" size="sm" disabled={clearingSignals}>
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Clear All
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Clear All Signals?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This will clear all {strategySignals.length} active signal(s). This action cannot be undone.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleClearAllSignals}>
-                    Clear All Signals
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          )}
-        </div>
-        {loadingSignals ? (
-          <div className="text-center py-12">
-            <div className="text-sm text-muted-foreground">Loading strategy signals...</div>
-          </div>
-        ) : strategySignals.length === 0 ? (
-          <div className="text-center py-12">
-            <TrendingUp className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-            <p className="text-sm text-muted-foreground">No active strategy signals</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Signals will appear here when your strategies trigger entry conditions
-            </p>
-            <div className="mt-4 p-3 bg-secondary/30 rounded-lg">
-              <p className="text-xs text-muted-foreground">
-                <strong>Signal Mode:</strong> {modeInfo.name} ({modeInfo.executionMode})
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Data Source: {modeInfo.dataSource}
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                {modeInfo.executionMode === 'Paper Trading' ? '📄 Paper signals will be simulated' : 
-                 modeInfo.executionMode === 'Simulated' ? '🧪 Testnet signals will be simulated' :
-                 '⚡ Real signals will execute trades'}
-              </p>
-            </div>
-          </div>
-        ) : (
-          <>
-            <div className="space-y-3">
-              {strategySignals
-                .slice((currentPage - 1) * signalsPerPage, currentPage * signalsPerPage)
-                .map((signal) => (
-              <div key={signal.id} className="p-4 bg-secondary/50 rounded-lg border border-border">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <h4 className="font-bold">{signal.strategy_name}</h4>
-                    <Badge variant="outline">{signal.symbol}</Badge>
-                    <Badge variant="default">Signal</Badge>
-                  </div>
-                  <span className="text-sm text-muted-foreground">
-                    {new Date(signal.entry_time).toLocaleString()}
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div>
-                    <span className="text-muted-foreground">Entry Price: </span>
-                    <span className="font-medium">${signal.entry_price.toFixed(2)}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Entry Time: </span>
-                    <span className="font-medium">{new Date(signal.entry_time).toLocaleTimeString()}</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-            </div>
-            {strategySignals.length > signalsPerPage && (
-              <Pagination className="mt-4">
-                <PaginationContent>
-                  <PaginationItem>
-                    <PaginationPrevious 
-                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                      className={currentPage === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-                    />
-                  </PaginationItem>
-                  {Array.from({ length: Math.ceil(strategySignals.length / signalsPerPage) }, (_, i) => i + 1).map((page) => (
-                    <PaginationItem key={page}>
-                      <PaginationLink
-                        onClick={() => setCurrentPage(page)}
-                        isActive={currentPage === page}
-                        className="cursor-pointer"
-                      >
-                        {page}
-                      </PaginationLink>
-                    </PaginationItem>
-                  ))}
-                  <PaginationItem>
-                    <PaginationNext 
-                      onClick={() => setCurrentPage(p => Math.min(Math.ceil(strategySignals.length / signalsPerPage), p + 1))}
-                      className={currentPage >= Math.ceil(strategySignals.length / signalsPerPage) ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-                    />
-                  </PaginationItem>
-                </PaginationContent>
-              </Pagination>
-            )}
-          </>
-        )}
-      </Card>
+      
 
       <Card className="p-6">
         <div className="flex items-center justify-between mb-4">
           <div className="flex-1">
             <h3 className="text-lg font-bold">Market Data (Live)</h3>
-            {tickerErrors.length > 0 && (
-              <div className="mt-2 p-3 bg-destructive/10 border border-destructive/30 rounded-lg">
+            {tickerErrors.length > 0 && <div className="mt-2 p-3 bg-destructive/10 border border-destructive/30 rounded-lg">
                 <p className="text-sm font-semibold text-destructive mb-1">⚠️ Invalid symbols detected:</p>
                 <p className="text-xs text-muted-foreground">
                   {tickerErrors.map(e => e.symbol).join(', ')} failed to load. Please remove these from Trading Pairs.
                 </p>
-              </div>
-            )}
+              </div>}
           </div>
           <AddMarketPairDialog onPairAdded={loadUserPairs} />
         </div>
-        {loading ? (
-          <div className="text-sm text-muted-foreground">Loading market data...</div>
-        ) : marketData.length > 0 ? (
-          <div className="grid gap-4 md:grid-cols-2">
-            {marketData.map((ticker) => (
-              <div key={ticker.symbol} className="p-4 bg-secondary/50 rounded-lg border border-border">
+        {loading ? <div className="text-sm text-muted-foreground">Loading market data...</div> : marketData.length > 0 ? <div className="grid gap-4 md:grid-cols-2">
+            {marketData.map(ticker => <div key={ticker.symbol} className="p-4 bg-secondary/50 rounded-lg border border-border">
                 <div className="flex items-center justify-between mb-2">
                   <h4 className="font-bold">{ticker.symbol}</h4>
                   <span className={ticker.changePercent >= 0 ? "text-green-600" : "text-red-600"}>
@@ -769,7 +618,10 @@ const Dashboard = () => {
                   </span>
                 </div>
                 <div className="text-2xl font-bold mb-1">
-                  ${ticker.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  ${ticker.price.toLocaleString(undefined, {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2
+            })}
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground mt-3">
                   <div>
@@ -782,28 +634,24 @@ const Dashboard = () => {
                   </div>
                   <div>
                     <span className="block">24h Volume</span>
-                    <span className="font-medium text-foreground">{ticker.volume.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                    <span className="font-medium text-foreground">{ticker.volume.toLocaleString(undefined, {
+                  maximumFractionDigits: 2
+                })}</span>
                   </div>
                   <div>
                     <span className="block">Quote Volume</span>
                     <span className="font-medium text-foreground">${(ticker.quoteVolume / 1000000).toFixed(2)}M</span>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="text-center py-12">
+              </div>)}
+          </div> : <div className="text-center py-12">
             <TrendingUp className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
             <p className="text-sm text-muted-foreground">Unable to load market data</p>
             <p className="text-xs text-muted-foreground mt-1">
               Check the edge function logs for details
             </p>
-          </div>
-        )}
+          </div>}
       </Card>
-    </div>
-  );
+    </div>;
 };
-
 export default Dashboard;
