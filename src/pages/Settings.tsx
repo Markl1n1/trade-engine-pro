@@ -9,36 +9,28 @@ import { supabase } from "@/integrations/supabase/client";
 import { useEffect, useState } from "react";
 import { Loader2, Save, AlertCircle, Send, CheckCircle, Shield, AlertTriangle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { z } from "zod";
 import { TradingPairsManager } from "@/components/TradingPairsManager";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { logSettingsChange, logTradingModeSwitch } from "@/utils/auditLogger";
 
-// Validation schema for security
+// Validation schema for settings (excluding credentials)
 const settingsSchema = z.object({
   exchange_type: z.enum(['binance', 'bybit']).optional(),
-  binance_mainnet_api_key: z.string().trim().max(128, "API key too long").optional(),
-  binance_mainnet_api_secret: z.string().trim().max(128, "API secret too long").optional(),
-  binance_testnet_api_key: z.string().trim().max(128, "API key too long").optional(),
-  binance_testnet_api_secret: z.string().trim().max(128, "API secret too long").optional(),
-  bybit_mainnet_api_key: z.string().trim().max(128, "API key too long").optional(),
-  bybit_mainnet_api_secret: z.string().trim().max(128, "API secret too long").optional(),
-  bybit_testnet_api_key: z.string().trim().max(128, "API key too long").optional(),
-  bybit_testnet_api_secret: z.string().trim().max(128, "API secret too long").optional(),
   telegram_bot_token: z.string().trim().max(256, "Token too long").optional(),
   telegram_chat_id: z.string().trim().max(64, "Chat ID too long").optional()
 });
+
+// Separate schema for credential input
+const credentialSchema = z.object({
+  api_key: z.string().trim().min(10, "API key must be at least 10 characters").max(128, "API key too long"),
+  api_secret: z.string().trim().min(10, "API secret must be at least 10 characters").max(128, "API secret too long"),
+});
+
 interface UserSettings {
   exchange_type: 'binance' | 'bybit';
-  binance_mainnet_api_key: string;
-  binance_mainnet_api_secret: string;
-  binance_testnet_api_key: string;
-  binance_testnet_api_secret: string;
-  bybit_mainnet_api_key: string;
-  bybit_mainnet_api_secret: string;
-  bybit_testnet_api_key: string;
-  bybit_testnet_api_secret: string;
   use_testnet: boolean;
   telegram_bot_token: string;
   telegram_chat_id: string;
@@ -48,6 +40,18 @@ interface UserSettings {
   use_mainnet_data: boolean;
   use_testnet_api: boolean;
   paper_trading_mode: boolean;
+}
+
+interface CredentialStatus {
+  binance_mainnet: boolean;
+  binance_testnet: boolean;
+  bybit_mainnet: boolean;
+  bybit_testnet: boolean;
+}
+
+interface NewCredentials {
+  api_key: string;
+  api_secret: string;
 }
 interface AppSettings {
   signalsPerPage: number;
@@ -133,14 +137,6 @@ const Settings = () => {
   });
   const [settings, setSettings] = useState<UserSettings>({
     exchange_type: 'binance',
-    binance_mainnet_api_key: "",
-    binance_mainnet_api_secret: "",
-    binance_testnet_api_key: "",
-    binance_testnet_api_secret: "",
-    bybit_mainnet_api_key: "",
-    bybit_mainnet_api_secret: "",
-    bybit_testnet_api_key: "",
-    bybit_testnet_api_secret: "",
     use_testnet: true,
     telegram_bot_token: "",
     telegram_chat_id: "",
@@ -150,6 +146,20 @@ const Settings = () => {
     use_mainnet_data: true,
     use_testnet_api: true,
     paper_trading_mode: true
+  });
+
+  const [credentialStatus, setCredentialStatus] = useState<CredentialStatus>({
+    binance_mainnet: false,
+    binance_testnet: false,
+    bybit_mainnet: false,
+    bybit_testnet: false,
+  });
+
+  const [showCredentialDialog, setShowCredentialDialog] = useState(false);
+  const [credentialTypeToUpdate, setCredentialTypeToUpdate] = useState<string | null>(null);
+  const [newCredentials, setNewCredentials] = useState<NewCredentials>({
+    api_key: "",
+    api_secret: ""
   });
   useEffect(() => {
     checkAuthAndLoadSettings();
@@ -190,6 +200,26 @@ const Settings = () => {
       description: "Application settings have been saved"
     });
   };
+  const checkEncryptedCredentials = async (userId: string) => {
+    try {
+      const { data } = await supabase
+        .from('encrypted_credentials')
+        .select('credential_type')
+        .eq('user_id', userId);
+      
+      if (data) {
+        setCredentialStatus({
+          binance_mainnet: data.some(c => c.credential_type === 'binance_mainnet'),
+          binance_testnet: data.some(c => c.credential_type === 'binance_testnet'),
+          bybit_mainnet: data.some(c => c.credential_type === 'bybit_mainnet'),
+          bybit_testnet: data.some(c => c.credential_type === 'bybit_testnet'),
+        });
+      }
+    } catch (error) {
+      console.error("Error checking encrypted credentials:", error);
+    }
+  };
+
   const loadSettings = async () => {
     try {
       const {
@@ -198,6 +228,10 @@ const Settings = () => {
         }
       } = await supabase.auth.getUser();
       if (!user) return;
+
+      // Check encrypted credentials status
+      await checkEncryptedCredentials(user.id);
+
       const {
         data,
         error
@@ -208,14 +242,6 @@ const Settings = () => {
       if (data) {
         setSettings({
           exchange_type: data.exchange_type as 'binance' | 'bybit' || 'binance',
-          binance_mainnet_api_key: "", // Credentials now stored encrypted
-          binance_mainnet_api_secret: "",
-          binance_testnet_api_key: "",
-          binance_testnet_api_secret: "",
-          bybit_mainnet_api_key: "",
-          bybit_mainnet_api_secret: "",
-          bybit_testnet_api_key: "",
-          bybit_testnet_api_secret: "",
           use_testnet: data.use_testnet,
           telegram_bot_token: data.telegram_bot_token || "",
           telegram_chat_id: data.telegram_chat_id || "",
@@ -266,14 +292,6 @@ const Settings = () => {
       // Validate input
       const validationResult = settingsSchema.safeParse({
         exchange_type: settings.exchange_type,
-        binance_mainnet_api_key: settings.binance_mainnet_api_key || undefined,
-        binance_mainnet_api_secret: settings.binance_mainnet_api_secret || undefined,
-        binance_testnet_api_key: settings.binance_testnet_api_key || undefined,
-        binance_testnet_api_secret: settings.binance_testnet_api_secret || undefined,
-        bybit_mainnet_api_key: settings.bybit_mainnet_api_key || undefined,
-        bybit_mainnet_api_secret: settings.bybit_mainnet_api_secret || undefined,
-        bybit_testnet_api_key: settings.bybit_testnet_api_key || undefined,
-        bybit_testnet_api_secret: settings.bybit_testnet_api_secret || undefined,
         telegram_bot_token: settings.telegram_bot_token || undefined,
         telegram_chat_id: settings.telegram_chat_id || undefined
       });
@@ -304,14 +322,6 @@ const Settings = () => {
       const settingsData = {
         user_id: user.id,
         exchange_type: settings.exchange_type,
-        binance_mainnet_api_key: settings.binance_mainnet_api_key?.trim() || null,
-        binance_mainnet_api_secret: settings.binance_mainnet_api_secret?.trim() || null,
-        binance_testnet_api_key: settings.binance_testnet_api_key?.trim() || null,
-        binance_testnet_api_secret: settings.binance_testnet_api_secret?.trim() || null,
-        bybit_mainnet_api_key: settings.bybit_mainnet_api_key?.trim() || null,
-        bybit_mainnet_api_secret: settings.bybit_mainnet_api_secret?.trim() || null,
-        bybit_testnet_api_key: settings.bybit_testnet_api_key?.trim() || null,
-        bybit_testnet_api_secret: settings.bybit_testnet_api_secret?.trim() || null,
         use_testnet: settings.use_testnet,
         telegram_bot_token: settings.telegram_bot_token?.trim() || null,
         telegram_chat_id: settings.telegram_chat_id?.trim() || null,
@@ -322,12 +332,7 @@ const Settings = () => {
         use_testnet_api: settings.use_testnet_api,
         paper_trading_mode: settings.paper_trading_mode
       };
-      console.log("Settings data prepared:", {
-        use_testnet: settings.use_testnet,
-        has_mainnet_key: !!settings.binance_mainnet_api_key,
-        has_testnet_key: !!settings.binance_testnet_api_key,
-        telegram_enabled: settings.telegram_enabled
-      });
+
       const {
         error
       } = await supabase.from("user_settings").upsert(settingsData, {
@@ -372,6 +377,89 @@ const Settings = () => {
       ...prev,
       [key]: value
     }));
+  };
+
+  const handleOpenCredentialDialog = (credentialType: string) => {
+    setCredentialTypeToUpdate(credentialType);
+    setNewCredentials({ api_key: "", api_secret: "" });
+    setShowCredentialDialog(true);
+  };
+
+  const handleSaveCredentials = async () => {
+    if (!credentialTypeToUpdate) return;
+
+    // Validate credentials
+    const validation = credentialSchema.safeParse(newCredentials);
+    if (!validation.success) {
+      toast({
+        title: "Validation Error",
+        description: validation.error.errors[0]?.message || "Invalid credentials",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("User not authenticated");
+
+      const { error } = await supabase.rpc('encrypt_credential', {
+        p_user_id: user.id,
+        p_credential_type: credentialTypeToUpdate,
+        p_api_key: newCredentials.api_key.trim(),
+        p_api_secret: newCredentials.api_secret.trim()
+      });
+
+      if (error) throw error;
+
+      // Refresh credential status
+      await checkEncryptedCredentials(user.id);
+
+      toast({
+        title: "Success",
+        description: "API credentials encrypted and saved securely"
+      });
+
+      setShowCredentialDialog(false);
+      setNewCredentials({ api_key: "", api_secret: "" });
+    } catch (error: any) {
+      console.error("Error saving credentials:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to save credentials",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleDeleteCredentials = async (credentialType: string) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("User not authenticated");
+
+      const { error } = await supabase
+        .from('encrypted_credentials')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('credential_type', credentialType);
+
+      if (error) throw error;
+
+      // Refresh credential status
+      await checkEncryptedCredentials(user.id);
+
+      toast({
+        title: "Success",
+        description: "API credentials deleted"
+      });
+    } catch (error: any) {
+      console.error("Error deleting credentials:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete credentials",
+        variant: "destructive"
+      });
+    }
   };
   const handleTestTelegram = async () => {
     setTestingTelegram(true);
@@ -614,75 +702,179 @@ const Settings = () => {
         <Alert className="bg-green-500/5 border-green-500/20 mb-4">
           <Shield className="h-4 w-4 text-green-500" />
           <AlertDescription className="text-sm">
-            🔒 <strong>Military-Grade Encryption:</strong> Your API keys are encrypted using AES-256 before storage. Separate credentials for testnet and mainnet.
+            🔒 <strong>Military-Grade Encryption:</strong> Your API keys are encrypted using pgsodium before storage. Separate credentials for testnet and mainnet.
           </AlertDescription>
         </Alert>
 
-        {settings.exchange_type === 'binance' ? <Tabs defaultValue="mainnet" className="w-full" onValueChange={value => setActiveApiTab(value as 'mainnet' | 'testnet')}>
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="mainnet">Mainnet API Keys</TabsTrigger>
-              <TabsTrigger value="testnet">Testnet API Keys</TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="mainnet" className="space-y-4 mt-4">
-              <div className="space-y-2">
-                <Label htmlFor="mainnet-api-key">Mainnet API Key</Label>
-                <Input id="mainnet-api-key" type="password" placeholder="Enter your Binance mainnet API key" value={settings.binance_mainnet_api_key} onChange={e => updateSetting("binance_mainnet_api_key", e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="mainnet-api-secret">Mainnet API Secret</Label>
-                <Input id="mainnet-api-secret" type="password" placeholder="Enter your Binance mainnet API secret" value={settings.binance_mainnet_api_secret} onChange={e => updateSetting("binance_mainnet_api_secret", e.target.value)} />
-              </div>
-            </TabsContent>
+        <Tabs defaultValue="mainnet" className="w-full" onValueChange={value => setActiveApiTab(value as 'mainnet' | 'testnet')}>
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="mainnet">Mainnet API Keys</TabsTrigger>
+            <TabsTrigger value="testnet">Testnet API Keys</TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="mainnet" className="space-y-4 mt-4">
+            {settings.exchange_type === 'binance' ? (
+              credentialStatus.binance_mainnet ? (
+                <div className="flex items-center justify-between p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-5 w-5 text-green-500" />
+                    <div>
+                      <p className="font-medium">Mainnet API Keys Configured</p>
+                      <p className="text-sm text-muted-foreground">Encrypted and stored securely</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={() => handleOpenCredentialDialog('binance_mainnet')}>
+                      Update Keys
+                    </Button>
+                    <Button variant="destructive" size="sm" onClick={() => handleDeleteCredentials('binance_mainnet')}>
+                      Delete
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="h-5 w-5 text-yellow-500" />
+                    <div>
+                      <p className="font-medium">No Mainnet API Keys</p>
+                      <p className="text-sm text-muted-foreground">Add your API keys to enable mainnet trading</p>
+                    </div>
+                  </div>
+                  <Button onClick={() => handleOpenCredentialDialog('binance_mainnet')}>
+                    Add Keys
+                  </Button>
+                </div>
+              )
+            ) : (
+              credentialStatus.bybit_mainnet ? (
+                <div className="flex items-center justify-between p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-5 w-5 text-green-500" />
+                    <div>
+                      <p className="font-medium">Mainnet API Keys Configured</p>
+                      <p className="text-sm text-muted-foreground">Encrypted and stored securely</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={() => handleOpenCredentialDialog('bybit_mainnet')}>
+                      Update Keys
+                    </Button>
+                    <Button variant="destructive" size="sm" onClick={() => handleDeleteCredentials('bybit_mainnet')}>
+                      Delete
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="h-5 w-5 text-yellow-500" />
+                    <div>
+                      <p className="font-medium">No Mainnet API Keys</p>
+                      <p className="text-sm text-muted-foreground">Add your API keys to enable mainnet trading</p>
+                    </div>
+                  </div>
+                  <Button onClick={() => handleOpenCredentialDialog('bybit_mainnet')}>
+                    Add Keys
+                  </Button>
+                </div>
+              )
+            )}
+          </TabsContent>
 
-            <TabsContent value="testnet" className="space-y-4 mt-4">
-              <div className="space-y-2">
-                <Label htmlFor="testnet-api-key">Testnet API Key</Label>
-                <Input id="testnet-api-key" type="password" placeholder="Enter your Binance testnet API key" value={settings.binance_testnet_api_key} onChange={e => updateSetting("binance_testnet_api_key", e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="testnet-api-secret">Testnet API Secret</Label>
-                <Input id="testnet-api-secret" type="password" placeholder="Enter your Binance testnet API secret" value={settings.binance_testnet_api_secret} onChange={e => updateSetting("binance_testnet_api_secret", e.target.value)} />
-              </div>
-            </TabsContent>
-          </Tabs> : <Tabs defaultValue="mainnet" className="w-full" onValueChange={value => setActiveApiTab(value as 'mainnet' | 'testnet')}>
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="mainnet">Mainnet API Keys</TabsTrigger>
-              <TabsTrigger value="testnet">Testnet API Keys</TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="mainnet" className="space-y-4 mt-4">
-              <div className="space-y-2">
-                <Label htmlFor="bybit-mainnet-api-key">Mainnet API Key</Label>
-                <Input id="bybit-mainnet-api-key" type="password" placeholder="Enter your Bybit mainnet API key" value={settings.bybit_mainnet_api_key} onChange={e => updateSetting("bybit_mainnet_api_key", e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="bybit-mainnet-api-secret">Mainnet API Secret</Label>
-                <Input id="bybit-mainnet-api-secret" type="password" placeholder="Enter your Bybit mainnet API secret" value={settings.bybit_mainnet_api_secret} onChange={e => updateSetting("bybit_mainnet_api_secret", e.target.value)} />
-              </div>
-            </TabsContent>
+          <TabsContent value="testnet" className="space-y-4 mt-4">
+            {settings.exchange_type === 'binance' ? (
+              credentialStatus.binance_testnet ? (
+                <div className="flex items-center justify-between p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-5 w-5 text-green-500" />
+                    <div>
+                      <p className="font-medium">Testnet API Keys Configured</p>
+                      <p className="text-sm text-muted-foreground">Encrypted and stored securely</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={() => handleOpenCredentialDialog('binance_testnet')}>
+                      Update Keys
+                    </Button>
+                    <Button variant="destructive" size="sm" onClick={() => handleDeleteCredentials('binance_testnet')}>
+                      Delete
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="h-5 w-5 text-yellow-500" />
+                    <div>
+                      <p className="font-medium">No Testnet API Keys</p>
+                      <p className="text-sm text-muted-foreground">Add your API keys to enable testnet trading</p>
+                    </div>
+                  </div>
+                  <Button onClick={() => handleOpenCredentialDialog('binance_testnet')}>
+                    Add Keys
+                  </Button>
+                </div>
+              )
+            ) : (
+              credentialStatus.bybit_testnet ? (
+                <div className="flex items-center justify-between p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-5 w-5 text-green-500" />
+                    <div>
+                      <p className="font-medium">Testnet API Keys Configured</p>
+                      <p className="text-sm text-muted-foreground">Encrypted and stored securely</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={() => handleOpenCredentialDialog('bybit_testnet')}>
+                      Update Keys
+                    </Button>
+                    <Button variant="destructive" size="sm" onClick={() => handleDeleteCredentials('bybit_testnet')}>
+                      Delete
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="h-5 w-5 text-yellow-500" />
+                    <div>
+                      <p className="font-medium">No Testnet API Keys</p>
+                      <p className="text-sm text-muted-foreground">Add your API keys to enable testnet trading</p>
+                    </div>
+                  </div>
+                  <Button onClick={() => handleOpenCredentialDialog('bybit_testnet')}>
+                    Add Keys
+                  </Button>
+                </div>
+              )
+            )}
 
-            <TabsContent value="testnet" className="space-y-4 mt-4">
-              <div className="space-y-2">
-                <Label htmlFor="bybit-testnet-api-key">Testnet API Key</Label>
-                <Input id="bybit-testnet-api-key" type="password" placeholder="Enter your Bybit testnet API key" value={settings.bybit_testnet_api_key} onChange={e => updateSetting("bybit_testnet_api_key", e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="bybit-testnet-api-secret">Testnet API Secret</Label>
-                <Input id="bybit-testnet-api-secret" type="password" placeholder="Enter your Bybit testnet API secret" value={settings.bybit_testnet_api_secret} onChange={e => updateSetting("bybit_testnet_api_secret", e.target.value)} />
-              </div>
-            </TabsContent>
-          </Tabs>}
-
-        <Button variant="outline" onClick={() => handleTestExchange(activeApiTab === 'testnet')} disabled={testingBinance || (activeApiTab === 'testnet' ? settings.exchange_type === 'binance' ? !settings.binance_testnet_api_key || !settings.binance_testnet_api_secret : !settings.bybit_testnet_api_key || !settings.bybit_testnet_api_secret : settings.exchange_type === 'binance' ? !settings.binance_mainnet_api_key || !settings.binance_mainnet_api_secret : !settings.bybit_mainnet_api_key || !settings.bybit_mainnet_api_secret)} className="mt-4">
-          {testingBinance ? <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Testing {activeApiTab === 'testnet' ? 'Testnet' : 'Mainnet'}...
-            </> : <>
-              <CheckCircle className="mr-2 h-4 w-4" />
-              Test {settings.exchange_type === 'binance' ? 'Binance' : 'Bybit'} {activeApiTab === 'testnet' ? 'Testnet' : 'Mainnet'} Connection
-            </>}
-        </Button>
+            <Button 
+              variant="outline" 
+              onClick={() => handleTestExchange(activeApiTab === 'testnet')} 
+              disabled={testingBinance || (
+                activeApiTab === 'testnet' 
+                  ? (settings.exchange_type === 'binance' ? !credentialStatus.binance_testnet : !credentialStatus.bybit_testnet)
+                  : (settings.exchange_type === 'binance' ? !credentialStatus.binance_mainnet : !credentialStatus.bybit_mainnet)
+              )} 
+              className="mt-4 w-full"
+            >
+              {testingBinance ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Testing {activeApiTab === 'testnet' ? 'Testnet' : 'Mainnet'}...
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="mr-2 h-4 w-4" />
+                  Test {settings.exchange_type === 'binance' ? 'Binance' : 'Bybit'} {activeApiTab === 'testnet' ? 'Testnet' : 'Mainnet'} Connection
+                </>
+              )}
+            </Button>
+          </TabsContent>
+        </Tabs>
       </Card>
 
       {/* Trading Pairs Section */}
@@ -762,6 +954,52 @@ const Settings = () => {
             </>}
         </Button>
       </div>
+
+      {/* Credential Dialog */}
+      <Dialog open={showCredentialDialog} onOpenChange={setShowCredentialDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {credentialTypeToUpdate?.includes('mainnet') ? 'Mainnet' : 'Testnet'} API Credentials
+            </DialogTitle>
+            <DialogDescription>
+              Enter your {settings.exchange_type === 'binance' ? 'Binance' : 'Bybit'} API credentials. 
+              They will be encrypted using pgsodium before storage.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="new-api-key">API Key</Label>
+              <Input
+                id="new-api-key"
+                type="text"
+                placeholder="Enter API key"
+                value={newCredentials.api_key}
+                onChange={(e) => setNewCredentials(prev => ({ ...prev, api_key: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-api-secret">API Secret</Label>
+              <Input
+                id="new-api-secret"
+                type="password"
+                placeholder="Enter API secret"
+                value={newCredentials.api_secret}
+                onChange={(e) => setNewCredentials(prev => ({ ...prev, api_secret: e.target.value }))}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCredentialDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveCredentials}>
+              <Shield className="mr-2 h-4 w-4" />
+              Encrypt & Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>;
 };
 export default Settings;
