@@ -361,7 +361,7 @@ const Dashboard = () => {
           name: 'Hybrid Live',
           description: 'Real data + Testnet API + Real execution',
           dataSource: 'Mainnet Data',
-          executionMode: 'Real Trading'
+          executionMode: 'Testnet Trading'
         };
       case 'paper_trading':
         return {

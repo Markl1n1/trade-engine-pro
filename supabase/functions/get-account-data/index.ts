@@ -54,12 +54,16 @@ Deno.serve(async (req) => {
 
     // Determine exchange type
     const exchangeType = settings.exchange_type || 'binance';
+    const tradingMode = settings.trading_mode || 'hybrid_safe';
     const useTestnet = settings.use_testnet || false;
+
+    // For Hybrid Live mode, always use testnet API for safety
+    const shouldUseTestnetAPI = tradingMode === 'hybrid_live' ? true : useTestnet;
 
     // Determine credential type based on exchange and environment
     const credentialType = exchangeType === 'bybit' 
-      ? (useTestnet ? 'bybit_testnet' : 'bybit_mainnet')
-      : (useTestnet ? 'binance_testnet' : 'binance_mainnet');
+      ? (shouldUseTestnetAPI ? 'bybit_testnet' : 'bybit_mainnet')
+      : (shouldUseTestnetAPI ? 'binance_testnet' : 'binance_mainnet');
 
     // Decrypt API credentials using secure vault
     const { data: credentials, error: credError } = await supabase
@@ -78,13 +82,13 @@ Deno.serve(async (req) => {
       console.log(`[ACCOUNT-DATA] No encrypted credentials, using plaintext fallback for ${credentialType}`);
       
       if (exchangeType === 'bybit') {
-        apiKey = useTestnet ? settings.bybit_testnet_api_key : settings.bybit_mainnet_api_key;
-        apiSecret = useTestnet ? settings.bybit_testnet_api_secret : settings.bybit_mainnet_api_secret;
-        baseUrl = useTestnet ? 'https://api-testnet.bybit.com' : 'https://api.bybit.com';
+        apiKey = shouldUseTestnetAPI ? settings.bybit_testnet_api_key : settings.bybit_mainnet_api_key;
+        apiSecret = shouldUseTestnetAPI ? settings.bybit_testnet_api_secret : settings.bybit_mainnet_api_secret;
+        baseUrl = shouldUseTestnetAPI ? 'https://api-testnet.bybit.com' : 'https://api.bybit.com';
       } else {
-        apiKey = useTestnet ? settings.binance_testnet_api_key : settings.binance_mainnet_api_key;
-        apiSecret = useTestnet ? settings.binance_testnet_api_secret : settings.binance_mainnet_api_secret;
-        baseUrl = useTestnet ? 'https://testnet.binancefuture.com' : 'https://fapi.binance.com';
+        apiKey = shouldUseTestnetAPI ? settings.binance_testnet_api_key : settings.binance_mainnet_api_key;
+        apiSecret = shouldUseTestnetAPI ? settings.binance_testnet_api_secret : settings.binance_mainnet_api_secret;
+        baseUrl = shouldUseTestnetAPI ? 'https://testnet.binancefuture.com' : 'https://fapi.binance.com';
       }
     } else {
       // Use decrypted credentials
@@ -92,14 +96,14 @@ Deno.serve(async (req) => {
       apiSecret = credentials[0].api_secret;
       
       if (exchangeType === 'bybit') {
-        baseUrl = useTestnet ? 'https://api-testnet.bybit.com' : 'https://api.bybit.com';
+        baseUrl = shouldUseTestnetAPI ? 'https://api-testnet.bybit.com' : 'https://api.bybit.com';
       } else {
-        baseUrl = useTestnet ? 'https://testnet.binancefuture.com' : 'https://fapi.binance.com';
+        baseUrl = shouldUseTestnetAPI ? 'https://testnet.binancefuture.com' : 'https://fapi.binance.com';
       }
     }
 
     if (!apiKey || !apiSecret) {
-      throw new Error(`${exchangeType.toUpperCase()} API credentials not configured for ${useTestnet ? 'testnet' : 'mainnet'}`);
+      throw new Error(`${exchangeType.toUpperCase()} API credentials not configured for ${shouldUseTestnetAPI ? 'testnet' : 'mainnet'}`);
     }
 
     let accountData;
