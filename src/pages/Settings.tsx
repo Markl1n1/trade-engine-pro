@@ -403,7 +403,7 @@ const Settings = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("User not authenticated");
 
-      const { error } = await supabase.rpc('encrypt_credential', {
+      const { error } = await supabase.rpc('store_credential', {
         p_user_id: user.id,
         p_credential_type: credentialTypeToUpdate,
         p_api_key: newCredentials.api_key.trim(),
@@ -428,8 +428,8 @@ const Settings = () => {
       let errorMessage = error.message || "Failed to save credentials";
       
       // Provide specific guidance for permission errors
-      if (error.message?.includes('permission denied') || error.message?.includes('crypto_secretbox')) {
-        errorMessage = "Database permissions error. Please refresh the page and try again.";
+      if (error.message?.includes('permission denied') || error.message?.includes('vault')) {
+        errorMessage = "Failed to store credentials securely. Please try again.";
       } else if (error.message?.includes('authenticate')) {
         errorMessage = "Authentication error. Please log out and log back in.";
       }

@@ -857,10 +857,9 @@ Deno.serve(async (req) => {
           
           try {
             const { data: credentials, error: credError } = await supabase
-              .rpc('decrypt_credential', {
+              .rpc('retrieve_credential', {
                 p_user_id: strategy.user_id,
-                p_credential_type: credentialType,
-                p_access_source: 'monitor-strategies-cron'
+                p_credential_type: credentialType
               });
             
             if (!credError && credentials && credentials.length > 0) {

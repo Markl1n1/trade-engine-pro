@@ -80,33 +80,21 @@ export type Database = {
         Row: {
           created_at: string
           credential_type: string
-          encrypted_api_key: string | null
-          encrypted_api_secret: string | null
           id: string
-          key_nonce: string | null
-          secret_nonce: string | null
           updated_at: string
           user_id: string
         }
         Insert: {
           created_at?: string
           credential_type: string
-          encrypted_api_key?: string | null
-          encrypted_api_secret?: string | null
           id?: string
-          key_nonce?: string | null
-          secret_nonce?: string | null
           updated_at?: string
           user_id: string
         }
         Update: {
           created_at?: string
           credential_type?: string
-          encrypted_api_key?: string | null
-          encrypted_api_secret?: string | null
           id?: string
-          key_nonce?: string | null
-          secret_nonce?: string | null
           updated_at?: string
           user_id?: string
         }
@@ -1070,26 +1058,6 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: undefined
       }
-      decrypt_credential: {
-        Args: {
-          p_access_source?: string
-          p_credential_type: string
-          p_user_id: string
-        }
-        Returns: {
-          api_key: string
-          api_secret: string
-        }[]
-      }
-      encrypt_credential: {
-        Args: {
-          p_api_key: string
-          p_api_secret: string
-          p_credential_type: string
-          p_user_id: string
-        }
-        Returns: string
-      }
       get_user_api_credentials: {
         Args: { user_uuid: string }
         Returns: {
@@ -1120,6 +1088,22 @@ export type Database = {
       migrate_user_credentials_to_encrypted: {
         Args: { p_user_id: string }
         Returns: boolean
+      }
+      retrieve_credential: {
+        Args: { p_credential_type: string; p_user_id: string }
+        Returns: {
+          api_key: string
+          api_secret: string
+        }[]
+      }
+      store_credential: {
+        Args: {
+          p_api_key: string
+          p_api_secret: string
+          p_credential_type: string
+          p_user_id: string
+        }
+        Returns: string
       }
       verify_credentials_encrypted: {
         Args: Record<PropertyKey, never>

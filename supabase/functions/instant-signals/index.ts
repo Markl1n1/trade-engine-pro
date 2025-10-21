@@ -206,10 +206,9 @@ class PositionExecutionManager {
     );
     
     const { data: credentials, error: credError } = await supabase
-      .rpc('decrypt_credential', {
+      .rpc('retrieve_credential', {
         p_user_id: userId,
-        p_credential_type: credentialType,
-        p_access_source: 'instant-signals'
+        p_credential_type: credentialType
       });
 
     if (credError || !credentials || credentials.length === 0) {

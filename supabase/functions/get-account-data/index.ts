@@ -66,12 +66,11 @@ Deno.serve(async (req) => {
       ? (shouldUseTestnetAPI ? 'bybit_testnet' : 'bybit_mainnet')
       : (shouldUseTestnetAPI ? 'binance_testnet' : 'binance_mainnet');
 
-    // Decrypt API credentials using secure vault
+    // Retrieve API credentials from secure vault
     const { data: credentials, error: credError } = await supabase
-      .rpc('decrypt_credential', {
+      .rpc('retrieve_credential', {
         p_user_id: user.id,
-        p_credential_type: credentialType,
-        p_access_source: 'get-account-data'
+        p_credential_type: credentialType
       });
 
     let apiKey: string | null = null;

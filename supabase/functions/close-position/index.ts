@@ -50,13 +50,12 @@ Deno.serve(async (req) => {
 
     if (settingsError) throw settingsError;
 
-    // Decrypt API credentials using secure vault
+    // Retrieve API credentials from secure vault
     const credentialType = settings.use_testnet ? 'binance_testnet' : 'binance_mainnet';
     const { data: credentials, error: credError } = await supabaseServiceClient
-      .rpc('decrypt_credential', {
+      .rpc('retrieve_credential', {
         p_user_id: user.id,
-        p_credential_type: credentialType,
-        p_access_source: 'close-position'
+        p_credential_type: credentialType
       });
 
     let apiKey: string | null = null;
