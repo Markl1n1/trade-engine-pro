@@ -337,16 +337,8 @@ const Dashboard = () => {
   };
 
   // Get trading mode info
-  const getTradingModeInfo = (mode: string) => {
+  const getTradingModeInfo = (mode: string | undefined) => {
     switch (mode) {
-      case 'testnet_only':
-        return {
-          emoji: '🧪',
-          name: 'Testnet Only',
-          description: 'Safe testing with testnet data',
-          dataSource: 'Testnet API',
-          executionMode: 'Simulated'
-        };
       case 'hybrid_safe':
         return {
           emoji: '🛡️',
@@ -432,7 +424,7 @@ const Dashboard = () => {
         <div>
           <div className="flex items-center gap-3 mb-2">
             <h2 className="text-2xl font-bold">Dashboard</h2>
-            <Badge variant={tradingMode === 'mainnet_only' ? 'destructive' : tradingMode === 'testnet_only' ? 'secondary' : 'default'} className="text-sm px-3 py-1">
+            <Badge variant={tradingMode === 'mainnet_only' ? 'destructive' : 'default'} className="text-sm px-3 py-1">
               {modeInfo.emoji} {modeInfo.name}
             </Badge>
           </div>

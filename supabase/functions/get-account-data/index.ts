@@ -392,8 +392,7 @@ Deno.serve(async (req) => {
       availableBalance = parseFloat(accountData.availableBalance);
     }
 
-    // Determine trading mode info
-    const tradingMode = settings.trading_mode || 'mainnet_only';
+    // Determine trading mode info (use existing tradingMode variable)
     const dataSource = settings.use_mainnet_data ? 'mainnet' : 'testnet';
     const executionMode = settings.paper_trading_mode ? 'paper' : (settings.use_testnet ? 'simulated' : 'real');
 

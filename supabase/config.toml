@@ -14,9 +14,6 @@ verify_jwt = true
 verify_jwt = true
 
 # Advanced functions
-[functions.validate-strategy]
-verify_jwt = true
-
 [functions.instant-signals]
 verify_jwt = false
 

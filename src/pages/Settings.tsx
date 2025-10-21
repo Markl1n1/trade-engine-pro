@@ -44,7 +44,7 @@ interface UserSettings {
   telegram_chat_id: string;
   telegram_enabled: boolean;
   // Trading mode settings
-  trading_mode: 'testnet_only' | 'hybrid_safe' | 'hybrid_live' | 'paper_trading' | 'mainnet_only';
+  trading_mode: 'hybrid_safe' | 'hybrid_live' | 'paper_trading' | 'mainnet_only';
   use_mainnet_data: boolean;
   use_testnet_api: boolean;
   paper_trading_mode: boolean;
@@ -61,8 +61,6 @@ interface SystemSettings {
 // Helper functions for trading mode display
 const getTradingModeAlertClass = (mode: string) => {
   switch (mode) {
-    case 'testnet_only':
-      return "bg-blue-50 border-blue-200";
     case 'hybrid_safe':
       return "bg-green-50 border-green-200";
     case 'hybrid_live':
@@ -77,8 +75,6 @@ const getTradingModeAlertClass = (mode: string) => {
 };
 const getTradingModeIconClass = (mode: string) => {
   switch (mode) {
-    case 'testnet_only':
-      return "text-blue-600";
     case 'hybrid_safe':
       return "text-green-600";
     case 'hybrid_live':
@@ -93,11 +89,6 @@ const getTradingModeIconClass = (mode: string) => {
 };
 const getTradingModeDescription = (mode: string) => {
   switch (mode) {
-    case 'testnet_only':
-      return <>
-          <strong>TESTNET ONLY:</strong> Using testnet data and API
-          <br />✅ Safe for testing, ❌ Limited accuracy
-        </>;
     case 'hybrid_safe':
       return <>
           <strong>HYBRID SAFE:</strong> Real market data + testnet API + paper trading
@@ -230,7 +221,7 @@ const Settings = () => {
           telegram_chat_id: data.telegram_chat_id || "",
           telegram_enabled: data.telegram_enabled,
           // Trading mode settings
-          trading_mode: data.trading_mode as 'testnet_only' | 'hybrid_safe' | 'hybrid_live' | 'paper_trading' | 'mainnet_only' || 'hybrid_safe',
+          trading_mode: data.trading_mode as 'hybrid_safe' | 'hybrid_live' | 'paper_trading' | 'mainnet_only' || 'hybrid_safe',
           use_mainnet_data: data.use_mainnet_data ?? true,
           use_testnet_api: data.use_testnet_api ?? true,
           paper_trading_mode: data.paper_trading_mode ?? true
@@ -555,12 +546,6 @@ const Settings = () => {
                 <SelectValue placeholder="Select trading mode" />
               </SelectTrigger>
               <SelectContent className="!bg-background !border-border dark:!bg-gray-800 dark:!text-white">
-                <SelectItem value="testnet_only" className="hover:bg-accent">
-                  <div className="flex flex-col">
-                    <span className="font-medium">Testnet Only</span>
-                    <span className="text-xs text-muted-foreground">Safe testing, limited accuracy</span>
-                  </div>
-                </SelectItem>
                 <SelectItem value="hybrid_safe" className="hover:bg-accent">
                   <div className="flex flex-col">
                     <span className="font-medium">Hybrid Safe</span>

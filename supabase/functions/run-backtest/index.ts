@@ -1834,6 +1834,25 @@ function calculateEMACustom(prices: number[], period: number): number[] {
   return ema;
 }
 
+// ============= MSTG (Multi-Strategy Trading Grid) IMPLEMENTATION =============
+async function runMSTGBacktest(
+  strategy: any,
+  candles: Candle[],
+  initialBalance: number,
+  productType: string,
+  leverage: number,
+  makerFee: number,
+  takerFee: number,
+  slippage: number,
+  executionTiming: string,
+  supabaseClient: any,
+  strategyId: string,
+  startDate: string,
+  endDate: string,
+  corsHeaders: any
+) {
+  const benchmarkSymbol = strategy.mstg_benchmark_symbol || 'BTCUSDT';
+  console.log(`[MSTG] Starting MSTG backtest for ${strategy.symbol} vs ${benchmarkSymbol}`);
   
   // Fetch benchmark data (fetch ALL candles)
   let allBenchmarkData: any[] = [];
