@@ -2336,6 +2336,11 @@ async function run4hReentryBacktest(
   let previousCandleBreakout: { type: 'above' | 'below' | null; candle: Candle } | null = null;
 
   console.log(`Processing ${candles.length} candles for 4h reentry logic...`);
+  
+  let sessionCandlesCount = 0;
+  let potentialLongSetups = 0;
+  let potentialShortSetups = 0;
+  let rejectedEntries = 0;
 
   for (let i = 1; i < candles.length; i++) {
     const currentCandle = candles[i];
@@ -2347,6 +2352,7 @@ async function run4hReentryBacktest(
 
     // Step 1: Build/update the 4h range for current day
     if (isInNYSession(currentCandle.open_time, sessionStart, sessionEnd)) {
+      sessionCandlesCount++;
       if (!currentDayRange || currentDayRange.date !== currentDate) {
         // Start new day range
         currentDayRange = {
@@ -2386,6 +2392,7 @@ async function run4hReentryBacktest(
 
       // LONG setup: C_{t-1} < L_4h AND C_t >= L_4h
       if (C_prev < currentDayRange.L_4h && C_curr >= currentDayRange.L_4h) {
+        potentialLongSetups++;
         shouldEnterLong = true;
         const entryPrice = C_curr;
         stopLossPrice = L_prev;
@@ -2396,6 +2403,7 @@ async function run4hReentryBacktest(
       }
       // SHORT setup: C_{t-1} > H_4h AND C_t <= H_4h
       else if (C_prev > currentDayRange.H_4h && C_curr <= currentDayRange.H_4h) {
+        potentialShortSetups++;
         shouldEnterShort = true;
         const entryPrice = C_curr;
         stopLossPrice = H_prev;
@@ -2437,6 +2445,7 @@ async function run4hReentryBacktest(
         const canEnter = quantity >= minQty && actualNotional >= minNotional && margin <= availableBalance;
         
         if (!canEnter) {
+          rejectedEntries++;
           console.log(`[${i}] ${nyTimeStr} ❌ ENTRY REJECTED (${shouldEnterLong ? 'LONG' : 'SHORT'}):`);
           console.log(`  - positionSizeUSD: ${positionSizeUSD.toFixed(2)}`);
           console.log(`  - executionPrice: ${priceWithSlippage.toFixed(2)}`);
@@ -2589,6 +2598,16 @@ async function run4hReentryBacktest(
     trades.push(position);
     console.log(`[END] Closed position at ${exitPrice.toFixed(2)}, profit: ${netProfit.toFixed(2)}`);
   }
+
+  // Log summary statistics
+  console.log(`\n=== 4H REENTRY BACKTEST SUMMARY ===`);
+  console.log(`Total candles processed: ${candles.length}`);
+  console.log(`Candles in NY session (00:00-03:59): ${sessionCandlesCount}`);
+  console.log(`Potential LONG setups: ${potentialLongSetups}`);
+  console.log(`Potential SHORT setups: ${potentialShortSetups}`);
+  console.log(`Rejected entries (insufficient funds): ${rejectedEntries}`);
+  console.log(`Executed trades: ${trades.length}`);
+  console.log(`===================================\n`);
 
   // Calculate metrics
   const totalReturn = ((balance - initialBalance) / initialBalance) * 100;

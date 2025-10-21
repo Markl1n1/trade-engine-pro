@@ -386,7 +386,7 @@ async function evaluateStrategy(
 
       // Update strategy state
       if (signalType === 'BUY') {
-        await supabase
+        const { error: stateError } = await supabase
           .from('strategy_live_states')
           .upsert({
             strategy_id: strategy.id,
@@ -396,18 +396,31 @@ async function evaluateStrategy(
             entry_time: new Date().toISOString(),
             last_signal_time: new Date().toISOString(),
             last_processed_candle_time: currentCandle.timestamp
+          }, {
+            onConflict: 'strategy_id'
           });
+        
+        if (stateError) {
+          console.error('[STATE-ERROR] Failed to update BUY state:', stateError);
+        }
       } else if (signalType === 'SELL') {
-        await supabase
+        const { error: stateError } = await supabase
           .from('strategy_live_states')
-          .update({
+          .upsert({
+            strategy_id: strategy.id,
+            user_id: strategy.user_id,
             position_open: false,
             entry_price: null,
             entry_time: null,
             last_signal_time: new Date().toISOString(),
             last_processed_candle_time: currentCandle.timestamp
-          })
-          .eq('strategy_id', strategy.id);
+          }, {
+            onConflict: 'strategy_id'
+          });
+        
+        if (stateError) {
+          console.error('[STATE-ERROR] Failed to update SELL state:', stateError);
+        }
       }
     }
   }
