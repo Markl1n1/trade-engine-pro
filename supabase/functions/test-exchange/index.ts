@@ -26,6 +26,7 @@ Deno.serve(async (req): Promise<Response> => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  let user;
   try {
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -35,7 +36,8 @@ Deno.serve(async (req): Promise<Response> => {
     // Get authenticated user
     const authHeader = req.headers.get('Authorization')!;
     const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
+    const { data: { user: authUser }, error: authError } = await supabaseClient.auth.getUser(token);
+    user = authUser;
 
     if (authError || !user) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
@@ -120,16 +122,24 @@ Deno.serve(async (req): Promise<Response> => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
-  } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[TEST-EXCHANGE] Error:', errorMessage);
-    return new Response(JSON.stringify({ 
-      success: false, 
-      error: errorMessage
-    }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  } catch (error: any) {
+    const { handleError } = await import('../helpers/error-sanitizer.ts');
+    const sanitizedMessage = handleError({
+      function: 'test-exchange',
+      userId: user?.id,
+      error,
     });
+    
+    return new Response(
+      JSON.stringify({ 
+        success: false, 
+        error: sanitizedMessage
+      }),
+      { 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 500 
+      }
+    );
   }
 });
 
@@ -163,12 +173,16 @@ async function testBinanceConnection(apiKey: string, apiSecret: string, isTestne
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
     
-  } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[TEST-EXCHANGE] Binance connection failed:', errorMessage);
+  } catch (error) {
+    const { handleError } = await import('../helpers/error-sanitizer.ts');
+    const sanitizedMessage = handleError({
+      function: 'test-exchange/testBinanceConnection',
+      error,
+    });
+    
     return new Response(JSON.stringify({ 
       success: false, 
-      error: `Binance ${isTestnet ? 'testnet' : 'mainnet'} connection failed: ${errorMessage}` 
+      error: sanitizedMessage
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -242,12 +256,16 @@ async function testBybitConnection(apiKey: string, apiSecret: string, isTestnet:
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
     
-  } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[TEST-EXCHANGE] Bybit connection failed:', errorMessage);
+  } catch (error) {
+    const { handleError } = await import('../helpers/error-sanitizer.ts');
+    const sanitizedMessage = handleError({
+      function: 'test-exchange/testBybitConnection',
+      error,
+    });
+    
     return new Response(JSON.stringify({ 
       success: false, 
-      error: `Bybit ${isTestnet ? 'testnet' : 'mainnet'} connection failed: ${errorMessage}` 
+      error: sanitizedMessage
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

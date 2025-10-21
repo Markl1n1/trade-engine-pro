@@ -12,6 +12,7 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  let user;
   try {
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -23,7 +24,8 @@ Deno.serve(async (req) => {
       }
     );
 
-    const { data: { user } } = await supabaseClient.auth.getUser();
+    const { data: { user: authUser } } = await supabaseClient.auth.getUser();
+    user = authUser;
     if (!user) {
       throw new Error('Unauthorized');
     }
@@ -250,15 +252,21 @@ Deno.serve(async (req) => {
       }
     );
   } catch (error: any) {
-    console.error('Error closing position:', error);
+    const { handleError } = await import('../helpers/error-sanitizer.ts');
+    const sanitizedMessage = handleError({
+      function: 'close-position',
+      userId: user?.id,
+      error,
+    });
+    
     return new Response(
-      JSON.stringify({
-        success: false,
-        error: error.message,
+      JSON.stringify({ 
+        success: false, 
+        error: sanitizedMessage
       }),
-      {
-        status: 500,
+      { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 500 
       }
     );
   }

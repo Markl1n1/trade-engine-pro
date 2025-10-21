@@ -16,6 +16,7 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  let user;
   try {
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -24,7 +25,8 @@ Deno.serve(async (req) => {
 
     const authHeader = req.headers.get('Authorization')!;
     const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+    const { data: { user: authUser }, error: userError } = await supabase.auth.getUser(token);
+    user = authUser;
 
     if (userError || !user) {
       throw new Error('Unauthorized');
@@ -384,15 +386,21 @@ Deno.serve(async (req) => {
       }
     );
   } catch (error: any) {
-    console.error('Error fetching account data:', error);
+    const { handleError } = await import('../helpers/error-sanitizer.ts');
+    const sanitizedMessage = handleError({
+      function: 'get-account-data',
+      userId: user?.id,
+      error,
+    });
+    
     return new Response(
-      JSON.stringify({
-        success: false,
-        error: error.message,
+      JSON.stringify({ 
+        success: false, 
+        error: sanitizedMessage
       }),
-      {
-        status: 400,
+      { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 500 
       }
     );
   }
