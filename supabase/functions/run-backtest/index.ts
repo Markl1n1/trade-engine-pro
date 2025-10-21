@@ -36,6 +36,13 @@ interface IndicatorCache {
   [key: string]: number[] | { [subkey: string]: number[] };
 }
 
+// Helper function for MTF Momentum volume calculation
+function calculateVolumeSMA(candles: any[], period: number): number {
+  if (candles.length < period) return 0;
+  const sum = candles.slice(-period).reduce((acc, c) => acc + c.volume, 0);
+  return sum / period;
+}
+
 // Timezone conversion utility for NY time with DST handling
 function convertToNYTime(timestamp: number): Date {
   const date = new Date(timestamp);
@@ -741,10 +748,31 @@ serve(async (req) => {
     }
 
     if (!marketData || marketData.length === 0) {
-      throw new Error(`No market data found for ${strategy.symbol} on ${strategy.timeframe} timeframe for the specified period. Please ensure the exchange-websocket-monitor is running to collect data.`);
+      const exchangeInfo = exchangeType === 'bybit' ? 'ByBit (tried Binance fallback)' : exchangeType;
+      throw new Error(
+        `No market data found for ${strategy.symbol} on ${strategy.timeframe} timeframe for ${exchangeInfo} exchange.\n\n` +
+        `📊 Data Range Requested: ${new Date(startDate).toISOString().split('T')[0]} to ${new Date(endDate).toISOString().split('T')[0]}\n\n` +
+        `✅ Solutions:\n` +
+        `1. Ensure exchange-websocket-monitor is running and collecting data for ${strategy.symbol}\n` +
+        `2. Check if ${strategy.symbol} is added in Trading Pairs Manager\n` +
+        `3. Wait 15-30 minutes for enough ${strategy.timeframe} candles to accumulate\n` +
+        `4. Try a different date range with existing historical data\n` +
+        `5. For ${exchangeType === 'bybit' ? 'ByBit' : 'Binance'}, verify the symbol is available on the exchange\n\n` +
+        `💡 Tip: Start with a smaller date range (1-7 days) for faster testing.`
+      );
     }
 
     console.log(`Total candles fetched: ${marketData.length}`);
+    
+    // Log data availability for debugging
+    console.log(`[BACKTEST] Data available: ${marketData.length} candles from ${new Date(marketData[0].open_time).toISOString()} to ${new Date(marketData[marketData.length - 1].open_time).toISOString()}`);
+    
+    const requiredCandles = strategy.timeframe === '15m' ? 400 : strategy.timeframe === '5m' ? 1200 : 5000;
+    console.log(`[BACKTEST] Required for ${strategy.timeframe}: minimum ${requiredCandles} candles for accurate results`);
+    
+    if (marketData.length < requiredCandles) {
+      console.warn(`[BACKTEST] ⚠️ Only ${marketData.length} candles available (need ${requiredCandles}). Results may be inaccurate.`);
+    }
 
     console.log(`Found ${marketData.length} candles for backtesting`);
 
@@ -1613,64 +1641,81 @@ async function runMTFMomentumBacktest(
     mtf_volume_multiplier: strategy.mtf_volume_multiplier || 1.2
   };
 
-  console.log(`Processing ${candles.length} candles for MTF Momentum strategy...`);
+  const startTime = Date.now();
+  console.log(`[MTF-BACKTEST] Starting optimization: ${candles.length} 1m candles`);
   console.log(`Strategy config:`, config);
 
   // Get multi-timeframe data (1m, 5m, 15m)
-  const candles1m = candles; // Assuming input is 1m
+  const candles1m = candles;
   const candles5m = resampleCandles(candles, '5m');
   const candles15m = resampleCandles(candles, '15m');
+  
+  console.log(`[MTF-BACKTEST] Resampled: ${candles5m.length} 5m → ${candles15m.length} 15m candles`);
+
+  // PRE-CALCULATE ALL INDICATORS ONCE (O(n) instead of O(n³))
+  const closes1m = candles1m.map(c => c.close);
+  const closes5m = candles5m.map(c => c.close);
+  const closes15m = candles15m.map(c => c.close);
+  
+  console.log(`[MTF-BACKTEST] Pre-calculating indicators...`);
+  const rsi1m = calculateRSI(closes1m, config.mtf_rsi_period);
+  const rsi5m = calculateRSI(closes5m, config.mtf_rsi_period);
+  const rsi15m = calculateRSI(closes15m, config.mtf_rsi_period);
+  
+  const macd1m = calculateMACD(closes1m);
+  const macd5m = calculateMACD(closes5m);
+  const macd15m = calculateMACD(closes15m);
+  
+  const volumeSMA1m = calculateVolumeSMA(candles1m, 20);
+  console.log(`[MTF-BACKTEST] ✅ Indicators ready, starting backtest loop...`);
 
   for (let i = Math.max(config.mtf_rsi_period, config.mtf_macd_slow); i < candles.length; i++) {
     const currentCandle = candles[i];
     const currentPrice = currentCandle.close;
     const currentTime = currentCandle.open_time;
     
-    // Convert candles to the format expected by the strategy
-    const strategyCandles1m = candles1m.slice(0, i + 1).map(c => ({
-      open: c.open,
-      high: c.high,
-      low: c.low,
-      close: c.close,
-      volume: c.volume,
-      timestamp: c.open_time
-    }));
-
-    const strategyCandles5m = candles5m.slice(0, Math.floor(i / 5) + 1).map(c => ({
-      open: c.open,
-      high: c.high,
-      low: c.low,
-      close: c.close,
-      volume: c.volume,
-      timestamp: c.open_time
-    }));
-
-    const strategyCandles15m = candles15m.slice(0, Math.floor(i / 15) + 1).map(c => ({
-      open: c.open,
-      high: c.high,
-      low: c.low,
-      close: c.close,
-      volume: c.volume,
-      timestamp: c.open_time
-    }));
-
-    // Evaluate MTF Momentum strategy
-    const mtfConfig = {
-      rsi_period: config.mtf_rsi_period,
-      rsi_entry_threshold: config.mtf_rsi_entry_threshold,
-      macd_fast: config.mtf_macd_fast,
-      macd_slow: config.mtf_macd_slow,
-      macd_signal: config.mtf_macd_signal,
-      volume_multiplier: config.mtf_volume_multiplier
-    };
+    // Direct evaluation using pre-calculated indicators (index-based access)
+    const idx1m = i;
+    const idx5m = Math.floor(i / 5);
+    const idx15m = Math.floor(i / 15);
     
-    const signal = evaluateMTFMomentum(
-      strategyCandles1m,
-      strategyCandles5m,
-      strategyCandles15m,
-      mtfConfig,
-      position !== null
-    );
+    // Skip if not enough data for higher timeframes
+    if (idx5m >= rsi5m.length || idx15m >= rsi15m.length) continue;
+    
+    const currentRSI1m = rsi1m[idx1m] || 50;
+    const currentRSI5m = rsi5m[idx5m] || 50;
+    const currentRSI15m = rsi15m[idx15m] || 50;
+    
+    const currentMACD1m = macd1m.histogram[idx1m] || 0;
+    const currentMACD5m = macd5m.histogram[idx5m] || 0;
+    const currentMACD15m = macd15m.histogram[idx15m] || 0;
+    
+    const currentVolume = currentCandle.volume;
+    const volumeConfirmed = currentVolume >= volumeSMA1m * config.mtf_volume_multiplier;
+    
+    // Check MTF confluence for BUY
+    const longCondition = !position && 
+      currentRSI1m > config.mtf_rsi_entry_threshold &&
+      currentRSI5m > config.mtf_rsi_entry_threshold &&
+      currentRSI15m > config.mtf_rsi_entry_threshold &&
+      currentMACD1m > 0 && currentMACD5m > 0 && currentMACD15m > 0 &&
+      volumeConfirmed;
+    
+    // Check MTF confluence for SELL
+    const shortCondition = position &&
+      (currentRSI1m < (100 - config.mtf_rsi_entry_threshold) ||
+       currentRSI5m < (100 - config.mtf_rsi_entry_threshold) ||
+       currentRSI15m < (100 - config.mtf_rsi_entry_threshold) ||
+       currentMACD1m < 0 || currentMACD5m < 0 || currentMACD15m < 0);
+    
+    const signal = {
+      signal_type: longCondition ? 'BUY' : (shortCondition ? 'SELL' : null),
+      reason: longCondition 
+        ? `MTF BUY: RSI(${currentRSI1m.toFixed(1)}/${currentRSI5m.toFixed(1)}/${currentRSI15m.toFixed(1)}), MACD+, Vol✓`
+        : shortCondition
+        ? `MTF SELL: Momentum weakened`
+        : 'No signal'
+    };
     
     if (signal.signal_type === 'BUY' && !position) {
       // Calculate position size
@@ -1754,6 +1799,9 @@ async function runMTFMomentumBacktest(
   const avgLoss = trades.filter(t => (t.profit || 0) < 0).reduce((sum, t) => sum + (t.profit || 0), 0) / Math.max(totalTrades - winTrades, 1);
   const profitFactor = Math.abs(avgWin * winTrades) / Math.abs(avgLoss * (totalTrades - winTrades));
 
+  const executionTime = ((Date.now() - startTime) / 1000).toFixed(2);
+  console.log(`[MTF-BACKTEST] ✅ Completed in ${executionTime}s (${(candles.length / parseFloat(executionTime)).toFixed(0)} candles/sec)`);
+  
   console.log(`MTF Momentum Backtest Results:`);
   console.log(`- Total Return: ${totalReturn.toFixed(2)}%`);
   console.log(`- Total Trades: ${totalTrades}`);
