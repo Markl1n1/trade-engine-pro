@@ -18,12 +18,11 @@ export function MonitoringStatus() {
   const [debugLogs, setDebugLogs] = useState<any[]>([]);
   const [connectionInfo, setConnectionInfo] = useState<any>(null);
   const [showDisconnectBanner, setShowDisconnectBanner] = useState(false);
-  
+
   // New monitoring system status
   const [cronStatus, setCronStatus] = useState<'active' | 'inactive' | 'unknown'>('unknown');
   const [cronLastRun, setCronLastRun] = useState<string | null>(null);
   const [systemHealth, setSystemHealth] = useState<any>(null);
-
   useEffect(() => {
     loadMonitoringStatus();
     loadCronStatus();
@@ -33,27 +32,23 @@ export function MonitoringStatus() {
       loadCronStatus();
       loadSystemHealth();
     }, 30000);
-    
+
     // Connect to WebSocket monitor
     const connectWebSocket = () => {
       setWsStatus('connecting');
       const ws = new WebSocket(`wss://wnkjtkigpyfnthnfmdlk.supabase.co/functions/v1/binance-websocket-monitor`);
-      
       ws.onopen = () => {
         console.log('[MONITOR] WebSocket connected');
         setWsStatus('connected');
         setShowDisconnectBanner(false);
       };
-      
-      ws.onmessage = (event) => {
+      ws.onmessage = event => {
         const data = JSON.parse(event.data);
         console.log('[MONITOR] Received:', data);
-        
         if (data.type === 'heartbeat' || data.type === 'connected') {
           setLastUpdate(data.timestamp);
           setWsStatus('connected');
           setShowDisconnectBanner(false);
-          
           if (data.type === 'connected' && data.strategyDetails) {
             setConnectionInfo(data);
           }
@@ -71,44 +66,32 @@ export function MonitoringStatus() {
           }]);
         }
       };
-      
       ws.onerror = () => {
         setWsStatus('disconnected');
         setShowDisconnectBanner(true);
       };
-      
       ws.onclose = () => {
         setWsStatus('disconnected');
         setShowDisconnectBanner(true);
         setTimeout(connectWebSocket, 5000);
       };
-      
       return ws;
     };
-    
     const ws = connectWebSocket();
-    
     return () => {
       clearInterval(interval);
       ws.close();
     };
   }, []);
-
   const loadCronStatus = async () => {
     try {
       // Check cron job status from system settings
-      const { data: cronSettings } = await supabase
-        .from('system_settings')
-        .select('setting_value')
-        .eq('setting_key', 'monitoring_enabled')
-        .single();
-      
-      const { data: lastRun } = await supabase
-        .from('system_settings')
-        .select('setting_value')
-        .eq('setting_key', 'last_monitoring_run')
-        .single();
-      
+      const {
+        data: cronSettings
+      } = await supabase.from('system_settings').select('setting_value').eq('setting_key', 'monitoring_enabled').single();
+      const {
+        data: lastRun
+      } = await supabase.from('system_settings').select('setting_value').eq('setting_key', 'last_monitoring_run').single();
       setCronStatus(cronSettings?.setting_value === 'true' ? 'active' : 'inactive');
       setCronLastRun(lastRun?.setting_value || null);
     } catch (error) {
@@ -116,48 +99,39 @@ export function MonitoringStatus() {
       setCronStatus('unknown');
     }
   };
-
   const loadSystemHealth = async () => {
     try {
       // Get system health from health logs
-      const { data: healthLogs } = await supabase
-        .from('system_health_logs')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(5);
-      
+      const {
+        data: healthLogs
+      } = await supabase.from('system_health_logs').select('*').order('created_at', {
+        ascending: false
+      }).limit(5);
       setSystemHealth(healthLogs);
     } catch (error) {
       console.error('[MONITOR] Error loading system health:', error);
     }
   };
-
   const loadMonitoringStatus = async () => {
     try {
       // Get active strategies count
-      const { data: strategies } = await supabase
-        .from("strategies")
-        .select("id")
-        .eq("status", "active");
-      
+      const {
+        data: strategies
+      } = await supabase.from("strategies").select("id").eq("status", "active");
       setActiveCount(strategies?.length || 0);
 
       // Get recent signals (last 10)
-      const { data: signals } = await supabase
-        .from("strategy_signals")
-        .select("*, strategies(name)")
-        .order("created_at", { ascending: false })
-        .limit(10);
-      
+      const {
+        data: signals
+      } = await supabase.from("strategy_signals").select("*, strategies(name)").order("created_at", {
+        ascending: false
+      }).limit(10);
       setRecentSignals(signals || []);
 
       // Try to get last monitoring run (requires admin role)
-      const { data: settings } = await supabase
-        .from("system_settings")
-        .select("setting_value")
-        .eq("setting_key", "last_monitoring_run")
-        .maybeSingle();
-
+      const {
+        data: settings
+      } = await supabase.from("system_settings").select("setting_value").eq("setting_key", "last_monitoring_run").maybeSingle();
       if (settings) {
         setLastRun(settings.setting_value);
         setMonitoringEnabled(true);
@@ -167,23 +141,17 @@ export function MonitoringStatus() {
       console.log("Monitoring status not accessible (admin only)");
     }
   };
-
-
   const getTimeAgo = (timestamp: string) => {
     const diff = Date.now() - new Date(timestamp).getTime();
     const minutes = Math.floor(diff / 60000);
     const hours = Math.floor(diff / 3600000);
-    
     if (minutes < 1) return "Just now";
     if (minutes < 60) return `${minutes}m ago`;
     if (hours < 24) return `${hours}h ago`;
     return new Date(timestamp).toLocaleDateString();
   };
-
-  return (
-    <div className="space-y-4">
-      {showDisconnectBanner && wsStatus === 'disconnected' && (
-        <Card className="p-4 bg-destructive/10 border-destructive/20">
+  return <div className="space-y-4">
+      {showDisconnectBanner && wsStatus === 'disconnected' && <Card className="p-4 bg-destructive/10 border-destructive/20">
           <div className="flex items-center gap-3">
             <AlertCircle className="h-5 w-5 text-destructive" />
             <div className="flex-1">
@@ -193,8 +161,7 @@ export function MonitoringStatus() {
               </p>
             </div>
           </div>
-        </Card>
-      )}
+        </Card>}
 
       <Card className="p-6 bg-card/50 backdrop-blur border-primary/10">
         <div className="flex items-start justify-between mb-4">
@@ -210,19 +177,10 @@ export function MonitoringStatus() {
           </div>
         </div>
         <div className="flex gap-2">
-          <Badge 
-            variant={wsStatus === 'connected' ? "default" : wsStatus === 'connecting' ? "secondary" : "destructive"} 
-            className="gap-2 px-3 py-1"
-          >
-            <div className={`h-3 w-3 rounded-full ${
-              wsStatus === 'connected' ? "bg-green-400 shadow-lg shadow-green-400/50 animate-pulse" : 
-              wsStatus === 'connecting' ? "bg-yellow-400 animate-pulse" :
-              "bg-red-400"
-            }`} />
+          <Badge variant={wsStatus === 'connected' ? "default" : wsStatus === 'connecting' ? "secondary" : "destructive"} className="gap-2 px-3 py-1">
+            <div className={`h-3 w-3 rounded-full ${wsStatus === 'connected' ? "bg-green-400 shadow-lg shadow-green-400/50 animate-pulse" : wsStatus === 'connecting' ? "bg-yellow-400 animate-pulse" : "bg-red-400"}`} />
             <span className="font-bold">
-              {wsStatus === 'connected' ? '⚡ Real-time Active' : 
-               wsStatus === 'connecting' ? 'Connecting...' : 
-               '⚠️ Offline'}
+              {wsStatus === 'connected' ? '⚡ Real-time Active' : wsStatus === 'connecting' ? 'Connecting...' : '⚠️ Offline'}
             </span>
           </Badge>
         </div>
@@ -236,20 +194,14 @@ export function MonitoringStatus() {
             Cron Job (Auto)
           </div>
           <div className="flex items-center gap-2">
-            <div className={`h-2 w-2 rounded-full ${
-              cronStatus === 'active' ? 'bg-green-400' : 
-              cronStatus === 'inactive' ? 'bg-red-400' : 'bg-yellow-400'
-            }`} />
+            <div className={`h-2 w-2 rounded-full ${cronStatus === 'active' ? 'bg-green-400' : cronStatus === 'inactive' ? 'bg-red-400' : 'bg-yellow-400'}`} />
             <span className="text-sm font-medium">
-              {cronStatus === 'active' ? 'Active' : 
-               cronStatus === 'inactive' ? 'Inactive' : 'Unknown'}
+              {cronStatus === 'active' ? 'Active' : cronStatus === 'inactive' ? 'Inactive' : 'Unknown'}
             </span>
           </div>
-          {cronLastRun && (
-            <div className="text-xs text-muted-foreground mt-1">
+          {cronLastRun && <div className="text-xs text-muted-foreground mt-1">
               Last: {getTimeAgo(cronLastRun)}
-            </div>
-          )}
+            </div>}
         </div>
 
         <div className="p-3 rounded-lg bg-secondary/50">
@@ -258,20 +210,14 @@ export function MonitoringStatus() {
             WebSocket (Real-time)
           </div>
           <div className="flex items-center gap-2">
-            <div className={`h-2 w-2 rounded-full ${
-              wsStatus === 'connected' ? 'bg-green-400' : 
-              wsStatus === 'connecting' ? 'bg-yellow-400' : 'bg-red-400'
-            }`} />
+            <div className={`h-2 w-2 rounded-full ${wsStatus === 'connected' ? 'bg-green-400' : wsStatus === 'connecting' ? 'bg-yellow-400' : 'bg-red-400'}`} />
             <span className="text-sm font-medium">
-              {wsStatus === 'connected' ? 'Connected' : 
-               wsStatus === 'connecting' ? 'Connecting' : 'Disconnected'}
+              {wsStatus === 'connected' ? 'Connected' : wsStatus === 'connecting' ? 'Connecting' : 'Disconnected'}
             </span>
           </div>
-          {lastUpdate && (
-            <div className="text-xs text-muted-foreground mt-1">
+          {lastUpdate && <div className="text-xs text-muted-foreground mt-1">
               Last: {getTimeAgo(new Date(lastUpdate).toISOString())}
-            </div>
-          )}
+            </div>}
         </div>
       </div>
 
@@ -313,12 +259,10 @@ export function MonitoringStatus() {
         </div>
       </div>
 
-      {recentSignals.length > 0 && (
-        <div className="space-y-2 mb-4">
+      {recentSignals.length > 0 && <div className="space-y-2 mb-4">
           <div className="text-xs font-medium text-muted-foreground">Recent Signals</div>
           <div className="space-y-1 max-h-32 overflow-y-auto">
-            {recentSignals.slice(0, 5).map((signal) => (
-              <div key={signal.id} className="flex items-center justify-between text-xs p-2 rounded bg-secondary/30">
+            {recentSignals.slice(0, 5).map(signal => <div key={signal.id} className="flex items-center justify-between text-xs p-2 rounded bg-secondary/30">
                 <div className="flex items-center gap-2">
                   <Badge variant={signal.signal_type === "buy" ? "default" : "secondary"} className="text-xs px-1.5 py-0">
                     {signal.signal_type}
@@ -327,18 +271,13 @@ export function MonitoringStatus() {
                   <span className="text-muted-foreground">${signal.price}</span>
                 </div>
                 <span className="text-muted-foreground">{getTimeAgo(signal.created_at)}</span>
-              </div>
-            ))}
+              </div>)}
           </div>
-        </div>
-      )}
+        </div>}
 
-        <div className="text-xs text-center text-muted-foreground p-2 bg-secondary/30 rounded">
-          <p>✨ Monitoring is fully automated with real-time WebSocket and scheduled cron jobs</p>
-        </div>
+        
       </Card>
 
       {/* Removed StrategyDebugPanel - using PerformanceDashboard instead */}
-    </div>
-  );
+    </div>;
 }

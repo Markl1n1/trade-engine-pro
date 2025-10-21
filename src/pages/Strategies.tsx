@@ -11,7 +11,6 @@ import { MonitoringStatus } from "@/components/MonitoringStatus";
 // Removed unused dashboard components - focusing on core trading functionality
 import { useLiveMonitoring } from "@/hooks/useLiveMonitoring";
 import { logStrategyDelete, logStrategyStatusChange } from "@/utils/auditLogger";
-
 const Strategies = () => {
   const [strategies, setStrategies] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -19,97 +18,114 @@ const Strategies = () => {
   const [editStrategy, setEditStrategy] = useState<any>(null);
   const [validatingStrategy, setValidatingStrategy] = useState<string | null>(null);
   const [validationResults, setValidationResults] = useState<Map<string, any>>(new Map());
-  const { isActive, lastCheck, inFlight } = useLiveMonitoring(true);
-
+  const {
+    isActive,
+    lastCheck,
+    inFlight
+  } = useLiveMonitoring(true);
   useEffect(() => {
     loadStrategies();
   }, []);
-
   const loadStrategies = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: {
+          user
+        }
+      } = await supabase.auth.getUser();
       if (!user) {
         setLoading(false);
         return;
       }
-
-      const { data, error } = await supabase
-        .from("strategies")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false });
-
+      const {
+        data,
+        error
+      } = await supabase.from("strategies").select("*").eq("user_id", user.id).order("created_at", {
+        ascending: false
+      });
       if (error) throw error;
       setStrategies(data || []);
     } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive"
+      });
     } finally {
       setLoading(false);
     }
   };
-
   const deleteStrategy = async (id: string) => {
     if (!confirm("Are you sure you want to delete this strategy?")) return;
-
     try {
       // Get strategy data before deletion for audit log
       const strategy = strategies.find(s => s.id === id);
-      
-      const { error } = await supabase.from("strategies").delete().eq("id", id);
+      const {
+        error
+      } = await supabase.from("strategies").delete().eq("id", id);
       if (error) throw error;
-      
+
       // Log strategy deletion
       if (strategy) {
         await logStrategyDelete(strategy);
       }
-      
-      toast({ title: "Success", description: "Strategy deleted" });
+      toast({
+        title: "Success",
+        description: "Strategy deleted"
+      });
       loadStrategies();
     } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive"
+      });
     }
   };
-
   const toggleStatus = async (strategy: any) => {
     const newStatus = strategy.status === "active" ? "paused" : "active";
     try {
-      const { error } = await supabase
-        .from("strategies")
-        .update({ status: newStatus })
-        .eq("id", strategy.id);
-
+      const {
+        error
+      } = await supabase.from("strategies").update({
+        status: newStatus
+      }).eq("id", strategy.id);
       if (error) throw error;
-      
+
       // Log strategy status change
       await logStrategyStatusChange(strategy.id, strategy.name, strategy.status, newStatus);
-      
-      toast({ title: "Success", description: `Strategy ${newStatus}` });
+      toast({
+        title: "Success",
+        description: `Strategy ${newStatus}`
+      });
       loadStrategies();
     } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive"
+      });
     }
   };
-
   const validateStrategy = async (strategyId: string) => {
     try {
       setValidatingStrategy(strategyId);
-      
-      const { data, error } = await supabase.functions.invoke('validate-strategy', {
+      const {
+        data,
+        error
+      } = await supabase.functions.invoke('validate-strategy', {
         body: {
           strategyId,
           runTests: true
         }
       });
-
       if (error) throw error;
-
       if (data.success) {
         setValidationResults(prev => new Map(prev.set(strategyId, data)));
-        
         toast({
           title: "Validation Complete",
           description: `Strategy validation completed with score: ${data.validation.score}/100`,
-          variant: data.validation.valid ? "default" : "destructive",
+          variant: data.validation.valid ? "default" : "destructive"
         });
       } else {
         throw new Error(data.error || 'Validation failed');
@@ -119,32 +135,30 @@ const Strategies = () => {
       toast({
         title: "Validation Error",
         description: "Failed to validate strategy",
-        variant: "destructive",
+        variant: "destructive"
       });
     } finally {
       setValidatingStrategy(null);
     }
   };
-
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "active": return "bg-green-500";
-      case "paused": return "bg-yellow-500";
-      case "draft": return "bg-gray-500";
-      default: return "bg-gray-500";
+      case "active":
+        return "bg-green-500";
+      case "paused":
+        return "bg-yellow-500";
+      case "draft":
+        return "bg-gray-500";
+      default:
+        return "bg-gray-500";
     }
   };
-
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
+    return <div className="flex items-center justify-center h-64">
         <div className="text-muted-foreground">Loading strategies...</div>
-      </div>
-    );
+      </div>;
   }
-
-  return (
-    <div className="space-y-6">
+  return <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold mb-2">Strategies</h2>
@@ -153,24 +167,7 @@ const Strategies = () => {
           </p>
         </div>
         <div className="flex gap-3 items-center">
-          <Card className="p-3">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2">
-                <Radio className="h-3 w-3 text-green-500 animate-pulse" />
-                <span className="text-sm">Real-time Dashboard (ON)</span>
-              </div>
-              {lastCheck && (
-                <span className="text-xs text-muted-foreground">
-                  {lastCheck.toLocaleTimeString()}
-                </span>
-              )}
-              {inFlight && (
-                <span className="text-xs text-muted-foreground animate-pulse">
-                  Checking...
-                </span>
-              )}
-            </div>
-          </Card>
+          
           <Button className="gap-2" onClick={() => setBuilderOpen(true)}>
             <Plus className="h-4 w-4" />
             New Strategy
@@ -180,8 +177,7 @@ const Strategies = () => {
 
       <MonitoringStatus />
 
-      {strategies.length === 0 ? (
-        <Card className="p-12">
+      {strategies.length === 0 ? <Card className="p-12">
           <div className="text-center">
             <Zap className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
             <h3 className="text-lg font-bold mb-2">No strategies yet</h3>
@@ -193,11 +189,8 @@ const Strategies = () => {
               New Strategy
             </Button>
           </div>
-        </Card>
-      ) : (
-        <div className="grid gap-4">
-          {strategies.map((strategy) => (
-            <Card key={strategy.id} className="p-6">
+        </Card> : <div className="grid gap-4">
+          {strategies.map(strategy => <Card key={strategy.id} className="p-6">
               <div className="flex items-start justify-between">
                 <div className="space-y-2 flex-1">
                   <div className="flex items-center gap-3">
@@ -205,34 +198,18 @@ const Strategies = () => {
                     <Badge className={getStatusColor(strategy.status)}>
                       {strategy.status}
                     </Badge>
-                    {validationResults.has(strategy.id) && (
-                      <Badge 
-                        variant={validationResults.get(strategy.id).validation.valid ? "default" : "destructive"}
-                      >
+                    {validationResults.has(strategy.id) && <Badge variant={validationResults.get(strategy.id).validation.valid ? "default" : "destructive"}>
                         Score: {validationResults.get(strategy.id).validation.score}/100
-                      </Badge>
-                    )}
+                      </Badge>}
                   </div>
                   
-                  {strategy.description && (
-                    <p className="text-sm text-muted-foreground">{strategy.description}</p>
-                  )}
+                  {strategy.description && <p className="text-sm text-muted-foreground">{strategy.description}</p>}
 
                   <div className="grid grid-cols-5 gap-4 mt-4 text-sm">
                     <div>
                       <div className="text-muted-foreground">Type</div>
                       <div className="font-medium capitalize">
-                        {strategy.strategy_type === "4h_reentry" 
-                          ? "4h Reentry" 
-                          : strategy.strategy_type === "market_sentiment_trend_gauge"
-                          ? "MSTG"
-                          : strategy.strategy_type === "ath_guard_scalping"
-                          ? "ATH Guard - 1min Scalping"
-                          : strategy.strategy_type === "sma_20_200_rsi"
-                          ? "SMA 20/200 RSI"
-                          : strategy.strategy_type === "mtf_momentum"
-                          ? "MTF Momentum"
-                          : strategy.strategy_type || "Standard"}
+                        {strategy.strategy_type === "4h_reentry" ? "4h Reentry" : strategy.strategy_type === "market_sentiment_trend_gauge" ? "MSTG" : strategy.strategy_type === "ath_guard_scalping" ? "ATH Guard - 1min Scalping" : strategy.strategy_type === "sma_20_200_rsi" ? "SMA 20/200 RSI" : strategy.strategy_type === "mtf_momentum" ? "MTF Momentum" : strategy.strategy_type || "Standard"}
                       </div>
                     </div>
                     <div>
@@ -249,100 +226,41 @@ const Strategies = () => {
                     </div>
                     <div>
                       <div className="text-muted-foreground">
-                        {(strategy.strategy_type === "4h_reentry" || strategy.strategy_type === "market_sentiment_trend_gauge" || strategy.strategy_type === "ath_guard_scalping" || strategy.strategy_type === "sma_20_200_rsi" || strategy.strategy_type === "mtf_momentum") ? "Logic" : "Conditions"}
+                        {strategy.strategy_type === "4h_reentry" || strategy.strategy_type === "market_sentiment_trend_gauge" || strategy.strategy_type === "ath_guard_scalping" || strategy.strategy_type === "sma_20_200_rsi" || strategy.strategy_type === "mtf_momentum" ? "Logic" : "Conditions"}
                       </div>
                       <div className="font-medium">
-                        {(strategy.strategy_type === "4h_reentry" || strategy.strategy_type === "market_sentiment_trend_gauge" || strategy.strategy_type === "ath_guard_scalping" || strategy.strategy_type === "sma_20_200_rsi" || strategy.strategy_type === "mtf_momentum")
-                          ? "Custom" 
-                          : strategy.strategy_conditions?.length || 0}
+                        {strategy.strategy_type === "4h_reentry" || strategy.strategy_type === "market_sentiment_trend_gauge" || strategy.strategy_type === "ath_guard_scalping" || strategy.strategy_type === "sma_20_200_rsi" || strategy.strategy_type === "mtf_momentum" ? "Custom" : strategy.strategy_conditions?.length || 0}
                       </div>
                     </div>
                   </div>
                 </div>
 
                 <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => toggleStatus(strategy)}
-                  >
-                    {strategy.status === "active" ? (
-                      <Pause className="h-4 w-4" />
-                    ) : (
-                      <Play className="h-4 w-4" />
-                    )}
+                  <Button size="sm" variant="outline" onClick={() => toggleStatus(strategy)}>
+                    {strategy.status === "active" ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                   </Button>
-                  <StrategyCloner 
-                    strategy={strategy} 
-                    onCloneComplete={loadStrategies}
-                  />
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => validateStrategy(strategy.id)}
-                    disabled={validatingStrategy === strategy.id}
-                  >
-                    {validatingStrategy === strategy.id ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : validationResults.has(strategy.id) ? (
-                      validationResults.get(strategy.id).validation.valid ? (
-                        <CheckCircle className="h-4 w-4 text-green-500" />
-                      ) : (
-                        <AlertTriangle className="h-4 w-4 text-red-500" />
-                      )
-                    ) : (
-                      <CheckCircle className="h-4 w-4" />
-                    )}
+                  <StrategyCloner strategy={strategy} onCloneComplete={loadStrategies} />
+                  <Button size="sm" variant="outline" onClick={() => validateStrategy(strategy.id)} disabled={validatingStrategy === strategy.id}>
+                    {validatingStrategy === strategy.id ? <Loader2 className="h-4 w-4 animate-spin" /> : validationResults.has(strategy.id) ? validationResults.get(strategy.id).validation.valid ? <CheckCircle className="h-4 w-4 text-green-500" /> : <AlertTriangle className="h-4 w-4 text-red-500" /> : <CheckCircle className="h-4 w-4" />}
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      setEditStrategy(strategy);
-                      setBuilderOpen(true);
-                    }}
-                  >
+                  <Button size="sm" variant="outline" onClick={() => {
+              setEditStrategy(strategy);
+              setBuilderOpen(true);
+            }}>
                     <Edit className="h-4 w-4" />
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => deleteStrategy(strategy.id)}
-                  >
+                  <Button size="sm" variant="outline" onClick={() => deleteStrategy(strategy.id)}>
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
-            </Card>
-          ))}
-        </div>
-      )}
+            </Card>)}
+        </div>}
 
-      <Card className="p-6 bg-secondary/50">
-        <div className="flex items-start gap-3">
-          <TrendingUp className="h-5 w-5 text-primary mt-0.5" />
-          <div>
-            <h3 className="text-sm font-bold mb-2">Strategy Features</h3>
-            <ul className="text-xs text-muted-foreground space-y-1">
-              <li>✓ Multi-timeframe analysis with custom indicators</li>
-              <li>✓ Visual condition builder with technical indicators</li>
-              <li>✓ Position sizing & risk management rules</li>
-              <li>✓ Real-time strategy execution (coming soon)</li>
-              <li>✓ Performance tracking & optimization</li>
-            </ul>
-          </div>
-        </div>
-      </Card>
+      
 
-      <StrategyBuilder
-        open={builderOpen}
-        onOpenChange={setBuilderOpen}
-        onSuccess={loadStrategies}
-        editStrategy={editStrategy}
-      />
+      <StrategyBuilder open={builderOpen} onOpenChange={setBuilderOpen} onSuccess={loadStrategies} editStrategy={editStrategy} />
 
-    </div>
-  );
+    </div>;
 };
-
 export default Strategies;
