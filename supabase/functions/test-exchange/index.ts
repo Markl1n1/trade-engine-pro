@@ -52,28 +52,8 @@ Deno.serve(async (req): Promise<Response> => {
 
     console.log(`[TEST-EXCHANGE] Testing ${exchangeType} ${useTestnet ? 'testnet' : 'mainnet'} connection`);
 
-    // Fetch user's API credentials
-    const { data: settings } = await supabaseClient
-      .from('user_settings')
-      .select(`
-        exchange_type,
-        binance_mainnet_api_key, binance_mainnet_api_secret,
-        binance_testnet_api_key, binance_testnet_api_secret,
-        bybit_mainnet_api_key, bybit_mainnet_api_secret,
-        bybit_testnet_api_key, bybit_testnet_api_secret
-      `)
-      .eq('user_id', user.id)
-      .single();
-
-    if (!settings) {
-      return new Response(JSON.stringify({ error: 'User settings not found' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
     // Determine which exchange to test
-    const actualExchangeType = exchangeType || settings.exchange_type || 'binance';
+    const actualExchangeType = exchangeType || 'binance';
     const isTestnet = useTestnet;
     
     // Determine credential type based on exchange and environment

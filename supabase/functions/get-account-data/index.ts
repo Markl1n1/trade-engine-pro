@@ -53,16 +53,15 @@ Deno.serve(async (req) => {
       throw new Error('Invalid user ID format');
     }
 
-    // Get user settings using user client (respects RLS)
-    const { data: settings, error: settingsError } = await supabaseUser
-      .from('user_settings')
-      .select('exchange_type, use_testnet, trading_mode, use_mainnet_data, use_testnet_api, paper_trading_mode, binance_mainnet_api_key, binance_mainnet_api_secret, binance_testnet_api_key, binance_testnet_api_secret, bybit_mainnet_api_key, bybit_mainnet_api_secret, bybit_testnet_api_key, bybit_testnet_api_secret')
-      .eq('user_id', user.id)
-      .maybeSingle();
+    // Get user settings using secure RPC function
+    const { data: settingsData, error: settingsError } = await supabaseUser
+      .rpc('get_user_settings', { p_user_id: user.id });
 
     if (settingsError) {
-      throw new Error('Failed to fetch settings');
+      throw new Error(`Failed to fetch settings: ${settingsError.message}`);
     }
+
+    const settings = settingsData && settingsData.length > 0 ? settingsData[0] : null;
 
     if (!settings) {
       throw new Error('No settings found');

@@ -1096,6 +1096,17 @@ export type Database = {
           use_testnet: boolean
         }[]
       }
+      get_user_settings: {
+        Args: { p_user_id: string }
+        Returns: {
+          exchange_type: string
+          paper_trading_mode: boolean
+          trading_mode: string
+          use_mainnet_data: boolean
+          use_testnet: boolean
+          use_testnet_api: boolean
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
