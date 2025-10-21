@@ -741,6 +741,52 @@ serve(async (req) => {
       );
     }
 
+    // Check if this is SMA 20/200 RSI strategy
+    const isSMA20_200RSI = strategy.strategy_type === 'sma_20_200_rsi';
+    
+    if (isSMA20_200RSI) {
+      console.log('Running SMA 20/200 RSI strategy backtest...');
+      return await runSMACrossoverBacktest(
+        strategy,
+        candles,
+        initialBalance,
+        productType,
+        leverage,
+        makerFee,
+        takerFee,
+        slippage,
+        executionTiming,
+        supabaseClient,
+        strategyId,
+        startDate,
+        endDate,
+        corsHeaders
+      );
+    }
+
+    // Check if this is MTF Momentum strategy
+    const isMTFMomentum = strategy.strategy_type === 'mtf_momentum';
+    
+    if (isMTFMomentum) {
+      console.log('Running MTF Momentum strategy backtest...');
+      return await runMTFMomentumBacktest(
+        strategy,
+        candles,
+        initialBalance,
+        productType,
+        leverage,
+        makerFee,
+        takerFee,
+        slippage,
+        executionTiming,
+        supabaseClient,
+        strategyId,
+        startDate,
+        endDate,
+        corsHeaders
+      );
+    }
+
     // Use enhanced backtest engine with trailing stop support
     const backtestConfig = {
       initialBalance: initialBalance || strategy.initial_capital || 1000,
@@ -1398,6 +1444,418 @@ async function runSMACrossoverBacktest(
     }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
   );
+}
+
+// ============= MTF MOMENTUM STRATEGY IMPLEMENTATION =============
+async function runMTFMomentumBacktest(
+  strategy: any,
+  candles: Candle[],
+  initialBalance: number,
+  productType: string,
+  leverage: number,
+  makerFee: number,
+  takerFee: number,
+  slippage: number,
+  executionTiming: string,
+  supabaseClient: any,
+  strategyId: string,
+  startDate: string,
+  endDate: string,
+  corsHeaders: any
+) {
+  console.log('Initializing MTF Momentum backtest...');
+  
+  let balance = initialBalance || strategy.initial_capital || 10000;
+  let availableBalance = balance;
+  let lockedMargin = 0;
+  let position: Trade | null = null;
+  const trades: Trade[] = [];
+  let maxBalance = balance;
+  let maxDrawdown = 0;
+  const balanceHistory: { time: number; balance: number }[] = [{ time: candles[0].open_time, balance }];
+
+  // Exchange constraints
+  const stepSize = 0.00001;
+  const minQty = 0.001;
+  const minNotional = 10;
+
+  // Strategy configuration
+  const config = {
+    mtf_rsi_period: strategy.mtf_rsi_period || 14,
+    mtf_rsi_entry_threshold: strategy.mtf_rsi_entry_threshold || 55,
+    mtf_macd_fast: strategy.mtf_macd_fast || 12,
+    mtf_macd_slow: strategy.mtf_macd_slow || 26,
+    mtf_macd_signal: strategy.mtf_macd_signal || 9,
+    mtf_volume_multiplier: strategy.mtf_volume_multiplier || 1.2
+  };
+
+  console.log(`Processing ${candles.length} candles for MTF Momentum strategy...`);
+  console.log(`Strategy config:`, config);
+
+  // Get multi-timeframe data (1m, 5m, 15m)
+  const candles1m = candles; // Assuming input is 1m
+  const candles5m = resampleCandles(candles, '5m');
+  const candles15m = resampleCandles(candles, '15m');
+
+  for (let i = Math.max(config.mtf_rsi_period, config.mtf_macd_slow); i < candles.length; i++) {
+    const currentCandle = candles[i];
+    const currentPrice = currentCandle.close;
+    const currentTime = currentCandle.open_time;
+    
+    // Convert candles to the format expected by the strategy
+    const strategyCandles1m = candles1m.slice(0, i + 1).map(c => ({
+      open: c.open,
+      high: c.high,
+      low: c.low,
+      close: c.close,
+      volume: c.volume,
+      timestamp: c.open_time
+    }));
+
+    const strategyCandles5m = candles5m.slice(0, Math.floor(i / 5) + 1).map(c => ({
+      open: c.open,
+      high: c.high,
+      low: c.low,
+      close: c.close,
+      volume: c.volume,
+      timestamp: c.open_time
+    }));
+
+    const strategyCandles15m = candles15m.slice(0, Math.floor(i / 15) + 1).map(c => ({
+      open: c.open,
+      high: c.high,
+      low: c.low,
+      close: c.close,
+      volume: c.volume,
+      timestamp: c.open_time
+    }));
+
+    // Evaluate MTF Momentum strategy
+    const signal = evaluateMTFMomentum(
+      strategyCandles1m,
+      strategyCandles5m,
+      strategyCandles15m,
+      config,
+      position !== null
+    );
+    
+    if (signal.signal_type === 'BUY' && !position) {
+      // Calculate position size
+      const positionSize = Math.min(availableBalance * 0.95, balance * 0.1); // Max 10% of balance
+      const quantity = Math.floor(positionSize / currentPrice / stepSize) * stepSize;
+      
+      if (quantity >= minQty && quantity * currentPrice >= minNotional) {
+        const entryPrice = currentPrice * (1 + slippage);
+        const marginRequired = (entryPrice * quantity) / leverage;
+        
+        if (marginRequired <= availableBalance) {
+          position = {
+            entry_price: entryPrice,
+            entry_time: currentTime,
+            type: 'buy',
+            quantity: quantity
+          };
+          
+          availableBalance -= marginRequired;
+          lockedMargin += marginRequired;
+          
+          console.log(`[${i}] BUY at ${entryPrice.toFixed(2)} - Qty: ${quantity.toFixed(6)}, Margin: ${marginRequired.toFixed(2)}`);
+        }
+      }
+    }
+    
+    if (signal.signal_type === 'SELL' && position) {
+      const exitPrice = currentPrice * (1 - slippage);
+      const pnl = position.quantity * (exitPrice - position.entry_price);
+      const exitFee = (exitPrice * position.quantity * takerFee) / 100;
+      const netProfit = pnl - exitFee;
+      
+      balance += netProfit;
+      availableBalance += lockedMargin + netProfit;
+      lockedMargin = 0;
+      
+      position.exit_price = exitPrice;
+      position.exit_time = currentTime;
+      position.profit = netProfit;
+      
+      trades.push(position);
+      position = null;
+      
+      console.log(`[${i}] SELL at ${exitPrice.toFixed(2)} - P&L: ${netProfit.toFixed(2)}, Balance: ${balance.toFixed(2)}`);
+    }
+
+    // Update balance tracking
+    balance = availableBalance + lockedMargin;
+    balanceHistory.push({ time: currentTime, balance });
+    
+    if (balance > maxBalance) maxBalance = balance;
+    maxDrawdown = Math.max(maxDrawdown, ((maxBalance - balance) / maxBalance) * 100);
+  }
+
+  // Close any remaining position
+  if (position) {
+    const finalCandle = candles[candles.length - 1];
+    const exitPrice = finalCandle.close * (1 - slippage);
+    const pnl = position.quantity * (exitPrice - position.entry_price);
+    const exitFee = (exitPrice * position.quantity * takerFee) / 100;
+    const netProfit = pnl - exitFee;
+    
+    balance += netProfit;
+    availableBalance += lockedMargin + netProfit;
+    
+    position.exit_price = exitPrice;
+    position.exit_time = finalCandle.close_time;
+    position.profit = netProfit;
+    
+    trades.push(position);
+    
+    console.log(`Final SELL at ${exitPrice.toFixed(2)} - P&L: ${netProfit.toFixed(2)}, Final Balance: ${balance.toFixed(2)}`);
+  }
+
+  // Calculate performance metrics
+  const totalReturn = ((balance - initialBalance) / initialBalance) * 100;
+  const winTrades = trades.filter(t => (t.profit || 0) > 0).length;
+  const totalTrades = trades.length;
+  const winRate = totalTrades > 0 ? (winTrades / totalTrades) * 100 : 0;
+  const avgWin = trades.filter(t => (t.profit || 0) > 0).reduce((sum, t) => sum + (t.profit || 0), 0) / Math.max(winTrades, 1);
+  const avgLoss = trades.filter(t => (t.profit || 0) < 0).reduce((sum, t) => sum + (t.profit || 0), 0) / Math.max(totalTrades - winTrades, 1);
+  const profitFactor = Math.abs(avgWin * winTrades) / Math.abs(avgLoss * (totalTrades - winTrades));
+
+  console.log(`MTF Momentum Backtest Results:`);
+  console.log(`- Total Return: ${totalReturn.toFixed(2)}%`);
+  console.log(`- Total Trades: ${totalTrades}`);
+  console.log(`- Win Rate: ${winRate.toFixed(2)}%`);
+  console.log(`- Max Drawdown: ${maxDrawdown.toFixed(2)}%`);
+  console.log(`- Profit Factor: ${profitFactor.toFixed(2)}`);
+
+  // Save results to database
+  const { error } = await supabaseClient
+    .from('strategy_backtest_results')
+    .insert({
+      strategy_id: strategyId,
+      start_date: startDate,
+      end_date: endDate,
+      initial_balance: initialBalance,
+      final_balance: balance,
+      total_return: totalReturn,
+      total_trades: totalTrades,
+      winning_trades: winTrades,
+      losing_trades: totalTrades - winTrades,
+      win_rate: winRate,
+      max_drawdown: maxDrawdown,
+      profit_factor: profitFactor,
+      balance_history: balanceHistory,
+      trades: trades
+    });
+
+  if (error) {
+    console.error('Error saving MTF Momentum backtest results:', error);
+  }
+
+  return new Response(
+    JSON.stringify({
+      success: true,
+      results: {
+        initial_balance: initialBalance,
+        final_balance: balance,
+        total_return: totalReturn,
+        total_trades: totalTrades,
+        winning_trades: winTrades,
+        losing_trades: totalTrades - winTrades,
+        win_rate: winRate,
+        max_drawdown: maxDrawdown,
+        profit_factor: profitFactor,
+        balance_history: balanceHistory,
+        trades: trades
+      }
+    }),
+    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+  );
+}
+
+// Helper function to resample candles to different timeframes
+function resampleCandles(candles: Candle[], timeframe: string): Candle[] {
+  const interval = timeframe === '5m' ? 5 : timeframe === '15m' ? 15 : 1;
+  const resampled: Candle[] = [];
+  
+  for (let i = 0; i < candles.length; i += interval) {
+    const chunk = candles.slice(i, i + interval);
+    if (chunk.length === 0) break;
+    
+    const resampledCandle: Candle = {
+      open: chunk[0].open,
+      high: Math.max(...chunk.map(c => c.high)),
+      low: Math.min(...chunk.map(c => c.low)),
+      close: chunk[chunk.length - 1].close,
+      volume: chunk.reduce((sum, c) => sum + c.volume, 0),
+      open_time: chunk[0].open_time,
+      close_time: chunk[chunk.length - 1].close_time
+    };
+    
+    resampled.push(resampledCandle);
+  }
+  
+  return resampled;
+}
+
+// MTF Momentum strategy evaluation
+function evaluateMTFMomentum(
+  candles1m: any[],
+  candles5m: any[],
+  candles15m: any[],
+  config: any,
+  hasPosition: boolean
+): { signal_type: 'BUY' | 'SELL' | 'HOLD'; confidence: number } {
+  if (candles1m.length < config.mtf_rsi_period || candles5m.length < config.mtf_rsi_period || candles15m.length < config.mtf_rsi_period) {
+    return { signal_type: 'HOLD', confidence: 0 };
+  }
+
+  // Calculate RSI for all timeframes
+  const rsi1m = calculateRSI(candles1m.map(c => c.close), config.mtf_rsi_period);
+  const rsi5m = calculateRSI(candles5m.map(c => c.close), config.mtf_rsi_period);
+  const rsi15m = calculateRSI(candles15m.map(c => c.close), config.mtf_rsi_period);
+
+  // Calculate MACD for all timeframes
+  const macd1m = calculateMACD(candles1m.map(c => c.close), config.mtf_macd_fast, config.mtf_macd_slow, config.mtf_macd_signal);
+  const macd5m = calculateMACD(candles5m.map(c => c.close), config.mtf_macd_fast, config.mtf_macd_slow, config.mtf_macd_signal);
+  const macd15m = calculateMACD(candles15m.map(c => c.close), config.mtf_macd_fast, config.mtf_macd_slow, config.mtf_macd_signal);
+
+  // Calculate volume confirmation
+  const volume1m = candles1m.slice(-20).map(c => c.volume);
+  const avgVolume = volume1m.reduce((sum, v) => sum + v, 0) / volume1m.length;
+  const currentVolume = candles1m[candles1m.length - 1].volume;
+  const volumeConfirmation = currentVolume > (avgVolume * config.mtf_volume_multiplier);
+
+  // Get current values
+  const currentRsi1m = rsi1m[rsi1m.length - 1];
+  const currentRsi5m = rsi5m[rsi5m.length - 1];
+  const currentRsi15m = rsi15m[rsi15m.length - 1];
+  const currentMacd1m = macd1m.macd[macd1m.macd.length - 1];
+  const currentMacd5m = macd5m.macd[macd5m.macd.length - 1];
+  const currentMacd15m = macd15m.macd[macd15m.macd.length - 1];
+  const currentSignal1m = macd1m.signal[macd1m.signal.length - 1];
+  const currentSignal5m = macd5m.signal[macd5m.signal.length - 1];
+  const currentSignal15m = macd15m.signal[macd15m.signal.length - 1];
+
+  // Check for NaN values
+  if (isNaN(currentRsi1m) || isNaN(currentRsi5m) || isNaN(currentRsi15m) ||
+      isNaN(currentMacd1m) || isNaN(currentMacd5m) || isNaN(currentMacd15m) ||
+      isNaN(currentSignal1m) || isNaN(currentSignal5m) || isNaN(currentSignal15m)) {
+    return { signal_type: 'HOLD', confidence: 0 };
+  }
+
+  // Multi-timeframe momentum conditions
+  const rsiThreshold = config.mtf_rsi_entry_threshold;
+  const rsiShortThreshold = 100 - rsiThreshold;
+
+  // Long conditions: All timeframes bullish
+  const longRsi = currentRsi1m > rsiThreshold && currentRsi5m > rsiThreshold && currentRsi15m > rsiThreshold;
+  const longMacd = currentMacd1m > currentSignal1m && currentMacd5m > currentSignal5m && currentMacd15m > currentSignal15m;
+  const longMomentum = currentMacd1m > 0 && currentMacd5m > 0 && currentMacd15m > 0;
+
+  // Short conditions: All timeframes bearish
+  const shortRsi = currentRsi1m < rsiShortThreshold && currentRsi5m < rsiShortThreshold && currentRsi15m < rsiShortThreshold;
+  const shortMacd = currentMacd1m < currentSignal1m && currentMacd5m < currentSignal5m && currentMacd15m < currentSignal15m;
+  const shortMomentum = currentMacd1m < 0 && currentMacd5m < 0 && currentMacd15m < 0;
+
+  // Exit conditions
+  const exitLong = currentRsi1m < 50 || currentMacd1m < currentSignal1m;
+  const exitShort = currentRsi1m > 50 || currentMacd1m > currentSignal1m;
+
+  if (hasPosition) {
+    if (exitLong || exitShort) {
+      return { signal_type: 'SELL', confidence: 0.8 };
+    }
+    return { signal_type: 'HOLD', confidence: 0.5 };
+  }
+
+  // Entry signals
+  if (longRsi && longMacd && longMomentum && volumeConfirmation) {
+    return { signal_type: 'BUY', confidence: 0.9 };
+  }
+
+  if (shortRsi && shortMacd && shortMomentum && volumeConfirmation) {
+    return { signal_type: 'BUY', confidence: 0.9 };
+  }
+
+  return { signal_type: 'HOLD', confidence: 0.3 };
+}
+
+// Helper functions for MTF Momentum
+function calculateRSI(prices: number[], period: number): number[] {
+  if (prices.length < period + 1) return new Array(prices.length).fill(NaN);
+  
+  const rsi: number[] = new Array(prices.length).fill(NaN);
+  let gains = 0;
+  let losses = 0;
+  
+  for (let i = 1; i <= period; i++) {
+    const change = prices[i] - prices[i - 1];
+    if (change > 0) gains += change;
+    else losses -= change;
+  }
+  
+  let avgGain = gains / period;
+  let avgLoss = losses / period;
+  
+  if (avgLoss === 0) {
+    rsi[period] = 100;
+  } else {
+    const rs = avgGain / avgLoss;
+    rsi[period] = 100 - (100 / (1 + rs));
+  }
+  
+  for (let i = period + 1; i < prices.length; i++) {
+    const change = prices[i] - prices[i - 1];
+    const gain = change > 0 ? change : 0;
+    const loss = change < 0 ? -change : 0;
+    
+    avgGain = (avgGain * (period - 1) + gain) / period;
+    avgLoss = (avgLoss * (period - 1) + loss) / period;
+    
+    if (avgLoss === 0) {
+      rsi[i] = 100;
+    } else {
+      const rs = avgGain / avgLoss;
+      rsi[i] = 100 - (100 / (1 + rs));
+    }
+  }
+  
+  return rsi;
+}
+
+function calculateMACD(prices: number[], fastPeriod: number, slowPeriod: number, signalPeriod: number): { macd: number[]; signal: number[]; histogram: number[] } {
+  const emaFast = calculateEMA(prices, fastPeriod);
+  const emaSlow = calculateEMA(prices, slowPeriod);
+  
+  const macd: number[] = [];
+  for (let i = 0; i < prices.length; i++) {
+    macd[i] = emaFast[i] - emaSlow[i];
+  }
+  
+  const signal = calculateEMA(macd, signalPeriod);
+  const histogram: number[] = [];
+  
+  for (let i = 0; i < macd.length; i++) {
+    histogram[i] = macd[i] - signal[i];
+  }
+  
+  return { macd, signal, histogram };
+}
+
+function calculateEMA(prices: number[], period: number): number[] {
+  if (prices.length < period) return new Array(prices.length).fill(NaN);
+  
+  const ema: number[] = new Array(prices.length).fill(NaN);
+  const multiplier = 2 / (period + 1);
+  
+  ema[period - 1] = prices.slice(0, period).reduce((sum, price) => sum + price, 0) / period;
+  
+  for (let i = period; i < prices.length; i++) {
+    ema[i] = (prices[i] * multiplier) + (ema[i - 1] * (1 - multiplier));
+  }
+  
+  return ema;
 }
 
 // ============= MSTG STRATEGY IMPLEMENTATION =============

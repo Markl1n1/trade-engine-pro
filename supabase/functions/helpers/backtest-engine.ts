@@ -332,7 +332,7 @@ export class EnhancedBacktestEngine {
     return profit;
   }
   
-  // Check traditional stop loss and take profit
+  // ✅ ПРАВИЛЬНО: Check traditional stop loss and take profit with proper intrabar logic
   private checkStopLossTakeProfit(currentCandle: Candle): { exit: boolean; price: number | null; reason: string } {
     if (!this.position) return { exit: false, price: null, reason: '' };
     
@@ -347,13 +347,33 @@ export class EnhancedBacktestEngine {
     const stopLossPrice = this.position.entry_price * (1 - (stopLoss || 0) / 100);
     const takeProfitPrice = this.position.entry_price * (1 + (takeProfit || 0) / 100);
     
-    // Check intrabar hits using high/low
+    // ✅ ПРАВИЛЬНО: Check intrabar hits with proper order logic
     const slHit = stopLoss && currentCandle.low <= stopLossPrice;
     const tpHit = takeProfit && currentCandle.high >= takeProfitPrice;
     
     if (slHit && tpHit) {
-      // Both hit in same candle - conservative: assume SL hit first
-      return { exit: true, price: stopLossPrice, reason: 'STOP_LOSS' };
+      // ✅ ПРАВИЛЬНО: Both hit in same candle - determine which happened first
+      // Conservative approach: Check if price opened above/below levels
+      const openedAboveSL = currentCandle.open > stopLossPrice;
+      const openedBelowTP = currentCandle.open < takeProfitPrice;
+      
+      if (openedAboveSL && openedBelowTP) {
+        // Price opened between levels - check which is closer to open
+        const slDistance = Math.abs(currentCandle.open - stopLossPrice);
+        const tpDistance = Math.abs(takeProfitPrice - currentCandle.open);
+        
+        if (slDistance <= tpDistance) {
+          return { exit: true, price: stopLossPrice, reason: 'STOP_LOSS' };
+        } else {
+          return { exit: true, price: takeProfitPrice, reason: 'TAKE_PROFIT' };
+        }
+      } else if (openedAboveSL) {
+        // Price opened above SL, TP hit first
+        return { exit: true, price: takeProfitPrice, reason: 'TAKE_PROFIT' };
+      } else {
+        // Price opened below TP, SL hit first
+        return { exit: true, price: stopLossPrice, reason: 'STOP_LOSS' };
+      }
     } else if (slHit) {
       return { exit: true, price: stopLossPrice, reason: 'STOP_LOSS' };
     } else if (tpHit) {
@@ -366,7 +386,6 @@ export class EnhancedBacktestEngine {
   // Execute entry
   private executeEntry(currentCandle: Candle): void {
     const executionPrice = this.getExecutionPrice(currentCandle);
-    const priceWithSlippage = executionPrice * (1 + this.config.slippage / 100);
     
     // Calculate position size
     const positionSizeUSD = (this.availableBalance * this.config.positionSizePercent) / 100;
@@ -374,13 +393,23 @@ export class EnhancedBacktestEngine {
     let quantity: number;
     let margin: number;
     let notional: number;
+    let priceWithSlippage: number;
     
     if (this.config.productType === 'futures') {
+      // ✅ ПРАВИЛЬНО: Для фьючерсов сначала определяем notional, потом quantity
       notional = positionSizeUSD * this.config.leverage;
-      quantity = notional / priceWithSlippage;
+      quantity = notional / executionPrice;
+      
+      // Apply slippage correctly for futures
+      priceWithSlippage = executionPrice * (1 + this.config.slippage / 100);
+      quantity = notional / priceWithSlippage; // Recalculate with slippage
+      
+      // ✅ ПРАВИЛЬНО: Маржа = Notional / Leverage
       margin = notional / this.config.leverage;
     } else {
+      // Spot trading
       notional = positionSizeUSD;
+      priceWithSlippage = executionPrice * (1 + this.config.slippage / 100);
       quantity = notional / priceWithSlippage;
       margin = notional;
     }
@@ -399,7 +428,8 @@ export class EnhancedBacktestEngine {
       return;
     }
     
-    // Calculate entry fee
+    // ✅ ПРАВИЛЬНО: Calculate entry fee based on order type
+    // For futures, we assume market orders (taker fee)
     const entryFee = actualNotional * (this.config.takerFee / 100);
     
     this.position = {
@@ -421,16 +451,18 @@ export class EnhancedBacktestEngine {
     console.log(`[BACKTEST] Opened BUY at ${priceWithSlippage.toFixed(2)} (qty: ${quantity.toFixed(5)}, notional: ${actualNotional.toFixed(2)})`);
   }
   
-  // Execute exit
+  // ✅ ПРАВИЛЬНО: Execute exit with correct slippage and fee calculation
   private executeExit(currentCandle: Candle, exitPrice: number, exitReason: string): void {
     if (!this.position) return;
     
-    // Apply slippage on exit
+    // ✅ ПРАВИЛЬНО: Apply slippage correctly for exit (sell order = worse price)
     const exitPriceWithSlippage = exitPrice * (1 - this.config.slippage / 100);
     
     // Calculate P&L
     const pnl = this.position.quantity * (exitPriceWithSlippage - this.position.entry_price);
     const exitNotional = this.position.quantity * exitPriceWithSlippage;
+    
+    // ✅ ПРАВИЛЬНО: Calculate exit fee (market order = taker fee)
     const exitFee = exitNotional * (this.config.takerFee / 100);
     const netProfit = pnl - exitFee;
     
