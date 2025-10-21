@@ -424,9 +424,19 @@ const Settings = () => {
       setNewCredentials({ api_key: "", api_secret: "" });
     } catch (error: any) {
       console.error("Error saving credentials:", error);
+      
+      let errorMessage = error.message || "Failed to save credentials";
+      
+      // Provide specific guidance for permission errors
+      if (error.message?.includes('permission denied') || error.message?.includes('crypto_secretbox')) {
+        errorMessage = "Database permissions error. Please refresh the page and try again.";
+      } else if (error.message?.includes('authenticate')) {
+        errorMessage = "Authentication error. Please log out and log back in.";
+      }
+      
       toast({
         title: "Error",
-        description: error.message || "Failed to save credentials",
+        description: errorMessage,
         variant: "destructive"
       });
     }
@@ -780,6 +790,29 @@ const Settings = () => {
                 </div>
               )
             )}
+
+            <Button 
+              variant="outline" 
+              onClick={() => handleTestExchange(false)} 
+              disabled={testingBinance || (
+                settings.exchange_type === 'binance' 
+                  ? !credentialStatus.binance_mainnet 
+                  : !credentialStatus.bybit_mainnet
+              )} 
+              className="mt-4 w-full"
+            >
+              {testingBinance ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Testing Mainnet...
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="mr-2 h-4 w-4" />
+                  Test {settings.exchange_type === 'binance' ? 'Binance' : 'Bybit'} Mainnet Connection
+                </>
+              )}
+            </Button>
           </TabsContent>
 
           <TabsContent value="testnet" className="space-y-4 mt-4">
@@ -853,23 +886,23 @@ const Settings = () => {
 
             <Button 
               variant="outline" 
-              onClick={() => handleTestExchange(activeApiTab === 'testnet')} 
+              onClick={() => handleTestExchange(true)} 
               disabled={testingBinance || (
-                activeApiTab === 'testnet' 
-                  ? (settings.exchange_type === 'binance' ? !credentialStatus.binance_testnet : !credentialStatus.bybit_testnet)
-                  : (settings.exchange_type === 'binance' ? !credentialStatus.binance_mainnet : !credentialStatus.bybit_mainnet)
+                settings.exchange_type === 'binance' 
+                  ? !credentialStatus.binance_testnet 
+                  : !credentialStatus.bybit_testnet
               )} 
               className="mt-4 w-full"
             >
               {testingBinance ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Testing {activeApiTab === 'testnet' ? 'Testnet' : 'Mainnet'}...
+                  Testing Testnet...
                 </>
               ) : (
                 <>
                   <CheckCircle className="mr-2 h-4 w-4" />
-                  Test {settings.exchange_type === 'binance' ? 'Binance' : 'Bybit'} {activeApiTab === 'testnet' ? 'Testnet' : 'Mainnet'} Connection
+                  Test {settings.exchange_type === 'binance' ? 'Binance' : 'Bybit'} Testnet Connection
                 </>
               )}
             </Button>
