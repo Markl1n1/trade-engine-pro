@@ -1693,7 +1693,7 @@ async function runMTFMomentumBacktest(
     const currentVolume = currentCandle.volume;
     const volumeConfirmed = currentVolume >= volumeSMA1m * config.mtf_volume_multiplier;
     
-    // Check MTF confluence for BUY
+    // Check MTF confluence for BUY (no position)
     const longCondition = !position && 
       currentRSI1m > config.mtf_rsi_entry_threshold &&
       currentRSI5m > config.mtf_rsi_entry_threshold &&
@@ -1701,19 +1701,20 @@ async function runMTFMomentumBacktest(
       currentMACD1m > 0 && currentMACD5m > 0 && currentMACD15m > 0 &&
       volumeConfirmed;
     
-    // Check MTF confluence for SELL
-    const shortCondition = position &&
-      (currentRSI1m < (100 - config.mtf_rsi_entry_threshold) ||
-       currentRSI5m < (100 - config.mtf_rsi_entry_threshold) ||
-       currentRSI15m < (100 - config.mtf_rsi_entry_threshold) ||
-       currentMACD1m < 0 || currentMACD5m < 0 || currentMACD15m < 0);
+    // Check MTF confluence for SELL (no position) - ALL timeframes must be bearish
+    const shortCondition = !position &&
+      currentRSI1m < (100 - config.mtf_rsi_entry_threshold) &&
+      currentRSI5m < (100 - config.mtf_rsi_entry_threshold) &&
+      currentRSI15m < (100 - config.mtf_rsi_entry_threshold) &&
+      currentMACD1m < 0 && currentMACD5m < 0 && currentMACD15m < 0 &&
+      volumeConfirmed;
     
     const signal = {
       signal_type: longCondition ? 'BUY' : (shortCondition ? 'SELL' : null),
       reason: longCondition 
         ? `MTF BUY: RSI(${currentRSI1m.toFixed(1)}/${currentRSI5m.toFixed(1)}/${currentRSI15m.toFixed(1)}), MACD+, Vol✓`
         : shortCondition
-        ? `MTF SELL: Momentum weakened`
+        ? `MTF SELL: RSI(${currentRSI1m.toFixed(1)}/${currentRSI5m.toFixed(1)}/${currentRSI15m.toFixed(1)}), MACD-, Vol✓`
         : 'No signal'
     };
     
@@ -1742,7 +1743,34 @@ async function runMTFMomentumBacktest(
       }
     }
     
-    if (signal.signal_type === 'SELL' && position) {
+    // Handle SHORT entry (new SELL position)
+    if (signal.signal_type === 'SELL' && !position) {
+      // Calculate position size
+      const positionSize = Math.min(availableBalance * 0.95, balance * 0.1); // Max 10% of balance
+      const quantity = Math.floor(positionSize / currentPrice / stepSize) * stepSize;
+      
+      if (quantity >= minQty && quantity * currentPrice >= minNotional) {
+        const entryPrice = currentPrice * (1 - slippage); // Better price for SHORT
+        const marginRequired = (entryPrice * quantity) / leverage;
+        
+        if (marginRequired <= availableBalance) {
+          position = {
+            entry_price: entryPrice,
+            entry_time: currentTime,
+            type: 'sell',  // SHORT position
+            quantity: quantity
+          };
+          
+          availableBalance -= marginRequired;
+          lockedMargin += marginRequired;
+          
+          console.log(`[${i}] SHORT at ${entryPrice.toFixed(2)} - Qty: ${quantity.toFixed(6)}, Margin: ${marginRequired.toFixed(2)}`);
+        }
+      }
+    }
+    
+    // Handle exit for LONG position (close with SELL signal)
+    if (signal.signal_type === 'SELL' && position && position.type === 'buy') {
       const exitPrice = currentPrice * (1 - slippage);
       const pnl = position.quantity * (exitPrice - position.entry_price);
       const exitFee = (exitPrice * position.quantity * takerFee) / 100;
@@ -1759,7 +1787,28 @@ async function runMTFMomentumBacktest(
       trades.push(position);
       position = null;
       
-      console.log(`[${i}] SELL at ${exitPrice.toFixed(2)} - P&L: ${netProfit.toFixed(2)}, Balance: ${balance.toFixed(2)}`);
+      console.log(`[${i}] CLOSE LONG at ${exitPrice.toFixed(2)} - P&L: ${netProfit.toFixed(2)}, Balance: ${balance.toFixed(2)}`);
+    }
+    
+    // Handle exit for SHORT position (cover with BUY signal)
+    if (signal.signal_type === 'BUY' && position && position.type === 'sell') {
+      const exitPrice = currentPrice * (1 + slippage); // Worse price for covering SHORT
+      const pnl = position.quantity * (position.entry_price - exitPrice); // Profit = entry - exit for SHORT
+      const exitFee = (exitPrice * position.quantity * takerFee) / 100;
+      const netProfit = pnl - exitFee;
+      
+      balance += netProfit;
+      availableBalance += lockedMargin + netProfit;
+      lockedMargin = 0;
+      
+      position.exit_price = exitPrice;
+      position.exit_time = currentTime;
+      position.profit = netProfit;
+      
+      trades.push(position);
+      position = null;
+      
+      console.log(`[${i}] COVER SHORT at ${exitPrice.toFixed(2)} - P&L: ${netProfit.toFixed(2)}, Balance: ${balance.toFixed(2)}`);
     }
 
     // Update balance tracking
@@ -1857,23 +1906,35 @@ async function runMTFMomentumBacktest(
 // Helper function to resample candles to different timeframes
 function resampleCandles(candles: Candle[], timeframe: string): Candle[] {
   const interval = timeframe === '5m' ? 5 : timeframe === '15m' ? 15 : 1;
+  if (interval === 1) return candles;
+  
   const resampled: Candle[] = [];
   
+  // Single-pass accumulation (O(n) instead of O(n²))
   for (let i = 0; i < candles.length; i += interval) {
-    const chunk = candles.slice(i, i + interval);
-    if (chunk.length === 0) break;
+    const endIdx = Math.min(i + interval, candles.length);
     
-    const resampledCandle: Candle = {
-      open: chunk[0].open,
-      high: Math.max(...chunk.map(c => c.high)),
-      low: Math.min(...chunk.map(c => c.low)),
-      close: chunk[chunk.length - 1].close,
-      volume: chunk.reduce((sum, c) => sum + c.volume, 0),
-      open_time: chunk[0].open_time,
-      close_time: chunk[chunk.length - 1].close_time
-    };
+    // Initialize with first candle
+    let high = candles[i].high;
+    let low = candles[i].low;
+    let volume = 0;
     
-    resampled.push(resampledCandle);
+    // Accumulate without creating intermediate arrays
+    for (let j = i; j < endIdx; j++) {
+      if (candles[j].high > high) high = candles[j].high;
+      if (candles[j].low < low) low = candles[j].low;
+      volume += candles[j].volume;
+    }
+    
+    resampled.push({
+      open: candles[i].open,
+      high,
+      low,
+      close: candles[endIdx - 1].close,
+      volume,
+      open_time: candles[i].open_time,
+      close_time: candles[endIdx - 1].close_time
+    });
   }
   
   return resampled;
