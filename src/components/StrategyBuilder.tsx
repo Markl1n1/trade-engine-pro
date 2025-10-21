@@ -205,7 +205,15 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
         strategyId = strategy.id;
         
         // Log strategy creation
-        await logStrategyCreate({ ...strategy, id: strategyId });
+        await logStrategyCreate({ 
+          id: strategyId,
+          name: strategyData.name,
+          strategy_type: strategyData.strategy_type,
+          symbol: strategyData.symbol,
+          timeframe: strategyData.timeframe,
+          initial_capital: strategyData.initial_capital,
+          position_size_percent: strategyData.position_size_percent
+        });
       }
 
       toast({ 

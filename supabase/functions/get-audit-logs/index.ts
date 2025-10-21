@@ -238,11 +238,11 @@ async function handleGetLogs(supabase: any, userId: string, request: AuditLogReq
     const mappedSettingsLogs: AuditLog[] = (settingsLogs || []).map((log: any) => ({
       id: log.id,
       action_type: log.action,
-      entity_type: 'user_settings',
-      entity_id: null,
-      old_values: null,
-      new_values: null,
-      changed_fields: [],
+      entity_type: log.entity_type || 'user_settings',
+      entity_id: log.entity_id,
+      old_values: log.old_values,
+      new_values: log.new_values,
+      changed_fields: log.changed_fields,
       ip_address: log.ip_address,
       user_agent: log.user_agent,
       created_at: log.accessed_at

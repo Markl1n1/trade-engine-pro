@@ -90,7 +90,9 @@ export function StrategyCloner({ strategy, onCloneComplete }: StrategyClonerProp
         name: newName,
         strategy_type: strategy.strategy_type,
         symbol: strategy.symbol,
-        timeframe: strategy.timeframe
+        timeframe: strategy.timeframe,
+        initial_capital: strategy.initial_capital,
+        position_size_percent: strategy.position_size_percent
       });
 
       toast({

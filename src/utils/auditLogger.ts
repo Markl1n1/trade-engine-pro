@@ -30,7 +30,7 @@ export async function logSettingsChange(
         changedFields.push(key);
         
         // Mask sensitive fields
-        if (key.includes('api_key') || key.includes('api_secret') || key.includes('token')) {
+        if (key.includes('api_key') || key.includes('api_secret') || key.includes('token') || key.includes('bot_token')) {
           oldValuesFiltered[key] = oldValues[key] ? '****' : null;
           newValuesFiltered[key] = newValues[key] ? '****' : null;
         } else {

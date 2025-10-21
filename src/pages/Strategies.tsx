@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Zap, Edit, Trash2, Play, Pause, TrendingUp, Radio, CheckCircle, AlertTriangle, Loader2 } from "lucide-react";
+import { Plus, Zap, Edit, Trash2, Play, Pause, TrendingUp, Radio, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { StrategyBuilder } from "@/components/StrategyBuilder";
@@ -16,8 +16,6 @@ const Strategies = () => {
   const [loading, setLoading] = useState(true);
   const [builderOpen, setBuilderOpen] = useState(false);
   const [editStrategy, setEditStrategy] = useState<any>(null);
-  const [validatingStrategy, setValidatingStrategy] = useState<string | null>(null);
-  const [validationResults, setValidationResults] = useState<Map<string, any>>(new Map());
   const {
     isActive,
     lastCheck,
@@ -107,40 +105,6 @@ const Strategies = () => {
       });
     }
   };
-  const validateStrategy = async (strategyId: string) => {
-    try {
-      setValidatingStrategy(strategyId);
-      const {
-        data,
-        error
-      } = await supabase.functions.invoke('validate-strategy', {
-        body: {
-          strategyId,
-          runTests: true
-        }
-      });
-      if (error) throw error;
-      if (data.success) {
-        setValidationResults(prev => new Map(prev.set(strategyId, data)));
-        toast({
-          title: "Validation Complete",
-          description: `Strategy validation completed with score: ${data.validation.score}/100`,
-          variant: data.validation.valid ? "default" : "destructive"
-        });
-      } else {
-        throw new Error(data.error || 'Validation failed');
-      }
-    } catch (error) {
-      console.error('Error validating strategy:', error);
-      toast({
-        title: "Validation Error",
-        description: "Failed to validate strategy",
-        variant: "destructive"
-      });
-    } finally {
-      setValidatingStrategy(null);
-    }
-  };
   const getStatusColor = (status: string) => {
     switch (status) {
       case "active":
@@ -198,9 +162,6 @@ const Strategies = () => {
                     <Badge className={getStatusColor(strategy.status)}>
                       {strategy.status}
                     </Badge>
-                    {validationResults.has(strategy.id) && <Badge variant={validationResults.get(strategy.id).validation.valid ? "default" : "destructive"}>
-                        Score: {validationResults.get(strategy.id).validation.score}/100
-                      </Badge>}
                   </div>
                   
                   {strategy.description && <p className="text-sm text-muted-foreground">{strategy.description}</p>}
@@ -240,9 +201,6 @@ const Strategies = () => {
                     {strategy.status === "active" ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                   </Button>
                   <StrategyCloner strategy={strategy} onCloneComplete={loadStrategies} />
-                  <Button size="sm" variant="outline" onClick={() => validateStrategy(strategy.id)} disabled={validatingStrategy === strategy.id}>
-                    {validatingStrategy === strategy.id ? <Loader2 className="h-4 w-4 animate-spin" /> : validationResults.has(strategy.id) ? validationResults.get(strategy.id).validation.valid ? <CheckCircle className="h-4 w-4 text-green-500" /> : <AlertTriangle className="h-4 w-4 text-red-500" /> : <CheckCircle className="h-4 w-4" />}
-                  </Button>
                   <Button size="sm" variant="outline" onClick={() => {
               setEditStrategy(strategy);
               setBuilderOpen(true);
