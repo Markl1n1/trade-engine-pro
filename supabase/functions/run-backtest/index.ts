@@ -609,16 +609,27 @@ serve(async (req) => {
     let exchangeTakerFee = takerFee;
     
     if (exchangeType === 'bybit') {
-      // Bybit fees: 0.01% maker, 0.06% taker
-      exchangeMakerFee = 0.01;
-      exchangeTakerFee = 0.06;
+      // Bybit fees: 0.02% maker, 0.055% taker (correct values)
+      exchangeMakerFee = 0.02;
+      exchangeTakerFee = 0.055;
     } else {
       // Binance fees: 0.02% maker, 0.04% taker (default)
       exchangeMakerFee = makerFee;
       exchangeTakerFee = takerFee;
     }
     
-    console.log(`[BACKTEST] Exchange: ${exchangeType}, Maker Fee: ${exchangeMakerFee}%, Taker Fee: ${exchangeTakerFee}%`);
+    // Adjust slippage based on exchange and symbol liquidity
+    const symbol = strategy.symbol || 'BTCUSDT';
+    const highLiquidityPairs = ['BTCUSDT', 'ETHUSDT'];
+    let adjustedSlippage = slippage;
+    
+    if (exchangeType === 'bybit') {
+      adjustedSlippage = highLiquidityPairs.includes(symbol) ? 0.01 : 0.03;
+    } else {
+      adjustedSlippage = highLiquidityPairs.includes(symbol) ? 0.015 : 0.035;
+    }
+    
+    console.log(`[BACKTEST] Exchange: ${exchangeType}/${symbol}, Fees: ${exchangeMakerFee}%/${exchangeTakerFee}%, Slippage: ${adjustedSlippage}%`);
 
     // Fetch conditions separately (embedded select doesn't work reliably)
     const { data: conditions, error: conditionsError } = await supabaseClient
@@ -946,9 +957,10 @@ serve(async (req) => {
       trailingStopPercent: trailingStopPercent, // New trailing stop feature
       productType,
       leverage,
-      makerFee: exchangeMakerFee, // ✅ ПРАВИЛЬНО: Используем правильные комиссии
-      takerFee: exchangeTakerFee, // ✅ ПРАВИЛЬНО: Используем правильные комиссии
-      slippage,
+      makerFee: exchangeMakerFee,
+      takerFee: exchangeTakerFee,
+      slippage: adjustedSlippage, // Use adjusted slippage based on exchange/symbol
+      symbol: strategy.symbol || 'BTCUSDT', // Add symbol for exchange constraints
       executionTiming,
       positionSizePercent: strategy.position_size_percent || 100,
       exchangeType: exchangeType // ✅ ПРАВИЛЬНО: Используем определенный тип биржи
@@ -1631,14 +1643,14 @@ async function runMTFMomentumBacktest(
   const minQty = 0.001;
   const minNotional = 10;
 
-  // Strategy configuration
+  // Strategy configuration with relaxed volume filter
   const config = {
     mtf_rsi_period: strategy.mtf_rsi_period || 14,
     mtf_rsi_entry_threshold: strategy.mtf_rsi_entry_threshold || 55,
     mtf_macd_fast: strategy.mtf_macd_fast || 12,
     mtf_macd_slow: strategy.mtf_macd_slow || 26,
     mtf_macd_signal: strategy.mtf_macd_signal || 9,
-    mtf_volume_multiplier: strategy.mtf_volume_multiplier || 1.2
+    mtf_volume_multiplier: strategy.mtf_volume_multiplier || 1.3 // Reduced from 1.8 to 1.3
   };
 
   const startTime = Date.now();
@@ -1693,20 +1705,18 @@ async function runMTFMomentumBacktest(
     const currentVolume = currentCandle.volume;
     const volumeConfirmed = currentVolume >= volumeSMA1m * config.mtf_volume_multiplier;
     
-    // Check MTF confluence for BUY (no position)
+    // Relaxed MTF confluence for BUY - at least 1m bullish + one higher TF confirms
     const longCondition = !position && 
       currentRSI1m > config.mtf_rsi_entry_threshold &&
-      currentRSI5m > config.mtf_rsi_entry_threshold &&
-      currentRSI15m > config.mtf_rsi_entry_threshold &&
-      currentMACD1m > 0 && currentMACD5m > 0 && currentMACD15m > 0 &&
+      (currentRSI5m > 50 || currentRSI15m > 50) && // At least one higher TF neutral/bullish
+      (currentMACD1m > 0 || currentMACD5m > 0) && // At least one MACD positive
       volumeConfirmed;
     
-    // Check MTF confluence for SELL (no position) - ALL timeframes must be bearish
+    // Relaxed MTF confluence for SELL - at least 1m bearish + one higher TF confirms
     const shortCondition = !position &&
       currentRSI1m < (100 - config.mtf_rsi_entry_threshold) &&
-      currentRSI5m < (100 - config.mtf_rsi_entry_threshold) &&
-      currentRSI15m < (100 - config.mtf_rsi_entry_threshold) &&
-      currentMACD1m < 0 && currentMACD5m < 0 && currentMACD15m < 0 &&
+      (currentRSI5m < 50 || currentRSI15m < 50) && // At least one higher TF neutral/bearish
+      (currentMACD1m < 0 || currentMACD5m < 0) && // At least one MACD negative
       volumeConfirmed;
     
     const signal = {
@@ -1769,46 +1779,62 @@ async function runMTFMomentumBacktest(
       }
     }
     
-    // Handle exit for LONG position (close with SELL signal)
-    if (signal.signal_type === 'SELL' && position && position.type === 'buy') {
-      const exitPrice = currentPrice * (1 - slippage);
-      const pnl = position.quantity * (exitPrice - position.entry_price);
-      const exitFee = (exitPrice * position.quantity * takerFee) / 100;
-      const netProfit = pnl - exitFee;
+    // Handle exit for LONG position (RSI-based exit or opposite signal)
+    if (position && position.type === 'buy') {
+      // Exit on RSI momentum loss (RSI drops below 40)
+      const exitOnMomentumLoss = currentRSI1m < 40;
       
-      balance += netProfit;
-      availableBalance += lockedMargin + netProfit;
-      lockedMargin = 0;
+      // Exit on opposite signal
+      const exitOnSignal = signal.signal_type === 'SELL';
       
-      position.exit_price = exitPrice;
-      position.exit_time = currentTime;
-      position.profit = netProfit;
-      
-      trades.push(position);
-      position = null;
-      
-      console.log(`[${i}] CLOSE LONG at ${exitPrice.toFixed(2)} - P&L: ${netProfit.toFixed(2)}, Balance: ${balance.toFixed(2)}`);
+      if (exitOnMomentumLoss || exitOnSignal) {
+        const exitPrice = currentPrice * (1 - slippage);
+        const pnl = position.quantity * (exitPrice - position.entry_price);
+        const exitFee = (exitPrice * position.quantity * takerFee) / 100;
+        const netProfit = pnl - exitFee;
+        
+        balance += netProfit;
+        availableBalance += lockedMargin + netProfit;
+        lockedMargin = 0;
+        
+        position.exit_price = exitPrice;
+        position.exit_time = currentTime;
+        position.profit = netProfit;
+        
+        trades.push(position);
+        position = null;
+        
+        console.log(`[${i}] CLOSE LONG at ${exitPrice.toFixed(2)} - Reason: ${exitOnMomentumLoss ? 'RSI<40' : 'SELL signal'} - P&L: ${netProfit.toFixed(2)}, Balance: ${balance.toFixed(2)}`);
+      }
     }
     
-    // Handle exit for SHORT position (cover with BUY signal)
-    if (signal.signal_type === 'BUY' && position && position.type === 'sell') {
-      const exitPrice = currentPrice * (1 + slippage); // Worse price for covering SHORT
-      const pnl = position.quantity * (position.entry_price - exitPrice); // Profit = entry - exit for SHORT
-      const exitFee = (exitPrice * position.quantity * takerFee) / 100;
-      const netProfit = pnl - exitFee;
+    // Handle exit for SHORT position (RSI-based exit or opposite signal)
+    if (position && position.type === 'sell') {
+      // Exit on RSI momentum reversal (RSI rises above 60)
+      const exitOnMomentumReversal = currentRSI1m > 60;
       
-      balance += netProfit;
-      availableBalance += lockedMargin + netProfit;
-      lockedMargin = 0;
+      // Exit on opposite signal
+      const exitOnSignal = signal.signal_type === 'BUY';
       
-      position.exit_price = exitPrice;
-      position.exit_time = currentTime;
-      position.profit = netProfit;
-      
-      trades.push(position);
-      position = null;
-      
-      console.log(`[${i}] COVER SHORT at ${exitPrice.toFixed(2)} - P&L: ${netProfit.toFixed(2)}, Balance: ${balance.toFixed(2)}`);
+      if (exitOnMomentumReversal || exitOnSignal) {
+        const exitPrice = currentPrice * (1 + slippage);
+        const pnl = position.quantity * (position.entry_price - exitPrice);
+        const exitFee = (exitPrice * position.quantity * takerFee) / 100;
+        const netProfit = pnl - exitFee;
+        
+        balance += netProfit;
+        availableBalance += lockedMargin + netProfit;
+        lockedMargin = 0;
+        
+        position.exit_price = exitPrice;
+        position.exit_time = currentTime;
+        position.profit = netProfit;
+        
+        trades.push(position);
+        position = null;
+        
+        console.log(`[${i}] COVER SHORT at ${exitPrice.toFixed(2)} - Reason: ${exitOnMomentumReversal ? 'RSI>60' : 'BUY signal'} - P&L: ${netProfit.toFixed(2)}, Balance: ${balance.toFixed(2)}`);
+      }
     }
 
     // Update balance tracking

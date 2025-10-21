@@ -1,6 +1,8 @@
 // Enhanced Backtest Engine with Fixed Logic
 // Solves look-ahead bias, improves P&L calculations, and adds trailing stops
 
+import { getBybitConstraints, getBinanceConstraints } from './exchange-constraints.ts';
+
 interface Candle {
   open: number;
   high: number;
@@ -35,7 +37,8 @@ interface BacktestConfig {
   slippage: number;
   executionTiming: 'open' | 'close';
   positionSizePercent: number;
-  exchangeType?: 'binance' | 'bybit'; // ✅ ПРАВИЛЬНО: Добавлена поддержка типа биржи
+  exchangeType?: 'binance' | 'bybit';
+  symbol?: string; // Trading pair symbol for exchange-specific constraints
 }
 
 interface BacktestResults {
@@ -127,16 +130,33 @@ export class EnhancedBacktestEngine {
     this.maxBalance = config.initialBalance;
     this.maxDrawdown = 0;
     
-    // ✅ ПРАВИЛЬНО: Set exchange-specific constraints
-    if (config.exchangeType === 'bybit') {
-      this.stepSize = 0.01;      // Bybit step size
-      this.minQty = 0.001;       // Bybit minimum quantity
-      this.minNotional = 5;       // Bybit minimum notional
-    } else {
-      this.stepSize = 0.00001;    // Binance step size
-      this.minQty = 0.001;        // Binance minimum quantity
-      this.minNotional = 10;      // Binance minimum notional
+    // Get symbol from config or default to BTCUSDT
+    const symbol = config.symbol || 'BTCUSDT';
+    
+    // Get exchange-specific constraints dynamically based on symbol
+    const constraints = config.exchangeType === 'bybit' 
+      ? getBybitConstraints(symbol)
+      : getBinanceConstraints(symbol);
+    
+    this.stepSize = constraints.stepSize;
+    this.minQty = constraints.minQty;
+    this.minNotional = constraints.minNotional;
+    
+    // Override fees with exchange-specific values if not explicitly set
+    if (config.makerFee === 0 || !config.makerFee) {
+      config.makerFee = constraints.makerFee;
     }
+    if (config.takerFee === 0 || !config.takerFee) {
+      config.takerFee = constraints.takerFee;
+    }
+    
+    console.log(`[BACKTEST] Exchange constraints for ${symbol}:`, {
+      stepSize: this.stepSize,
+      minQty: this.minQty,
+      minNotional: this.minNotional,
+      makerFee: config.makerFee,
+      takerFee: config.takerFee
+    });
     
     // Initialize trailing stop if configured
     if (config.trailingStopPercent) {
