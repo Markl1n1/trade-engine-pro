@@ -918,6 +918,7 @@ export type Database = {
           bybit_testnet_api_secret: string | null
           cache_indicators: boolean
           created_at: string
+          credentials_migrated_at: string | null
           data_quality_score: number | null
           exchange_type: string | null
           handle_missing_data: string
@@ -956,6 +957,7 @@ export type Database = {
           bybit_testnet_api_secret?: string | null
           cache_indicators?: boolean
           created_at?: string
+          credentials_migrated_at?: string | null
           data_quality_score?: number | null
           exchange_type?: string | null
           handle_missing_data?: string
@@ -994,6 +996,7 @@ export type Database = {
           bybit_testnet_api_secret?: string | null
           cache_indicators?: boolean
           created_at?: string
+          credentials_migrated_at?: string | null
           data_quality_score?: number | null
           exchange_type?: string | null
           handle_missing_data?: string
@@ -1126,6 +1129,14 @@ export type Database = {
       immutable_date_trunc_minute: {
         Args: { "": string }
         Returns: string
+      }
+      migrate_all_credentials: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          error_message: string
+          success: boolean
+          user_id: string
+        }[]
       }
       migrate_user_credentials_to_encrypted: {
         Args: { p_user_id: string }
