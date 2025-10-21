@@ -17,61 +17,75 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Валидация режимов торговли
-function validateTradingMode(tradingMode: string, userSettings: any): { valid: boolean; errors: string[]; warnings: string[] } {
-  const errors: string[] = [];
+// Валидация и авто-коррекция режимов торговли
+function validateAndCorrectTradingMode(tradingMode: string, userSettings: any): { 
+  correctedMode: string; 
+  warnings: string[]; 
+  wasCorrected: boolean;
+} {
   const warnings: string[] = [];
+  let correctedMode = tradingMode;
+  let wasCorrected = false;
   
   switch (tradingMode) {
     case 'testnet_only':
       if (!userSettings?.binance_testnet_api_key || !userSettings?.binance_testnet_api_secret) {
-        errors.push('Testnet API keys required for testnet_only mode');
+        correctedMode = 'paper_trading';
+        wasCorrected = true;
+        warnings.push('Auto-switched from testnet_only to paper_trading (testnet keys missing)');
       }
       break;
       
     case 'hybrid_safe':
       if (!userSettings?.binance_testnet_api_key || !userSettings?.binance_testnet_api_secret) {
-        errors.push('Testnet API keys required for hybrid_safe mode');
-      }
-      if (!userSettings?.use_mainnet_data) {
-        warnings.push('Hybrid safe mode should use mainnet data for accuracy');
+        correctedMode = 'paper_trading';
+        wasCorrected = true;
+        warnings.push('Auto-switched from hybrid_safe to paper_trading (testnet keys missing)');
       }
       break;
       
     case 'hybrid_live':
       if (!userSettings?.binance_testnet_api_key || !userSettings?.binance_testnet_api_secret) {
-        errors.push('Testnet API keys required for hybrid_live mode');
+        // If mainnet keys are available, switch to mainnet_only, otherwise paper trading
+        if (userSettings?.binance_mainnet_api_key && userSettings?.binance_mainnet_api_secret) {
+          correctedMode = 'mainnet_only';
+          wasCorrected = true;
+          warnings.push('Auto-switched from hybrid_live to mainnet_only (testnet keys missing, using mainnet keys)');
+          warnings.push('⚠️ CAUTION: Trading with REAL money on mainnet');
+        } else {
+          correctedMode = 'paper_trading';
+          wasCorrected = true;
+          warnings.push('Auto-switched from hybrid_live to paper_trading (no API keys configured)');
+        }
+      } else {
+        warnings.push('Hybrid live mode executes real trades via testnet API');
       }
-      if (!userSettings?.use_mainnet_data) {
-        warnings.push('Hybrid live mode should use mainnet data for accuracy');
-      }
-      warnings.push('Hybrid live mode executes real trades via testnet API');
       break;
       
     case 'paper_trading':
-      if (!userSettings?.use_mainnet_data) {
-        warnings.push('Paper trading mode should use mainnet data for accuracy');
-      }
+      // Paper trading always works
       break;
       
     case 'mainnet_only':
       if (!userSettings?.binance_mainnet_api_key || !userSettings?.binance_mainnet_api_secret) {
-        errors.push('Mainnet API keys required for mainnet_only mode');
+        correctedMode = 'paper_trading';
+        wasCorrected = true;
+        warnings.push('Auto-switched from mainnet_only to paper_trading (mainnet keys missing)');
+      } else {
+        warnings.push('Mainnet only mode executes real trades with REAL money');
       }
-      if (userSettings?.use_testnet_api) {
-        warnings.push('Mainnet only mode should not use testnet API');
-      }
-      warnings.push('Mainnet only mode executes real trades with real money');
       break;
       
     default:
-      errors.push(`Unknown trading mode: ${tradingMode}`);
+      correctedMode = 'paper_trading';
+      wasCorrected = true;
+      warnings.push(`Unknown trading mode '${tradingMode}', using paper_trading`);
   }
   
   return {
-    valid: errors.length === 0,
-    errors,
-    warnings
+    correctedMode,
+    warnings,
+    wasCorrected
   };
 }
 
@@ -660,17 +674,21 @@ Deno.serve(async (req) => {
           .eq('user_id', strategy.user_id)
           .single();
 
-        // Валидация режима торговли
-        const tradingMode = userSettings?.trading_mode || 'hybrid_safe';
-        const validationResult = validateTradingMode(tradingMode, userSettings);
+        // Валидация и авто-коррекция режима торговли
+        const requestedTradingMode = userSettings?.trading_mode || 'hybrid_safe';
+        const modeValidation = validateAndCorrectTradingMode(requestedTradingMode, userSettings);
+        const tradingMode = modeValidation.correctedMode;
         
-        if (!validationResult.valid) {
-          console.log(`[CRON] ⚠️ Invalid trading mode configuration for ${strategy.name}: ${validationResult.errors.join(', ')}`);
-          continue;
+        if (modeValidation.wasCorrected) {
+          console.log(`[CRON] 🔄 ${strategy.name}: ${modeValidation.warnings.join(', ')}`);
         }
         
-        if (validationResult.warnings.length > 0) {
-          console.log(`[CRON] ⚠️ Trading mode warnings for ${strategy.name}: ${validationResult.warnings.join(', ')}`);
+        // Log only important warnings (real money warnings)
+        const criticalWarnings = modeValidation.warnings.filter(w => 
+          w.includes('REAL money') || w.includes('CAUTION')
+        );
+        if (criticalWarnings.length > 0) {
+          console.log(`[CRON] ⚠️ ${strategy.name}: ${criticalWarnings.join(', ')}`);
         }
 
         let { data: liveState } = await supabase
@@ -719,8 +737,6 @@ Deno.serve(async (req) => {
           c.order_type === 'sell' || c.order_type === 'exit'
         );
         const currentPrice = candles[candles.length - 1].close;
-        
-        console.log(`[CRON] Strategy conditions for ${strategy.name}: ${buyConditions.length} buy, ${sellConditions.length} sell`);
 
         let signalType: string | null = null;
         let signalReason = '';
@@ -749,9 +765,7 @@ Deno.serve(async (req) => {
             rsi_threshold: strategy.ath_guard_rsi_threshold || 70,
           };
 
-          console.log(`[CRON] 🎯 Evaluating ATH Guard strategy for ${strategy.symbol}`);
-          console.log(`[CRON] Config:`, athGuardConfig);
-          console.log(`[CRON] Position open: ${liveState?.position_open || false}`);
+          // Reduced logging - only log when signal is generated or error occurs
           
           const athGuardSignal = evaluateATHGuardStrategy(
             candles.map(c => ({
@@ -778,9 +792,7 @@ Deno.serve(async (req) => {
         } 
         // Check if this is a 4h Reentry strategy
         else if (strategy.strategy_type === '4h_reentry') {
-          console.log(`[CRON] 🎯 Evaluating 4h Reentry strategy for ${strategy.symbol}`);
-          console.log(`[CRON] Current position state: ${liveState?.position_open ? 'OPEN' : 'CLOSED'}`);
-          console.log(`[CRON] Current range: H_4h=${liveState?.range_high || 'N/A'}, L_4h=${liveState?.range_low || 'N/A'}`);
+          // Reduced logging - only log when signal is generated
           
           const reentrySignal = evaluate4hReentry(
             candles.map(c => ({
@@ -813,11 +825,8 @@ Deno.serve(async (req) => {
                 })
                 .eq('strategy_id', strategy.id);
               
-              console.log(`[CRON] 📊 Updated range state: H_4h=${reentrySignal.range_high.toFixed(2)}, L_4h=${reentrySignal.range_low.toFixed(2)}`);
             }
           } else {
-            console.log(`[CRON] ⏸️ 4h Reentry: ${reentrySignal.reason}`);
-            
             // Still update range even if no signal
             if (reentrySignal.range_high !== undefined && reentrySignal.range_low !== undefined) {
               await supabase
@@ -833,15 +842,13 @@ Deno.serve(async (req) => {
         } 
         else if (strategy.strategy_type === 'market_sentiment_trend_gauge' || strategy.strategy_type === 'mtf_momentum' || strategy.strategy_type === 'mstg') {
           // Replace legacy MSTG with new Multi-Timeframe Momentum for scalping (1m/5m/15m)
-          console.log(`[CRON] 🎯 Evaluating MTF Momentum strategy for ${strategy.symbol}`);
           
           // Short cooldown for scalping to avoid signal spam
           const SIGNAL_COOLDOWN_MS = 2 * 60 * 1000; // 2 minutes
           const lastSignalTime = liveState?.last_signal_time ? new Date(liveState.last_signal_time).getTime() : 0;
           const timeSinceLastSignal = Date.now() - lastSignalTime;
           if (lastSignalTime > 0 && timeSinceLastSignal < SIGNAL_COOLDOWN_MS) {
-            const remaining = Math.ceil((SIGNAL_COOLDOWN_MS - timeSinceLastSignal) / 1000);
-            console.log(`[CRON] ⏸️ MTF cooldown active. ${remaining}s remaining`);
+            // Cooldown active - skip without logging
             continue;
           }
           
@@ -875,10 +882,9 @@ Deno.serve(async (req) => {
               })
               .eq('strategy_id', strategy.id);
             
-            console.log(`[CRON] ✅ MTF signal generated: ${signalType} - ${signalReason}`);
-          } else {
-            console.log(`[CRON] ⏸️ No MTF signal: ${mtfSignal.reason}`);
+            console.log(`[CRON] ✅ MTF signal: ${signalType} - ${signalReason}`);
           }
+          // No logging when no signal - reduces noise
         }
         else if (!liveState.position_open) {
           // Check if position already exists on exchange before generating entry signal

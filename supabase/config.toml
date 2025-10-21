@@ -13,10 +13,9 @@ verify_jwt = true
 [functions.close-position]
 verify_jwt = true
 
-# New advanced functions
+# Advanced functions
 [functions.validate-strategy]
 verify_jwt = true
-
 
 [functions.instant-signals]
 verify_jwt = false
@@ -34,19 +33,20 @@ verify_jwt = true
 [functions.get-audit-logs]
 verify_jwt = true
 
-
 [functions.data-quality-monitor]
 verify_jwt = true
 
 [functions.test-exchange]
 verify_jwt = true
 
-[functions.migrate-credentials]
-verify_jwt = false
-
-# Removed unused Edge Functions:
-# - generate-strategy (AI Strategy Generator - removed)
-# - performance-dashboard (returned only mock data)
-# - data-quality (complex system but not integrated)
-# - risk-management (returned only mock data)  
-# - execute-javascript-strategy (created but not called from frontend)
+# Removed unused Edge Functions (2025-01-21):
+# - migrate-credentials (one-time migration, completed)
+# - health-check (not integrated)
+# - process-buffered-signals (signal_buffer unused)
+# - retry-failed-signals (retry mechanism unused)
+# - get-binance-pairs (not used in frontend)
+# - generate-strategy (AI Strategy Generator)
+# - performance-dashboard (mock data only)
+# - data-quality (not integrated)
+# - risk-management (mock data only)
+# - execute-javascript-strategy (not called from frontend)
