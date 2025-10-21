@@ -35,6 +35,7 @@ interface BacktestConfig {
   slippage: number;
   executionTiming: 'open' | 'close';
   positionSizePercent: number;
+  exchangeType?: 'binance' | 'bybit'; // ✅ ПРАВИЛЬНО: Добавлена поддержка типа биржи
 }
 
 interface BacktestResults {
@@ -112,10 +113,10 @@ export class EnhancedBacktestEngine {
   private balanceHistory: Array<{ time: number; balance: number }> = [];
   private trailingStopManager: TrailingStopManager | null = null;
   
-  // Exchange constraints
-  private readonly stepSize = 0.00001;
-  private readonly minQty = 0.001;
-  private readonly minNotional = 10;
+  // ✅ ПРАВИЛЬНО: Exchange constraints based on exchange type
+  private stepSize: number;
+  private minQty: number;
+  private minNotional: number;
   
   constructor(candles: Candle[], config: BacktestConfig) {
     this.candles = candles;
@@ -125,6 +126,17 @@ export class EnhancedBacktestEngine {
     this.lockedMargin = 0;
     this.maxBalance = config.initialBalance;
     this.maxDrawdown = 0;
+    
+    // ✅ ПРАВИЛЬНО: Set exchange-specific constraints
+    if (config.exchangeType === 'bybit') {
+      this.stepSize = 0.01;      // Bybit step size
+      this.minQty = 0.001;       // Bybit minimum quantity
+      this.minNotional = 5;       // Bybit minimum notional
+    } else {
+      this.stepSize = 0.00001;    // Binance step size
+      this.minQty = 0.001;        // Binance minimum quantity
+      this.minNotional = 10;      // Binance minimum notional
+    }
     
     // Initialize trailing stop if configured
     if (config.trailingStopPercent) {
@@ -428,9 +440,15 @@ export class EnhancedBacktestEngine {
       return;
     }
     
-    // ✅ ПРАВИЛЬНО: Calculate entry fee based on order type
-    // For futures, we assume market orders (taker fee)
-    const entryFee = actualNotional * (this.config.takerFee / 100);
+    // ✅ ПРАВИЛЬНО: Calculate entry fee based on exchange type and order type
+    let entryFee: number;
+    if (this.config.exchangeType === 'bybit') {
+      // Bybit fees: 0.01% maker, 0.06% taker
+      entryFee = actualNotional * (this.config.takerFee / 100); // Market order = taker fee
+    } else {
+      // Binance fees: 0.02% maker, 0.04% taker
+      entryFee = actualNotional * (this.config.takerFee / 100);
+    }
     
     this.position = {
       type: 'buy',
@@ -462,8 +480,15 @@ export class EnhancedBacktestEngine {
     const pnl = this.position.quantity * (exitPriceWithSlippage - this.position.entry_price);
     const exitNotional = this.position.quantity * exitPriceWithSlippage;
     
-    // ✅ ПРАВИЛЬНО: Calculate exit fee (market order = taker fee)
-    const exitFee = exitNotional * (this.config.takerFee / 100);
+    // ✅ ПРАВИЛЬНО: Calculate exit fee based on exchange type (market order = taker fee)
+    let exitFee: number;
+    if (this.config.exchangeType === 'bybit') {
+      // Bybit fees: 0.01% maker, 0.06% taker
+      exitFee = exitNotional * (this.config.takerFee / 100);
+    } else {
+      // Binance fees: 0.02% maker, 0.04% taker
+      exitFee = exitNotional * (this.config.takerFee / 100);
+    }
     const netProfit = pnl - exitFee;
     
     this.position.exit_price = exitPriceWithSlippage;

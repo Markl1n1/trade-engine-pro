@@ -513,6 +513,23 @@ serve(async (req) => {
 
     console.log(`Strategy: ${strategy.name}, Symbol: ${strategy.symbol}, Timeframe: ${strategy.timeframe}, Type: ${strategy.strategy_type || 'standard'}`);
 
+    // ✅ ПРАВИЛЬНО: Determine exchange-specific fees
+    const exchangeType = strategy.exchange_type || 'binance';
+    let exchangeMakerFee = makerFee;
+    let exchangeTakerFee = takerFee;
+    
+    if (exchangeType === 'bybit') {
+      // Bybit fees: 0.01% maker, 0.06% taker
+      exchangeMakerFee = 0.01;
+      exchangeTakerFee = 0.06;
+    } else {
+      // Binance fees: 0.02% maker, 0.04% taker (default)
+      exchangeMakerFee = makerFee;
+      exchangeTakerFee = takerFee;
+    }
+    
+    console.log(`[BACKTEST] Exchange: ${exchangeType}, Maker Fee: ${exchangeMakerFee}%, Taker Fee: ${exchangeTakerFee}%`);
+
     // Fetch conditions separately (embedded select doesn't work reliably)
     const { data: conditions, error: conditionsError } = await supabaseClient
       .from('strategy_conditions')
@@ -787,7 +804,7 @@ serve(async (req) => {
       );
     }
 
-    // Use enhanced backtest engine with trailing stop support
+    // ✅ ПРАВИЛЬНО: Use enhanced backtest engine with exchange type support
     const backtestConfig = {
       initialBalance: initialBalance || strategy.initial_capital || 1000,
       stopLossPercent: stopLossPercent ?? strategy.stop_loss_percent,
@@ -795,11 +812,12 @@ serve(async (req) => {
       trailingStopPercent: trailingStopPercent, // New trailing stop feature
       productType,
       leverage,
-      makerFee,
-      takerFee,
+      makerFee: exchangeMakerFee, // ✅ ПРАВИЛЬНО: Используем правильные комиссии
+      takerFee: exchangeTakerFee, // ✅ ПРАВИЛЬНО: Используем правильные комиссии
       slippage,
       executionTiming,
-      positionSizePercent: strategy.position_size_percent || 100
+      positionSizePercent: strategy.position_size_percent || 100,
+      exchangeType: exchangeType // ✅ ПРАВИЛЬНО: Используем определенный тип биржи
     };
 
     console.log(`[ENHANCED] Using enhanced backtest engine with config:`, backtestConfig);
