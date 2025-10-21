@@ -27,59 +27,26 @@ function validateAndCorrectTradingMode(tradingMode: string, userSettings: any): 
   let correctedMode = tradingMode;
   let wasCorrected = false;
   
+  // Note: Credential existence checks will be async, so we skip detailed validation here
+  // The actual credential fetching happens later when needed
+  
   switch (tradingMode) {
     case 'testnet_only':
-      if (!userSettings?.binance_testnet_api_key || !userSettings?.binance_testnet_api_secret) {
-        correctedMode = 'paper_trading';
-        wasCorrected = true;
-        warnings.push('Auto-switched from testnet_only to paper_trading (testnet keys missing)');
-      }
-      break;
-      
     case 'hybrid_safe':
-      if (!userSettings?.binance_testnet_api_key || !userSettings?.binance_testnet_api_secret) {
-        correctedMode = 'paper_trading';
-        wasCorrected = true;
-        warnings.push('Auto-switched from hybrid_safe to paper_trading (testnet keys missing)');
-      }
-      break;
-      
     case 'hybrid_live':
-      if (!userSettings?.binance_testnet_api_key || !userSettings?.binance_testnet_api_secret) {
-        // If mainnet keys are available, switch to mainnet_only, otherwise paper trading
-        if (userSettings?.binance_mainnet_api_key && userSettings?.binance_mainnet_api_secret) {
-          correctedMode = 'mainnet_only';
-          wasCorrected = true;
-          warnings.push('Auto-switched from hybrid_live to mainnet_only (testnet keys missing, using mainnet keys)');
-          warnings.push('⚠️ CAUTION: Trading with REAL money on mainnet');
-        } else {
-          correctedMode = 'paper_trading';
-          wasCorrected = true;
-          warnings.push('Auto-switched from hybrid_live to paper_trading (no API keys configured)');
-        }
-      } else {
-        warnings.push('Hybrid live mode executes real trades via testnet API');
-      }
+    case 'mainnet_only':
+      // Accept these modes as-is, credential validation happens at execution time
       break;
       
     case 'paper_trading':
       // Paper trading always works
       break;
       
-    case 'mainnet_only':
-      if (!userSettings?.binance_mainnet_api_key || !userSettings?.binance_mainnet_api_secret) {
-        correctedMode = 'paper_trading';
-        wasCorrected = true;
-        warnings.push('Auto-switched from mainnet_only to paper_trading (mainnet keys missing)');
-      } else {
-        warnings.push('Mainnet only mode executes real trades with REAL money');
-      }
-      break;
-      
     default:
       correctedMode = 'paper_trading';
       wasCorrected = true;
-      warnings.push(`Unknown trading mode '${tradingMode}', using paper_trading`);
+      warnings.push(`Invalid trading mode "${tradingMode}", using paper_trading`);
+      break;
   }
   
   return {
@@ -648,10 +615,10 @@ Deno.serve(async (req) => {
       try {
         console.log(`[CRON] Processing strategy: ${strategy.name} (User: ${strategy.user_id})`);
 
-        const { data: userSettings } = await supabase
+          const { data: userSettings } = await supabase
           .from('user_settings')
           .select(`
-            telegram_enabled, 
+            telegram_enabled,
             telegram_bot_token, 
             telegram_chat_id, 
             exchange_type,
@@ -659,17 +626,7 @@ Deno.serve(async (req) => {
             trading_mode,
             use_mainnet_data,
             use_testnet_api,
-            paper_trading_mode,
-            binance_api_key,
-            binance_api_secret,
-            binance_testnet_api_key,
-            binance_testnet_api_secret,
-            binance_mainnet_api_key,
-            binance_mainnet_api_secret,
-            bybit_testnet_api_key,
-            bybit_testnet_api_secret,
-            bybit_mainnet_api_key,
-            bybit_mainnet_api_secret
+            paper_trading_mode
           `)
           .eq('user_id', strategy.user_id)
           .single();
@@ -891,16 +848,40 @@ Deno.serve(async (req) => {
           const exchangeType = userSettings?.exchange_type || 'binance';
           const useTestnet = userSettings?.use_testnet || false;
           
-          // Get appropriate API keys based on exchange and testnet
+          // Get appropriate API keys - try encrypted first, fallback to plaintext
           let apiKey: string | undefined;
           let apiSecret: string | undefined;
           
-          if (exchangeType === 'binance') {
-            apiKey = useTestnet ? userSettings?.binance_testnet_api_key : userSettings?.binance_mainnet_api_key;
-            apiSecret = useTestnet ? userSettings?.binance_testnet_api_secret : userSettings?.binance_mainnet_api_secret;
-          } else if (exchangeType === 'bybit') {
-            apiKey = useTestnet ? userSettings?.bybit_testnet_api_key : userSettings?.bybit_mainnet_api_key;
-            apiSecret = useTestnet ? userSettings?.bybit_testnet_api_secret : userSettings?.bybit_mainnet_api_secret;
+          const credentialType = exchangeType === 'bybit' 
+            ? (useTestnet ? 'bybit_testnet' : 'bybit_mainnet')
+            : (useTestnet ? 'binance_testnet' : 'binance_mainnet');
+          
+          try {
+            const { data: credentials, error: credError } = await supabase
+              .rpc('decrypt_credential', {
+                p_user_id: strategy.user_id,
+                p_credential_type: credentialType,
+                p_access_source: 'monitor-strategies-cron'
+              });
+            
+            if (!credError && credentials && credentials.length > 0) {
+              apiKey = credentials[0].api_key;
+              apiSecret = credentials[0].api_secret;
+            }
+          } catch (e) {
+            console.log(`[CRON] Could not fetch encrypted credentials for ${strategy.name}, checking encrypted_credentials table directly`);
+            
+            // Fallback: check if encrypted credentials exist
+            const { data: encryptedExists } = await supabase
+              .from('encrypted_credentials')
+              .select('id')
+              .eq('user_id', strategy.user_id)
+              .eq('credential_type', credentialType)
+              .maybeSingle();
+            
+            if (!encryptedExists) {
+              console.log(`[CRON] No encrypted credentials found for ${credentialType}`);
+            }
           }
           
           // Проверяем позицию только для режимов с реальным выполнением

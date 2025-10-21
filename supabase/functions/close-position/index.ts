@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.58.0';
 import { createHmac } from 'https://deno.land/std@0.168.0/node/crypto.ts';
 import { enhancedTelegramSignaler, PositionEvent } from '../helpers/enhanced-telegram-signaler.ts';
+import { closePositionSchema, validateInput } from '../helpers/input-validation.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -30,7 +31,8 @@ Deno.serve(async (req) => {
       throw new Error('Unauthorized');
     }
 
-    const { symbol, closeAll } = await req.json();
+    const body = await req.json();
+    const { symbol, closeAll } = validateInput(closePositionSchema, body);
 
     // Create service role client for RPC calls
     const supabaseServiceClient = createClient(

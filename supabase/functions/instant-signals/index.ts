@@ -4,6 +4,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../helpers/cors.ts';
 import { BinanceAPIClient } from '../helpers/binance-api-client.ts';
+import { signalSchema, validateInput } from '../helpers/input-validation.ts';
 
 interface TradingSignal {
   id: string;
@@ -17,9 +18,9 @@ interface TradingSignal {
   priority: 'critical' | 'high' | 'medium' | 'low';
   channels: string[];
   metadata: {
-    indicators: any;
-    conditions: any;
-    risk: any;
+    indicators?: any;
+    conditions?: any;
+    risk?: any;
   };
 }
 
@@ -532,43 +533,43 @@ Deno.serve(async (req) => {
     try {
       const body = await req.json();
       
-      if (body.type === 'signal' && body.signal) {
-        const signal: TradingSignal = body.signal;
+      // Validate input
+      const validated = validateInput(signalSchema, body);
+      const signal: TradingSignal = validated.signal;
+      
+      // Get user settings
+      const supabase = createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+      );
+      
+      const { data: userSettings } = await supabase
+        .from('user_settings')
+        .select('*')
+        .eq('user_id', signal.userId)
+        .single();
+      
+      if (userSettings) {
+        // Calculate priority
+        const priority = priorityManager.calculatePriority(signal, userSettings);
+        signal.priority = priority as 'critical' | 'high' | 'medium' | 'low';
         
-        // Get user settings
-        const supabase = createClient(
-          Deno.env.get('SUPABASE_URL')!,
-          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-        );
+        // Broadcast signal
+        await signalManager.broadcastSignal(signal, userSettings);
         
-        const { data: userSettings } = await supabase
-          .from('user_settings')
-          .select('*')
-          .eq('user_id', signal.userId)
-          .single();
+        // Execute position
+        const execution = await positionManager.executeSignal(signal, userSettings);
         
-        if (userSettings) {
-          // Calculate priority
-          const priority = priorityManager.calculatePriority(signal, userSettings);
-          signal.priority = priority as 'critical' | 'high' | 'medium' | 'low';
-          
-          // Broadcast signal
-          await signalManager.broadcastSignal(signal, userSettings);
-          
-          // Execute position
-          const execution = await positionManager.executeSignal(signal, userSettings);
-          
-          return new Response(JSON.stringify({
-            success: true,
-            signalId: signal.id,
-            execution: execution
-          }), {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-          });
-        }
+        return new Response(JSON.stringify({
+          success: true,
+          signalId: signal.id,
+          execution: execution
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
       }
       
-      return new Response(JSON.stringify({ error: 'Invalid request' }), {
+      return new Response(JSON.stringify({ error: 'User settings not found' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
@@ -576,6 +577,18 @@ Deno.serve(async (req) => {
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('[INSTANT-SIGNALS] HTTP request error:', errorMessage);
+      
+      // Check if it's a validation error
+      if (errorMessage.includes('Validation failed')) {
+        return new Response(JSON.stringify({ 
+          error: 'Invalid input',
+          details: errorMessage
+        }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+      
       return new Response(JSON.stringify({ error: errorMessage }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }

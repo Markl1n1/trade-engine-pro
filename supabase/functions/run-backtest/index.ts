@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { backtestSchema, validateInput } from '../helpers/input-validation.ts';
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as indicators from "../indicators/all-indicators.ts";
 import { evaluateATHGuardStrategy } from '../helpers/ath-guard-strategy.ts';
@@ -469,6 +470,25 @@ serve(async (req) => {
   }
 
   try {
+    const body = await req.json();
+    
+    // Validate input parameters
+    const validated = validateInput(backtestSchema, {
+      strategyId: body.strategyId,
+      startDate: body.startDate,
+      endDate: body.endDate,
+      initialBalance: body.initialBalance || 10000,
+      leverage: body.leverage || 1,
+      makerFee: body.makerFee || 0.02,
+      takerFee: body.takerFee || 0.04,
+      slippage: body.slippage || 0.01,
+      stopLossPercent: body.stopLossPercent,
+      takeProfitPercent: body.takeProfitPercent,
+      trailingStopPercent: body.trailingStopPercent,
+      productType: body.productType || 'spot',
+      executionTiming: body.executionTiming || 'close'
+    });
+    
     const { 
       strategyId, 
       startDate, 
@@ -476,14 +496,16 @@ serve(async (req) => {
       initialBalance, 
       stopLossPercent, 
       takeProfitPercent,
-      trailingStopPercent, // New: trailing stop percentage
-      productType = 'spot', // 'spot' or 'futures'
-      leverage = 1,
-      makerFee = 0.02,
-      takerFee = 0.04,
-      slippage = 0.01,
-      executionTiming = 'close' // 'open' or 'close'
-    } = await req.json();
+      trailingStopPercent,
+      leverage,
+      makerFee,
+      takerFee,
+      slippage
+    } = validated;
+    
+    // These have defaults in schema but TypeScript doesn't know that
+    const productType = validated.productType ?? 'spot';
+    const executionTiming = validated.executionTiming ?? 'close';
 
     console.log(`Running backtest for strategy ${strategyId} (${productType.toUpperCase()}, ${leverage}x leverage)`);
     console.log(`[BACKTEST] Parameters received:`, {
