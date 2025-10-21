@@ -32,6 +32,12 @@ Deno.serve(async (req) => {
 
     const { symbol, closeAll } = await req.json();
 
+    // Create service role client for RPC calls
+    const supabaseServiceClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
     // Get user settings
     const { data: settings, error: settingsError } = await supabaseClient
       .from('user_settings')
@@ -41,12 +47,32 @@ Deno.serve(async (req) => {
 
     if (settingsError) throw settingsError;
 
-    const apiKey = settings.use_testnet 
-      ? settings.binance_testnet_api_key 
-      : settings.binance_mainnet_api_key;
-    const apiSecret = settings.use_testnet 
-      ? settings.binance_testnet_api_secret 
-      : settings.binance_mainnet_api_secret;
+    // Decrypt API credentials using secure vault
+    const credentialType = settings.use_testnet ? 'binance_testnet' : 'binance_mainnet';
+    const { data: credentials, error: credError } = await supabaseServiceClient
+      .rpc('decrypt_credential', {
+        p_user_id: user.id,
+        p_credential_type: credentialType,
+        p_access_source: 'close-position'
+      });
+
+    let apiKey: string | null = null;
+    let apiSecret: string | null = null;
+
+    if (credError || !credentials || credentials.length === 0) {
+      // Fallback to plaintext during migration period
+      console.log(`[CLOSE-POSITION] No encrypted credentials, using plaintext fallback`);
+      apiKey = settings.use_testnet 
+        ? settings.binance_testnet_api_key 
+        : settings.binance_mainnet_api_key;
+      apiSecret = settings.use_testnet 
+        ? settings.binance_testnet_api_secret 
+        : settings.binance_mainnet_api_secret;
+    } else {
+      // Use decrypted credentials
+      apiKey = credentials[0].api_key;
+      apiSecret = credentials[0].api_secret;
+    }
 
     if (!apiKey || !apiSecret) {
       throw new Error('Binance API credentials not configured');

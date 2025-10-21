@@ -73,33 +73,49 @@ Deno.serve(async (req): Promise<Response> => {
 
     // Determine which exchange to test
     const actualExchangeType = exchangeType || settings.exchange_type || 'binance';
+    const isTestnet = useTestnet;
     
-    let apiKey: string;
-    let apiSecret: string;
-    let isTestnet: boolean;
+    // Determine credential type based on exchange and environment
+    const credentialType = actualExchangeType === 'bybit' 
+      ? (useTestnet ? 'bybit_testnet' : 'bybit_mainnet')
+      : (useTestnet ? 'binance_testnet' : 'binance_mainnet');
 
-    if (actualExchangeType === 'binance') {
-      if (useTestnet) {
-        apiKey = settings.binance_testnet_api_key;
-        apiSecret = settings.binance_testnet_api_secret;
-        isTestnet = true;
-      } else {
-        apiKey = settings.binance_mainnet_api_key;
-        apiSecret = settings.binance_mainnet_api_secret;
-        isTestnet = false;
-      }
-    } else if (actualExchangeType === 'bybit') {
-      if (useTestnet) {
-        apiKey = settings.bybit_testnet_api_key;
-        apiSecret = settings.bybit_testnet_api_secret;
-        isTestnet = true;
-      } else {
-        apiKey = settings.bybit_mainnet_api_key;
-        apiSecret = settings.bybit_mainnet_api_secret;
-        isTestnet = false;
+    // Decrypt API credentials using secure vault
+    const { data: credentials, error: credError } = await supabaseClient
+      .rpc('decrypt_credential', {
+        p_user_id: user.id,
+        p_credential_type: credentialType,
+        p_access_source: 'test-exchange'
+      });
+
+    let apiKey: string | null = null;
+    let apiSecret: string | null = null;
+
+    if (credError || !credentials || credentials.length === 0) {
+      // Fallback to plaintext during migration period
+      console.log(`[TEST-EXCHANGE] No encrypted credentials, using plaintext fallback for ${credentialType}`);
+      
+      if (actualExchangeType === 'binance') {
+        if (useTestnet) {
+          apiKey = settings.binance_testnet_api_key;
+          apiSecret = settings.binance_testnet_api_secret;
+        } else {
+          apiKey = settings.binance_mainnet_api_key;
+          apiSecret = settings.binance_mainnet_api_secret;
+        }
+      } else if (actualExchangeType === 'bybit') {
+        if (useTestnet) {
+          apiKey = settings.bybit_testnet_api_key;
+          apiSecret = settings.bybit_testnet_api_secret;
+        } else {
+          apiKey = settings.bybit_mainnet_api_key;
+          apiSecret = settings.bybit_mainnet_api_secret;
+        }
       }
     } else {
-      throw new Error(`Unsupported exchange type: ${actualExchangeType}`);
+      // Use decrypted credentials
+      apiKey = credentials[0].api_key;
+      apiSecret = credentials[0].api_secret;
     }
 
     if (!apiKey || !apiSecret) {

@@ -158,15 +158,47 @@ Deno.serve(async (req) => {
         .eq('user_id', userId)
         .single();
 
-      if (!userSettings?.binance_api_key || !userSettings?.binance_api_secret) {
-        console.log(`[POSITION-SYNC] Skipping user ${userId} - no API keys`);
+      if (!userSettings) {
+        console.log(`[POSITION-SYNC] Skipping user ${userId} - no settings found`);
+        continue;
+      }
+
+      // Decrypt API credentials using secure vault
+      const credentialType = userSettings.use_testnet ? 'binance_testnet' : 'binance_mainnet';
+      const { data: credentials, error: credError } = await supabase
+        .rpc('decrypt_credential', {
+          p_user_id: userId,
+          p_credential_type: credentialType,
+          p_access_source: 'check-binance-positions-cron'
+        });
+
+      let apiKey: string | null = null;
+      let apiSecret: string | null = null;
+
+      if (credError || !credentials || credentials.length === 0) {
+        // Fallback to plaintext during migration period
+        console.log(`[POSITION-SYNC] No encrypted credentials for user ${userId}, using plaintext fallback`);
+        apiKey = userSettings.use_testnet 
+          ? userSettings.binance_testnet_api_key 
+          : userSettings.binance_mainnet_api_key;
+        apiSecret = userSettings.use_testnet 
+          ? userSettings.binance_testnet_api_secret 
+          : userSettings.binance_mainnet_api_secret;
+      } else {
+        // Use decrypted credentials
+        apiKey = credentials[0].api_key;
+        apiSecret = credentials[0].api_secret;
+      }
+
+      if (!apiKey || !apiSecret) {
+        console.log(`[POSITION-SYNC] Skipping user ${userId} - no API keys configured`);
         continue;
       }
 
       // Get actual Binance positions
       const binancePositions = await getBinancePositions(
-        userSettings.binance_api_key,
-        userSettings.binance_api_secret,
+        apiKey,
+        apiSecret,
         userSettings.use_testnet
       );
 
