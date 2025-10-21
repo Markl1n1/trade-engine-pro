@@ -13,6 +13,7 @@ import { z } from "zod";
 import { TradingPairsManager } from "@/components/TradingPairsManager";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { logSettingsChange, logTradingModeSwitch } from "@/utils/auditLogger";
 
 // Validation schema for security
 const settingsSchema = z.object({
@@ -294,6 +295,13 @@ const Settings = () => {
         });
         return;
       }
+      
+      // Get current settings for audit log
+      const { data: currentSettings } = await supabase
+        .from("user_settings")
+        .select("*")
+        .maybeSingle();
+      
       setSaving(true);
       const {
         data: {
@@ -341,6 +349,17 @@ const Settings = () => {
         throw new Error(`Database error: ${error.message} (Code: ${error.code || 'unknown'})`);
       }
       console.log("Settings saved successfully");
+      
+      // Log settings change
+      if (currentSettings) {
+        await logSettingsChange(currentSettings, settingsData);
+        
+        // Special log for trading mode switch
+        if (currentSettings.trading_mode !== settings.trading_mode) {
+          await logTradingModeSwitch(currentSettings.trading_mode, settings.trading_mode);
+        }
+      }
+      
       toast({
         title: "Success",
         description: "Settings saved successfully"

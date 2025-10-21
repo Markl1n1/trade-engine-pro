@@ -137,6 +137,7 @@ const Dashboard = () => {
       const { data, error } = await supabase.functions.invoke('get-account-data');
       
       if (error) throw error;
+      
       if (data?.success && data?.data) {
         setAccountData(data.data);
         // Update trading mode from account data
@@ -144,9 +145,22 @@ const Dashboard = () => {
           setTradingMode(data.data.tradingMode);
         }
         setLastUpdated(new Date());
+      } else if (data?.error) {
+        // Handle specific errors gracefully
+        console.warn('Account data fetch warning:', data.error);
+        // Don't throw - just log and continue with empty data
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching account data:', error);
+      // Show user-friendly error only for severe issues
+      // Credential errors are handled gracefully - user can fix in Settings
+      if (error?.message && !error.message.includes('credential')) {
+        toast({
+          title: "Account Data Error",
+          description: "Unable to fetch account data. Please check your API credentials in Settings.",
+          variant: "destructive",
+        });
+      }
     } finally {
       setLoadingAccount(false);
     }

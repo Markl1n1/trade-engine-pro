@@ -10,6 +10,7 @@ import { StrategyCloner } from "@/components/StrategyCloner";
 import { MonitoringStatus } from "@/components/MonitoringStatus";
 // Removed unused dashboard components - focusing on core trading functionality
 import { useLiveMonitoring } from "@/hooks/useLiveMonitoring";
+import { logStrategyDelete, logStrategyStatusChange } from "@/utils/auditLogger";
 
 const Strategies = () => {
   const [strategies, setStrategies] = useState<any[]>([]);
@@ -50,8 +51,17 @@ const Strategies = () => {
     if (!confirm("Are you sure you want to delete this strategy?")) return;
 
     try {
+      // Get strategy data before deletion for audit log
+      const strategy = strategies.find(s => s.id === id);
+      
       const { error } = await supabase.from("strategies").delete().eq("id", id);
       if (error) throw error;
+      
+      // Log strategy deletion
+      if (strategy) {
+        await logStrategyDelete(strategy);
+      }
+      
       toast({ title: "Success", description: "Strategy deleted" });
       loadStrategies();
     } catch (error: any) {
@@ -68,6 +78,10 @@ const Strategies = () => {
         .eq("id", strategy.id);
 
       if (error) throw error;
+      
+      // Log strategy status change
+      await logStrategyStatusChange(strategy.id, strategy.name, strategy.status, newStatus);
+      
       toast({ title: "Success", description: `Strategy ${newStatus}` });
       loadStrategies();
     } catch (error: any) {

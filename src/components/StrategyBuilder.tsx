@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Sparkles } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { logStrategyCreate, logStrategyEdit } from "@/utils/auditLogger";
 
 interface StrategyBuilderProps {
   open: boolean;
@@ -43,6 +44,13 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
     rsiOverbought: 70,
     rsiOversold: 30,
     volumeMultiplier: 1.2,
+    // MTF Momentum config
+    mtfRsiPeriod: 14,
+    mtfRsiEntryThreshold: 55,
+    mtfMacdFast: 12,
+    mtfMacdSlow: 26,
+    mtfMacdSignal: 9,
+    mtfVolumeMultiplier: 1.2,
   });
 
   // Load strategy data when editing
@@ -80,6 +88,13 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
         rsiOverbought: editStrategy.rsi_overbought || 70,
         rsiOversold: editStrategy.rsi_oversold || 30,
         volumeMultiplier: editStrategy.volume_multiplier || 1.2,
+        // MTF Momentum config
+        mtfRsiPeriod: editStrategy.mtf_rsi_period || 14,
+        mtfRsiEntryThreshold: editStrategy.mtf_rsi_entry_threshold || 55,
+        mtfMacdFast: editStrategy.mtf_macd_fast || 12,
+        mtfMacdSlow: editStrategy.mtf_macd_slow || 26,
+        mtfMacdSignal: editStrategy.mtf_macd_signal || 9,
+        mtfVolumeMultiplier: editStrategy.mtf_volume_multiplier || 1.2,
       });
     }
   };
@@ -106,6 +121,12 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
       rsiOverbought: 70,
       rsiOversold: 30,
       volumeMultiplier: 1.2,
+      mtfRsiPeriod: 14,
+      mtfRsiEntryThreshold: 55,
+      mtfMacdFast: 12,
+      mtfMacdSlow: 26,
+      mtfMacdSignal: 9,
+      mtfVolumeMultiplier: 1.2,
     });
   };
 
@@ -148,6 +169,13 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
         rsi_overbought: strategyType === "sma_crossover" ? strategyConfig.rsiOverbought : null,
         rsi_oversold: strategyType === "sma_crossover" ? strategyConfig.rsiOversold : null,
         volume_multiplier: strategyType === "sma_crossover" ? strategyConfig.volumeMultiplier : null,
+        // MTF Momentum configuration
+        mtf_rsi_period: strategyType === "mtf_momentum" ? strategyConfig.mtfRsiPeriod : null,
+        mtf_rsi_entry_threshold: strategyType === "mtf_momentum" ? strategyConfig.mtfRsiEntryThreshold : null,
+        mtf_macd_fast: strategyType === "mtf_momentum" ? strategyConfig.mtfMacdFast : null,
+        mtf_macd_slow: strategyType === "mtf_momentum" ? strategyConfig.mtfMacdSlow : null,
+        mtf_macd_signal: strategyType === "mtf_momentum" ? strategyConfig.mtfMacdSignal : null,
+        mtf_volume_multiplier: strategyType === "mtf_momentum" ? strategyConfig.mtfVolumeMultiplier : null,
         updated_at: new Date().toISOString(),
       };
 
@@ -162,6 +190,9 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
 
         if (strategyError) throw strategyError;
         strategyId = editStrategy.id;
+        
+        // Log strategy edit
+        await logStrategyEdit(editStrategy.id, editStrategy, strategyData);
       } else {
         // Create new strategy
         const { data: strategy, error: strategyError } = await supabase
@@ -172,6 +203,9 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
 
         if (strategyError) throw strategyError;
         strategyId = strategy.id;
+        
+        // Log strategy creation
+        await logStrategyCreate({ ...strategy, id: strategyId });
       }
 
       toast({ 
@@ -265,6 +299,7 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="sma_crossover">SMA 20/200 Crossover with RSI Filter</SelectItem>
+                <SelectItem value="mtf_momentum">MTF Momentum Strategy</SelectItem>
                 <SelectItem value="4h_reentry">4h Reentry Breakout</SelectItem>
                 <SelectItem value="market_sentiment_trend_gauge">Market Sentiment Trend Gauge</SelectItem>
                 <SelectItem value="ath_guard_scalping">ATH Guard Mode - 1min Scalping</SelectItem>
@@ -273,6 +308,8 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
             <p className="text-xs text-muted-foreground">
               {strategyType === "sma_crossover"
                 ? "High win rate trend-following strategy using SMA 20/200 crossover with RSI filter and volume confirmation"
+                : strategyType === "mtf_momentum"
+                ? "Multi-timeframe momentum strategy combining RSI, MACD signals across different timeframes with volume confirmation"
                 : strategyType === "4h_reentry"
                 ? "Pre-configured strategy with specialized logic for 4h range re-entry trading"
                 : strategyType === "market_sentiment_trend_gauge"
@@ -352,6 +389,79 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
               <p className="text-xs text-muted-foreground">
                 Golden Cross: SMA Fast crosses above SMA Slow (with RSI &lt; 70 and volume confirmation)<br/>
                 Death Cross: SMA Fast crosses below SMA Slow (with RSI &gt; 30 and volume confirmation)
+              </p>
+            </div>
+          )}
+
+          {strategyType === "mtf_momentum" && (
+            <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
+              <h4 className="font-medium">MTF Momentum Configuration</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="mtfRsiPeriod">RSI Period</Label>
+                  <Input
+                    id="mtfRsiPeriod"
+                    type="number"
+                    value={strategyConfig.mtfRsiPeriod || 14}
+                    onChange={(e) => setStrategyConfig(prev => ({ ...prev, mtfRsiPeriod: parseInt(e.target.value) || 14 }))}
+                    placeholder="14"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="mtfRsiEntryThreshold">RSI Entry Threshold</Label>
+                  <Input
+                    id="mtfRsiEntryThreshold"
+                    type="number"
+                    value={strategyConfig.mtfRsiEntryThreshold || 55}
+                    onChange={(e) => setStrategyConfig(prev => ({ ...prev, mtfRsiEntryThreshold: parseInt(e.target.value) || 55 }))}
+                    placeholder="55"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="mtfMacdFast">MACD Fast Period</Label>
+                  <Input
+                    id="mtfMacdFast"
+                    type="number"
+                    value={strategyConfig.mtfMacdFast || 12}
+                    onChange={(e) => setStrategyConfig(prev => ({ ...prev, mtfMacdFast: parseInt(e.target.value) || 12 }))}
+                    placeholder="12"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="mtfMacdSlow">MACD Slow Period</Label>
+                  <Input
+                    id="mtfMacdSlow"
+                    type="number"
+                    value={strategyConfig.mtfMacdSlow || 26}
+                    onChange={(e) => setStrategyConfig(prev => ({ ...prev, mtfMacdSlow: parseInt(e.target.value) || 26 }))}
+                    placeholder="26"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="mtfMacdSignal">MACD Signal Period</Label>
+                  <Input
+                    id="mtfMacdSignal"
+                    type="number"
+                    value={strategyConfig.mtfMacdSignal || 9}
+                    onChange={(e) => setStrategyConfig(prev => ({ ...prev, mtfMacdSignal: parseInt(e.target.value) || 9 }))}
+                    placeholder="9"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="mtfVolumeMultiplier">Volume Multiplier</Label>
+                  <Input
+                    id="mtfVolumeMultiplier"
+                    type="number"
+                    step="0.1"
+                    value={strategyConfig.mtfVolumeMultiplier || 1.2}
+                    onChange={(e) => setStrategyConfig(prev => ({ ...prev, mtfVolumeMultiplier: parseFloat(e.target.value) || 1.2 }))}
+                    placeholder="1.2"
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Buy Signal: RSI crosses above entry threshold + MACD bullish crossover + volume confirmation<br/>
+                Sell Signal: RSI crosses below entry threshold + MACD bearish crossover + volume confirmation
               </p>
             </div>
           )}

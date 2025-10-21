@@ -168,29 +168,6 @@ export function MonitoringStatus() {
     }
   };
 
-  const runManualCheck = async () => {
-    setChecking(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("monitor-strategies");
-      
-      if (error) throw error;
-      
-      toast({
-        title: "Monitoring Complete",
-        description: `Checked ${activeCount} active strategies. ${data.signals?.length || 0} signals generated.`,
-      });
-      
-      await loadMonitoringStatus();
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setChecking(false);
-    }
-  };
 
   const getTimeAgo = (timestamp: string) => {
     const diff = Date.now() - new Date(timestamp).getTime();
@@ -356,16 +333,9 @@ export function MonitoringStatus() {
         </div>
       )}
 
-        <Button 
-          onClick={runManualCheck} 
-          disabled={checking || activeCount === 0}
-          className="w-full gap-2"
-          size="sm"
-          variant="outline"
-        >
-          <PlayCircle className="h-4 w-4" />
-          {checking ? "Checking..." : "Run Manual Check"}
-        </Button>
+        <div className="text-xs text-center text-muted-foreground p-2 bg-secondary/30 rounded">
+          <p>✨ Monitoring is fully automated with real-time WebSocket and scheduled cron jobs</p>
+        </div>
       </Card>
 
       {/* Removed StrategyDebugPanel - using PerformanceDashboard instead */}

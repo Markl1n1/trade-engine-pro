@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Copy } from "lucide-react";
+import { logStrategyClone } from "@/utils/auditLogger";
 
 interface StrategyClonerProps {
   strategy: any;
@@ -82,6 +83,15 @@ export function StrategyCloner({ strategy, onCloneComplete }: StrategyClonerProp
 
         if (groupsError) throw groupsError;
       }
+
+      // Log strategy clone
+      await logStrategyClone(strategy.id, {
+        id: newStrategy.id,
+        name: newName,
+        strategy_type: strategy.strategy_type,
+        symbol: strategy.symbol,
+        timeframe: strategy.timeframe
+      });
 
       toast({
         title: "Strategy cloned successfully",
