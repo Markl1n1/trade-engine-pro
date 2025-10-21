@@ -644,10 +644,54 @@ serve(async (req) => {
       }
     }
 
-    const marketData = allMarketData;
+    let marketData = allMarketData;
+
+    // Fallback to Binance data if selected exchange has no data
+    if ((!marketData || marketData.length === 0) && exchangeType !== 'binance') {
+      console.warn(`⚠️ No market data found for exchange type '${exchangeType}'. Attempting fallback to Binance data...`);
+      
+      // Try to fetch Binance data as fallback
+      let binanceFallbackData: any[] = [];
+      let fallbackFrom = 0;
+      let fallbackHasMore = true;
+
+      while (fallbackHasMore) {
+        const { data: fallbackBatch, error: fallbackError } = await supabaseClient
+          .from('market_data')
+          .select('*')
+          .eq('symbol', strategy.symbol)
+          .eq('timeframe', strategy.timeframe)
+          .eq('exchange_type', 'binance')
+          .gte('open_time', new Date(startDate).getTime())
+          .lte('open_time', new Date(endDate).getTime())
+          .order('open_time', { ascending: true })
+          .range(fallbackFrom, fallbackFrom + batchSize - 1);
+
+        if (fallbackError) {
+          console.error('Fallback fetch error:', fallbackError);
+          fallbackHasMore = false;
+        } else if (!fallbackBatch || fallbackBatch.length === 0) {
+          fallbackHasMore = false;
+        } else {
+          binanceFallbackData = binanceFallbackData.concat(fallbackBatch);
+          console.log(`Fetched Binance fallback batch: ${fallbackBatch.length} candles (total: ${binanceFallbackData.length})`);
+          
+          if (fallbackBatch.length < batchSize) {
+            fallbackHasMore = false;
+          } else {
+            fallbackFrom += batchSize;
+          }
+        }
+      }
+
+      if (binanceFallbackData.length > 0) {
+        marketData = binanceFallbackData;
+        console.log(`✅ Using ${binanceFallbackData.length} candles from Binance as fallback data`);
+      }
+    }
 
     if (!marketData || marketData.length === 0) {
-      throw new Error('No market data found for the specified period');
+      throw new Error(`No market data found for ${strategy.symbol} on ${strategy.timeframe} timeframe for the specified period. Please ensure the exchange-websocket-monitor is running to collect data.`);
     }
 
     console.log(`Total candles fetched: ${marketData.length}`);

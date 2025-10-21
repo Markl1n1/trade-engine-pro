@@ -25,7 +25,7 @@ export function StrategyCloner({ strategy, onCloneComplete }: StrategyClonerProp
       const { data: user } = await supabase.auth.getUser();
       if (!user.user) throw new Error('Not authenticated');
 
-      // Clone the strategy
+      // Clone the strategy with all configuration fields
       const { data: newStrategy, error: strategyError } = await supabase
         .from('strategies')
         .insert({
@@ -39,6 +39,46 @@ export function StrategyCloner({ strategy, onCloneComplete }: StrategyClonerProp
           position_size_percent: strategy.position_size_percent,
           stop_loss_percent: strategy.stop_loss_percent,
           take_profit_percent: strategy.take_profit_percent,
+          // SMA Crossover settings
+          sma_fast_period: strategy.sma_fast_period,
+          sma_slow_period: strategy.sma_slow_period,
+          // RSI settings
+          rsi_period: strategy.rsi_period,
+          rsi_overbought: strategy.rsi_overbought,
+          rsi_oversold: strategy.rsi_oversold,
+          // Volume and ATR settings
+          volume_multiplier: strategy.volume_multiplier,
+          atr_sl_multiplier: strategy.atr_sl_multiplier,
+          atr_tp_multiplier: strategy.atr_tp_multiplier,
+          // MTF Momentum settings
+          mtf_rsi_period: strategy.mtf_rsi_period,
+          mtf_rsi_entry_threshold: strategy.mtf_rsi_entry_threshold,
+          mtf_macd_fast: strategy.mtf_macd_fast,
+          mtf_macd_slow: strategy.mtf_macd_slow,
+          mtf_macd_signal: strategy.mtf_macd_signal,
+          mtf_volume_multiplier: strategy.mtf_volume_multiplier,
+          // MSTG settings
+          mstg_weight_momentum: strategy.mstg_weight_momentum,
+          mstg_weight_trend: strategy.mstg_weight_trend,
+          mstg_weight_volatility: strategy.mstg_weight_volatility,
+          mstg_weight_relative: strategy.mstg_weight_relative,
+          mstg_long_threshold: strategy.mstg_long_threshold,
+          mstg_short_threshold: strategy.mstg_short_threshold,
+          mstg_exit_threshold: strategy.mstg_exit_threshold,
+          mstg_extreme_threshold: strategy.mstg_extreme_threshold,
+          // ATH Guard settings
+          ath_guard_ema_slope_threshold: strategy.ath_guard_ema_slope_threshold,
+          ath_guard_pullback_tolerance: strategy.ath_guard_pullback_tolerance,
+          ath_guard_volume_multiplier: strategy.ath_guard_volume_multiplier,
+          ath_guard_stoch_oversold: strategy.ath_guard_stoch_oversold,
+          ath_guard_stoch_overbought: strategy.ath_guard_stoch_overbought,
+          ath_guard_atr_sl_multiplier: strategy.ath_guard_atr_sl_multiplier,
+          ath_guard_atr_tp1_multiplier: strategy.ath_guard_atr_tp1_multiplier,
+          ath_guard_atr_tp2_multiplier: strategy.ath_guard_atr_tp2_multiplier,
+          ath_guard_ath_safety_distance: strategy.ath_guard_ath_safety_distance,
+          ath_guard_rsi_threshold: strategy.ath_guard_rsi_threshold,
+          // Benchmark
+          benchmark_symbol: strategy.benchmark_symbol,
           status: 'draft' // Always create clones as drafts
         })
         .select()

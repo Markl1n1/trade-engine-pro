@@ -30,12 +30,12 @@ export const backtestSchema = z.object({
   endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format (YYYY-MM-DD)'),
   initialBalance: z.number().positive().max(1000000000, 'Initial balance too large'),
   leverage: z.number().int().min(1).max(125, 'Leverage must be between 1 and 125'),
-  makerFee: z.number().min(0).max(1, 'Maker fee must be between 0 and 1'),
-  takerFee: z.number().min(0).max(1, 'Taker fee must be between 0 and 1'),
-  slippage: z.number().min(0).max(1, 'Slippage must be between 0 and 1'),
-  stopLossPercent: z.number().min(0).max(100).optional(),
-  takeProfitPercent: z.number().min(0).max(1000).optional(),
-  trailingStopPercent: z.number().min(0).max(100).optional(),
+  makerFee: z.number().min(0, 'Maker fee cannot be negative').max(1, 'Maker fee cannot exceed 100% (enter as decimal: 0.0001 for 0.01%)'),
+  takerFee: z.number().min(0, 'Taker fee cannot be negative').max(1, 'Taker fee cannot exceed 100% (enter as decimal: 0.0001 for 0.01%)'),
+  slippage: z.number().min(0, 'Slippage cannot be negative').max(1, 'Slippage cannot exceed 100% (enter as decimal: 0.001 for 0.1%)'),
+  stopLossPercent: z.number().min(0, 'Stop loss cannot be negative').max(100, 'Stop loss cannot exceed 100%').optional(),
+  takeProfitPercent: z.number().min(0, 'Take profit cannot be negative').max(1000, 'Take profit cannot exceed 1000%').optional(),
+  trailingStopPercent: z.number().min(0, 'Trailing stop cannot be negative').max(100, 'Trailing stop cannot exceed 100%').optional(),
   productType: z.enum(['spot', 'futures']).optional(),
   executionTiming: z.enum(['open', 'close']).optional()
 });
