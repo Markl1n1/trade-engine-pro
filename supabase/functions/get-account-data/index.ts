@@ -19,14 +19,29 @@ Deno.serve(async (req) => {
 
   let user;
   try {
-    const supabase = createClient(
+    // Create service role client for credentials operations
+    const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
     const authHeader = req.headers.get('Authorization')!;
     const token = authHeader.replace('Bearer ', '');
-    const { data: { user: authUser }, error: userError } = await supabase.auth.getUser(token);
+    
+    // Create user client for user_settings with proper auth context
+    const supabaseUser = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      {
+        global: {
+          headers: {
+            Authorization: authHeader
+          }
+        }
+      }
+    );
+
+    const { data: { user: authUser }, error: userError } = await supabaseAdmin.auth.getUser(token);
     user = authUser;
 
     if (userError || !user) {
@@ -38,8 +53,8 @@ Deno.serve(async (req) => {
       throw new Error('Invalid user ID format');
     }
 
-    // Get user settings to determine which API keys to use
-    const { data: settings, error: settingsError } = await supabase
+    // Get user settings using user client (respects RLS)
+    const { data: settings, error: settingsError } = await supabaseUser
       .from('user_settings')
       .select('exchange_type, use_testnet, trading_mode, use_mainnet_data, use_testnet_api, paper_trading_mode, binance_mainnet_api_key, binance_mainnet_api_secret, binance_testnet_api_key, binance_testnet_api_secret, bybit_mainnet_api_key, bybit_mainnet_api_secret, bybit_testnet_api_key, bybit_testnet_api_secret')
       .eq('user_id', user.id)
@@ -66,8 +81,8 @@ Deno.serve(async (req) => {
       ? (shouldUseTestnetAPI ? 'bybit_testnet' : 'bybit_mainnet')
       : (shouldUseTestnetAPI ? 'binance_testnet' : 'binance_mainnet');
 
-    // Retrieve API credentials from secure vault
-    const { data: credentials, error: credError } = await supabase
+    // Retrieve API credentials from secure vault using admin client
+    const { data: credentials, error: credError } = await supabaseAdmin
       .rpc('retrieve_credential', {
         p_user_id: user.id,
         p_credential_type: credentialType
