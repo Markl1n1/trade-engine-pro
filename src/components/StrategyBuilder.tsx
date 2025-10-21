@@ -136,15 +136,6 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
       return;
     }
 
-    // Validate benchmark symbol for MSTG
-    if (strategyType === "market_sentiment_trend_gauge" && !benchmarkSymbol.trim()) {
-      toast({ 
-        title: "Benchmark Required", 
-        description: "Market Sentiment strategy requires a benchmark symbol for relative strength calculation.", 
-        variant: "destructive" 
-      });
-      return;
-    }
 
     setSaving(true);
     try {
@@ -161,7 +152,6 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
         position_size_percent: positionSize,
         stop_loss_percent: stopLoss ? Number(stopLoss) : null,
         take_profit_percent: takeProfit ? Number(takeProfit) : null,
-        benchmark_symbol: strategyType === "market_sentiment_trend_gauge" ? benchmarkSymbol : null,
         // SMA Crossover configuration
         sma_fast_period: strategyType === "sma_crossover" ? strategyConfig.smaFastPeriod : null,
         sma_slow_period: strategyType === "sma_crossover" ? strategyConfig.smaSlowPeriod : null,
@@ -306,22 +296,19 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="sma_crossover">SMA 20/200 Crossover with RSI Filter</SelectItem>
-                <SelectItem value="mtf_momentum">MTF Momentum Strategy</SelectItem>
-                <SelectItem value="4h_reentry">4h Reentry Breakout</SelectItem>
-                <SelectItem value="market_sentiment_trend_gauge">Market Sentiment Trend Gauge</SelectItem>
+                <SelectItem value="sma_crossover">SMA 10/50 Crossover with RSI Filter (Scalping)</SelectItem>
+                <SelectItem value="mtf_momentum">MTF Momentum Strategy (Scalping)</SelectItem>
+                <SelectItem value="4h_reentry">4h Reentry Breakout (Adapted for 1h/30m)</SelectItem>
                 <SelectItem value="ath_guard_scalping">ATH Guard Mode - 1min Scalping</SelectItem>
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
               {strategyType === "sma_crossover"
-                ? "High win rate trend-following strategy using SMA 20/200 crossover with RSI filter and volume confirmation"
+                ? "Scalping strategy using SMA 10/50 crossover with aggressive RSI filter and high volume confirmation"
                 : strategyType === "mtf_momentum"
-                ? "Multi-timeframe momentum strategy combining RSI, MACD signals across different timeframes with volume confirmation"
+                ? "Multi-timeframe momentum strategy optimized for scalping. Combines RSI, MACD signals across 1m-15m timeframes with volume confirmation"
                 : strategyType === "4h_reentry"
-                ? "Pre-configured strategy with specialized logic for 4h range re-entry trading"
-                : strategyType === "market_sentiment_trend_gauge"
-                ? "Multi-factor composite score combining momentum, trend, volatility, and relative strength"
+                ? "Pre-configured strategy adapted for 1h/30m range re-entry trading with faster execution"
                 : strategyType === "ath_guard_scalping"
                 ? "Advanced 1-minute scalping system with EMA bias filter, VWAP pullbacks, MACD+Stochastic momentum triggers, volume validation, and ATR-based risk management"
                 : ""}
@@ -337,9 +324,9 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
                   <Input
                     id="smaFastPeriod"
                     type="number"
-                    value={strategyConfig.smaFastPeriod || 20}
-                    onChange={(e) => setStrategyConfig(prev => ({ ...prev, smaFastPeriod: parseInt(e.target.value) || 20 }))}
-                    placeholder="20"
+                    value={strategyConfig.smaFastPeriod || 10}
+                    onChange={(e) => setStrategyConfig(prev => ({ ...prev, smaFastPeriod: parseInt(e.target.value) || 10 }))}
+                    placeholder="10"
                   />
                 </div>
                 <div className="space-y-2">
@@ -347,9 +334,9 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
                   <Input
                     id="smaSlowPeriod"
                     type="number"
-                    value={strategyConfig.smaSlowPeriod || 200}
-                    onChange={(e) => setStrategyConfig(prev => ({ ...prev, smaSlowPeriod: parseInt(e.target.value) || 200 }))}
-                    placeholder="200"
+                    value={strategyConfig.smaSlowPeriod || 50}
+                    onChange={(e) => setStrategyConfig(prev => ({ ...prev, smaSlowPeriod: parseInt(e.target.value) || 50 }))}
+                    placeholder="50"
                   />
                 </div>
                 <div className="space-y-2">
@@ -367,9 +354,9 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
                   <Input
                     id="rsiOverbought"
                     type="number"
-                    value={strategyConfig.rsiOverbought || 70}
-                    onChange={(e) => setStrategyConfig(prev => ({ ...prev, rsiOverbought: parseInt(e.target.value) || 70 }))}
-                    placeholder="70"
+                    value={strategyConfig.rsiOverbought || 60}
+                    onChange={(e) => setStrategyConfig(prev => ({ ...prev, rsiOverbought: parseInt(e.target.value) || 60 }))}
+                    placeholder="60"
                   />
                 </div>
                 <div className="space-y-2">
@@ -377,9 +364,9 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
                   <Input
                     id="rsiOversold"
                     type="number"
-                    value={strategyConfig.rsiOversold || 30}
-                    onChange={(e) => setStrategyConfig(prev => ({ ...prev, rsiOversold: parseInt(e.target.value) || 30 }))}
-                    placeholder="30"
+                    value={strategyConfig.rsiOversold || 40}
+                    onChange={(e) => setStrategyConfig(prev => ({ ...prev, rsiOversold: parseInt(e.target.value) || 40 }))}
+                    placeholder="40"
                   />
                 </div>
                 <div className="space-y-2">
@@ -388,15 +375,15 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
                     id="volumeMultiplier"
                     type="number"
                     step="0.1"
-                    value={strategyConfig.volumeMultiplier || 1.2}
-                    onChange={(e) => setStrategyConfig(prev => ({ ...prev, volumeMultiplier: parseFloat(e.target.value) || 1.2 }))}
-                    placeholder="1.2"
+                    value={strategyConfig.volumeMultiplier || 1.8}
+                    onChange={(e) => setStrategyConfig(prev => ({ ...prev, volumeMultiplier: parseFloat(e.target.value) || 1.8 }))}
+                    placeholder="1.8"
                   />
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">
-                Golden Cross: SMA Fast crosses above SMA Slow (with RSI &lt; 70 and volume confirmation)<br/>
-                Death Cross: SMA Fast crosses below SMA Slow (with RSI &gt; 30 and volume confirmation)
+                Golden Cross: SMA Fast crosses above SMA Slow (with RSI &lt; 60 and volume confirmation)<br/>
+                Death Cross: SMA Fast crosses below SMA Slow (with RSI &gt; 40 and volume confirmation)
               </p>
             </div>
           )}
@@ -461,9 +448,9 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
                     id="mtfVolumeMultiplier"
                     type="number"
                     step="0.1"
-                    value={strategyConfig.mtfVolumeMultiplier || 1.2}
-                    onChange={(e) => setStrategyConfig(prev => ({ ...prev, mtfVolumeMultiplier: parseFloat(e.target.value) || 1.2 }))}
-                    placeholder="1.2"
+                    value={strategyConfig.mtfVolumeMultiplier || 1.8}
+                    onChange={(e) => setStrategyConfig(prev => ({ ...prev, mtfVolumeMultiplier: parseFloat(e.target.value) || 1.8 }))}
+                    placeholder="1.8"
                   />
                 </div>
               </div>
@@ -474,20 +461,6 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
             </div>
           )}
 
-          {strategyType === "market_sentiment_trend_gauge" && (
-            <div className="space-y-2">
-              <Label htmlFor="benchmarkSymbol">Benchmark Symbol</Label>
-              <Input
-                id="benchmarkSymbol"
-                value={benchmarkSymbol}
-                onChange={(e) => setBenchmarkSymbol(e.target.value)}
-                placeholder="BTCUSDT"
-              />
-              <p className="text-xs text-muted-foreground">
-                Symbol to compare against for relative strength calculation (e.g., BTCUSDT for crypto, SPY for stocks)
-              </p>
-            </div>
-          )}
 
           <div className="space-y-2">
             <Label htmlFor="description">Description</Label>

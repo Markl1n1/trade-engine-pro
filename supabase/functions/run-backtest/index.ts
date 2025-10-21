@@ -711,28 +711,6 @@ serve(async (req) => {
       );
     }
 
-    // Check if this is MSTG strategy
-    const isMSTG = strategy.strategy_type === 'market_sentiment_trend_gauge';
-    
-    if (isMSTG) {
-      console.log('Running MSTG strategy backtest...');
-      return await runMSTGBacktest(
-        strategy,
-        candles,
-        initialBalance,
-        productType,
-        leverage,
-        makerFee,
-        takerFee,
-        slippage,
-        executionTiming,
-        supabaseClient,
-        strategyId,
-        startDate,
-        endDate,
-        corsHeaders
-      );
-    }
 
     // Check if this is SMA Crossover strategy
     const isSMACrossover = strategy.strategy_type === 'sma_crossover';
@@ -1856,26 +1834,6 @@ function calculateEMACustom(prices: number[], period: number): number[] {
   return ema;
 }
 
-// ============= MSTG STRATEGY IMPLEMENTATION =============
-async function runMSTGBacktest(
-  strategy: any,
-  candles: Candle[],
-  initialBalance: number,
-  productType: string,
-  leverage: number,
-  makerFee: number,
-  takerFee: number,
-  slippage: number,
-  executionTiming: string,
-  supabaseClient: any,
-  strategyId: string,
-  startDate: string,
-  endDate: string,
-  corsHeaders: any
-) {
-  console.log('Initializing MSTG backtest...');
-  
-  const benchmarkSymbol = strategy.benchmark_symbol || 'BTCUSDT';
   
   // Fetch benchmark data (fetch ALL candles)
   let allBenchmarkData: any[] = [];

@@ -7,7 +7,6 @@ import {
 } from '../helpers/signal-utils.ts';
 import { evaluateATHGuardStrategy } from '../helpers/ath-guard-strategy.ts';
 import { evaluate4hReentry } from '../helpers/4h-reentry-strategy.ts';
-import { evaluateMSTG } from '../helpers/mstg-strategy.ts';
 import { evaluateSMACrossoverStrategy, defaultSMACrossoverConfig } from '../helpers/sma-crossover-strategy.ts';
 import { evaluateMTFMomentum, defaultMTFMomentumConfig } from '../helpers/mtf-momentum-strategy.ts';
 import { enhancedTelegramSignaler, TradingSignal } from '../helpers/enhanced-telegram-signaler.ts';
@@ -797,8 +796,8 @@ Deno.serve(async (req) => {
             }
           }
         } 
-        else if (strategy.strategy_type === 'market_sentiment_trend_gauge' || strategy.strategy_type === 'mtf_momentum' || strategy.strategy_type === 'mstg') {
-          // Replace legacy MSTG with new Multi-Timeframe Momentum for scalping (1m/5m/15m)
+        else if (strategy.strategy_type === 'mtf_momentum') {
+          // Multi-Timeframe Momentum for scalping (1m/5m/15m)
           
           // Short cooldown for scalping to avoid signal spam
           const SIGNAL_COOLDOWN_MS = 2 * 60 * 1000; // 2 minutes
