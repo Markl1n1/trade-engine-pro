@@ -34,6 +34,7 @@ const Backtest = () => {
   const [backtestEngine, setBacktestEngine] = useState<string>("advanced");
   const [comparisonResults, setComparisonResults] = useState<any>(null);
   const [isComparing, setIsComparing] = useState(false);
+  const [debugMode, setDebugMode] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -138,6 +139,7 @@ const Backtest = () => {
           takerFee: parseFloat(takerFee),
           slippage: parseFloat(slippage),
           executionTiming: engine === 'advanced' ? executionTiming : undefined,
+          debug: debugMode,
         },
       });
 
@@ -328,6 +330,27 @@ const Backtest = () => {
                 <br />
                 <strong>Simple:</strong> Fast vectorized calculations for comparison.
               </p>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                id="debugMode"
+                checked={debugMode}
+                onChange={(e) => setDebugMode(e.target.checked)}
+                className="rounded"
+              />
+              <Label htmlFor="debugMode" className="text-xs text-muted-foreground">
+                Debug Mode
+              </Label>
+              <UITooltip>
+                <TooltipTrigger asChild>
+                  <Info className="h-3 w-3 text-muted-foreground" />
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p className="text-xs">Enable detailed logging for troubleshooting</p>
+                </TooltipContent>
+              </UITooltip>
             </div>
 
             {backtestEngine === 'advanced' && (

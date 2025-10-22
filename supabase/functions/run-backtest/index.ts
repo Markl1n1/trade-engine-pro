@@ -529,6 +529,13 @@ serve(async (req) => {
 
   try {
     const body = await req.json();
+    const debug: boolean = !!body.debug;
+    const debugLogs: any[] = [];
+    const log = (message: string, meta?: Record<string, unknown>) => {
+      const entry = { ts: new Date().toISOString(), message, ...(meta ? { meta } : {}) };
+      if (debug) debugLogs.push(entry);
+      console.log(message, meta || '');
+    };
     
     // Validate input parameters
     const validated = validateInput(backtestSchema, {
@@ -565,8 +572,8 @@ serve(async (req) => {
     const productType = validated.productType ?? 'spot';
     const executionTiming = validated.executionTiming ?? 'close';
 
-    console.log(`Running backtest for strategy ${strategyId} (${productType.toUpperCase()}, ${leverage}x leverage)`);
-    console.log(`[BACKTEST] Parameters received:`, {
+    log(`Running backtest for strategy ${strategyId} (${productType.toUpperCase()}, ${leverage}x leverage)`);
+    log(`[BACKTEST] Parameters received:`, {
       stopLossPercent,
       takeProfitPercent,
       trailingStopPercent,
@@ -591,7 +598,7 @@ serve(async (req) => {
       throw new Error('Strategy not found');
     }
 
-    console.log(`Strategy: ${strategy.name}, Symbol: ${strategy.symbol}, Timeframe: ${strategy.timeframe}, Type: ${strategy.strategy_type || 'standard'}`);
+    log(`Strategy loaded`, { name: strategy.name, symbol: strategy.symbol, timeframe: strategy.timeframe, type: strategy.strategy_type || 'standard' });
 
     // Fetch user settings to get exchange_type
     const { data: userSettings, error: settingsError } = await supabaseClient
@@ -630,7 +637,7 @@ serve(async (req) => {
       adjustedSlippage = highLiquidityPairs.includes(symbol) ? 0.015 : 0.035;
     }
     
-    console.log(`[BACKTEST] Exchange: ${exchangeType}/${symbol}, Fees: ${exchangeMakerFee}%/${exchangeTakerFee}%, Slippage: ${adjustedSlippage}%`);
+    log(`[BACKTEST] Exchange/Fees`, { exchangeType, symbol, makerFee: exchangeMakerFee, takerFee: exchangeTakerFee, slippage: adjustedSlippage });
 
     // Fetch conditions separately (embedded select doesn't work reliably)
     const { data: conditions, error: conditionsError } = await supabaseClient
@@ -644,7 +651,7 @@ serve(async (req) => {
       throw new Error('Failed to load strategy conditions');
     }
 
-    console.log(`Loaded ${conditions?.length || 0} conditions from database`);
+    log(`Loaded conditions`, { count: conditions?.length || 0 });
 
     // Fetch condition groups
     const { data: groups, error: groupsError } = await supabaseClient
@@ -657,7 +664,7 @@ serve(async (req) => {
       console.error('Error fetching groups:', groupsError);
     }
 
-    console.log(`Loaded ${groups?.length || 0} condition groups from database`);
+    log(`Loaded condition groups`, { count: groups?.length || 0 });
 
     // Validate strategy has conditions (skip for custom strategy types like 4h_reentry)
     const isCustomStrategy = strategy.strategy_type && strategy.strategy_type !== 'standard';
@@ -665,7 +672,7 @@ serve(async (req) => {
       throw new Error('Strategy has no conditions defined. Please add entry/exit conditions before running backtest.');
     }
     
-    console.log(`Strategy type: ${strategy.strategy_type || 'standard'}, Custom logic: ${isCustomStrategy}`);
+    log(`Strategy type`, { type: strategy.strategy_type || 'standard', isCustomStrategy });
 
     // Normalize indicator types and operators to lowercase for compatibility
     const normalizedConditions = conditions.map(c => ({
@@ -681,7 +688,7 @@ serve(async (req) => {
     const batchSize = 1000;
     let hasMore = true;
 
-    console.log(`Fetching market data from ${startDate} to ${endDate}...`);
+    log(`Fetching market data`, { startDate, endDate, symbol: strategy.symbol, timeframe: strategy.timeframe });
 
     while (hasMore) {
       const { data: batch, error: batchError } = await supabaseClient
@@ -702,7 +709,7 @@ serve(async (req) => {
         hasMore = false;
       } else {
         allMarketData = allMarketData.concat(batch);
-        console.log(`Fetched batch ${Math.floor(from / batchSize) + 1}: ${batch.length} candles (total: ${allMarketData.length})`);
+        log(`Fetched batch`, { batchNo: Math.floor(from / batchSize) + 1, batchLength: batch.length, total: allMarketData.length });
         
         if (batch.length < batchSize) {
           hasMore = false;
@@ -716,7 +723,7 @@ serve(async (req) => {
 
     // If nothing found, try again constrained by exchange_type for explicit datasets
     if ((!marketData || marketData.length === 0) && exchangeType) {
-      console.warn(`[BACKTEST] No candles without exchange filter. Retrying with exchange_type='${exchangeType}'`);
+      log(`[BACKTEST] No candles without exchange filter. Retrying with exchange_type`, { exchangeType });
       allMarketData = [];
       from = 0;
       hasMore = true;
@@ -732,7 +739,7 @@ serve(async (req) => {
           .order('open_time', { ascending: true })
           .range(from, from + batchSize - 1);
 
-        if (batchError) break;
+        if (batchError) { log('Exchange filter batch error', { error: batchError.message }); break; }
         if (!batch || batch.length === 0) { hasMore = false; } else {
           allMarketData = allMarketData.concat(batch);
           if (batch.length < batchSize) { hasMore = false; } else { from += batchSize; }
@@ -743,7 +750,7 @@ serve(async (req) => {
 
     // If still no data and exchange is Bybit, try Binance fallback first
     if ((!marketData || marketData.length === 0) && exchangeType === 'bybit') {
-      console.warn(`[BACKTEST] No Bybit data found. Attempting Binance fallback...`);
+      log(`[BACKTEST] No Bybit data found. Attempting Binance fallback...`);
       allMarketData = [];
       from = 0;
       hasMore = true;
@@ -759,7 +766,7 @@ serve(async (req) => {
           .order('open_time', { ascending: true })
           .range(from, from + batchSize - 1);
 
-        if (batchError) break;
+        if (batchError) { log('Binance fallback batch error', { error: batchError.message }); break; }
         if (!batch || batch.length === 0) { hasMore = false; } else {
           allMarketData = allMarketData.concat(batch);
           if (batch.length < batchSize) { hasMore = false; } else { from += batchSize; }
@@ -767,13 +774,13 @@ serve(async (req) => {
       }
       if (allMarketData.length > 0) {
         marketData = allMarketData;
-        console.log(`✅ Using ${allMarketData.length} Binance candles as fallback for Bybit backtest`);
+        log(`Using Binance fallback`, { candles: allMarketData.length });
       }
     }
 
     // Fallback to Binance data if selected exchange has no data
     if ((!marketData || marketData.length === 0) && exchangeType !== 'binance') {
-      console.warn(`⚠️ No market data found for exchange type '${exchangeType}'. Attempting fallback to Binance data...`);
+      log(`No market data found for selected exchange, attempting on-the-fly Binance fetch`, { exchangeType });
       
       // Try to fetch Binance data as fallback
       let binanceFallbackData: any[] = [];
@@ -830,9 +837,9 @@ serve(async (req) => {
         const endChunk = Math.min(pointer + batchSize*intervalMs, endMs);
         const url = `https://api.binance.com/api/v3/klines?symbol=${strategy.symbol}&interval=${interval}&limit=${batchSize}&startTime=${pointer}&endTime=${endChunk}`;
         const resp = await fetch(url);
-        if (!resp.ok) break;
+        if (!resp.ok) { log('Binance API error', { status: resp.status }); break; }
         const kl = await resp.json();
-        if (!kl || kl.length===0) break;
+        if (!kl || kl.length===0) { log('Binance API returned empty'); break; }
         fetched.push(...kl.map((k:any)=>({
           open: parseFloat(k[1]), high: parseFloat(k[2]), low: parseFloat(k[3]), close: parseFloat(k[4]), volume: parseFloat(k[5]),
           open_time: k[0], close_time: k[6]
@@ -845,21 +852,24 @@ serve(async (req) => {
         throw new Error(`No market data available for ${strategy.symbol} ${strategy.timeframe} on ${exchangeInfo} and Binance.`);
       }
       marketData = fetched as any[];
+      log('On-the-fly Binance fetch complete', { candles: marketData.length });
     }
 
-    console.log(`Total candles fetched: ${marketData.length}`);
-    
-    // Log data availability for debugging
-    console.log(`[BACKTEST] Data available: ${marketData.length} candles from ${new Date(marketData[0].open_time).toISOString()} to ${new Date(marketData[marketData.length - 1].open_time).toISOString()}`);
+    log(`Final market data selected`, {
+      candles: marketData.length,
+      first: new Date(marketData[0].open_time).toISOString(),
+      last: new Date(marketData[marketData.length - 1].open_time).toISOString(),
+      sample: marketData[0]
+    });
     
     const requiredCandles = strategy.timeframe === '15m' ? 400 : strategy.timeframe === '5m' ? 1200 : 5000;
-    console.log(`[BACKTEST] Required for ${strategy.timeframe}: minimum ${requiredCandles} candles for accurate results`);
+    log(`Required minimum for timeframe`, { timeframe: strategy.timeframe, requiredCandles });
     
     if (marketData.length < requiredCandles) {
-      console.warn(`[BACKTEST] ⚠️ Only ${marketData.length} candles available (need ${requiredCandles}). Results may be inaccurate.`);
+      log(`Only partial candles available`, { have: marketData.length, required: requiredCandles });
     }
 
-    console.log(`Found ${marketData.length} candles for backtesting`);
+    log(`Preparing candles`, { count: marketData.length });
 
     // Convert to candles
     const candles: Candle[] = marketData.map(d => ({
