@@ -58,47 +58,75 @@ interface BacktestResults {
   config: BacktestConfig;
 }
 
-// Trailing Stop Manager
+// Trailing Stop Manager - FIXED IMPLEMENTATION
 class TrailingStopManager {
-  private maxProfit: number = 0;
+  private maxProfitPercent: number = 0;
   private trailingPercent: number;
   private isActive: boolean = false;
+  private entryPrice: number = 0;
+  private positionType: 'buy' | 'sell' = 'buy';
   
   constructor(trailingPercent: number) {
     this.trailingPercent = trailingPercent;
     console.log(`[TRAILING] Initialized with ${trailingPercent}% trailing stop`);
   }
   
-  updateProfit(currentProfit: number, tpPercent: number): 'HOLD' | 'CLOSE' {
-    // Activate trailing stop when we reach 50% of TP
-    if (!this.isActive && currentProfit >= (tpPercent * 0.5)) {
-      this.isActive = true;
-      this.maxProfit = currentProfit;
-      console.log(`[TRAILING] Activated at ${currentProfit.toFixed(2)}% profit`);
-    }
-    
+  // Initialize with position details
+  initialize(entryPrice: number, positionType: 'buy' | 'sell'): void {
+    this.entryPrice = entryPrice;
+    this.positionType = positionType;
+    this.maxProfitPercent = 0;
+    this.isActive = false;
+    console.log(`[TRAILING] Initialized for ${positionType} at ${entryPrice.toFixed(2)}`);
+  }
+  
+  // Check if trailing stop should trigger
+  checkTrailingStop(currentPrice: number): { shouldClose: boolean; reason: string } {
     if (!this.isActive) {
-      return 'HOLD';
+      // Activate trailing stop when we have any profit
+      const currentProfitPercent = this.calculateProfitPercent(currentPrice);
+      if (currentProfitPercent > 0) {
+        this.isActive = true;
+        this.maxProfitPercent = currentProfitPercent;
+        console.log(`[TRAILING] Activated at ${currentProfitPercent.toFixed(2)}% profit`);
+        return { shouldClose: false, reason: 'TRAILING_ACTIVATED' };
+      }
+      return { shouldClose: false, reason: 'NO_PROFIT_YET' };
     }
     
-    // Update max profit
-    if (currentProfit > this.maxProfit) {
-      this.maxProfit = currentProfit;
+    // Update max profit if current is higher
+    const currentProfitPercent = this.calculateProfitPercent(currentPrice);
+    if (currentProfitPercent > this.maxProfitPercent) {
+      this.maxProfitPercent = currentProfitPercent;
+      console.log(`[TRAILING] New max profit: ${currentProfitPercent.toFixed(2)}%`);
     }
     
-    // Check if we should close due to trailing stop
-    const trailingThreshold = this.maxProfit * (1 - this.trailingPercent / 100);
-    if (currentProfit < trailingThreshold) {
-      console.log(`[TRAILING] Triggered: ${currentProfit.toFixed(2)}% < ${trailingThreshold.toFixed(2)}% (max: ${this.maxProfit.toFixed(2)}%)`);
-      return 'CLOSE';
+    // Calculate trailing stop threshold
+    const trailingThreshold = this.maxProfitPercent - this.trailingPercent;
+    
+    if (currentProfitPercent < trailingThreshold) {
+      console.log(`[TRAILING] Triggered: ${currentProfitPercent.toFixed(2)}% < ${trailingThreshold.toFixed(2)}% (max: ${this.maxProfitPercent.toFixed(2)}%)`);
+      return { shouldClose: true, reason: 'TRAILING_STOP_TRIGGERED' };
     }
     
-    return 'HOLD';
+    return { shouldClose: false, reason: 'TRAILING_ACTIVE' };
+  }
+  
+  // Calculate profit percentage from entry price
+  private calculateProfitPercent(currentPrice: number): number {
+    if (this.positionType === 'buy') {
+      // LONG: profit when price goes up
+      return ((currentPrice - this.entryPrice) / this.entryPrice) * 100;
+    } else {
+      // SHORT: profit when price goes down
+      return ((this.entryPrice - currentPrice) / this.entryPrice) * 100;
+    }
   }
   
   reset(): void {
-    this.maxProfit = 0;
+    this.maxProfitPercent = 0;
     this.isActive = false;
+    this.entryPrice = 0;
   }
 }
 
@@ -315,12 +343,12 @@ export class EnhancedBacktestEngine {
     let exitReason = '';
     
     // 1. Check trailing stop first (if configured)
-    if (this.trailingStopManager && this.config.takeProfitPercent) {
-      const currentProfit = this.calculateCurrentProfit(currentCandle);
-      const trailingDecision = this.trailingStopManager.updateProfit(currentProfit, this.config.takeProfitPercent);
+    if (this.trailingStopManager) {
+      const currentPrice = this.getExecutionPrice(currentCandle);
+      const trailingResult = this.trailingStopManager.checkTrailingStop(currentPrice);
       
-      if (trailingDecision === 'CLOSE') {
-        exitPrice = this.getExecutionPrice(currentCandle);
+      if (trailingResult.shouldClose) {
+        exitPrice = currentPrice;
         exitReason = 'TRAILING_STOP';
       }
     }
@@ -477,6 +505,11 @@ export class EnhancedBacktestEngine {
       quantity,
       max_profit_reached: 0
     };
+    
+    // Initialize trailing stop if configured
+    if (this.trailingStopManager) {
+      this.trailingStopManager.initialize(priceWithSlippage, 'buy');
+    }
     
     // Deduct margin and fee
     if (this.config.productType === 'futures') {

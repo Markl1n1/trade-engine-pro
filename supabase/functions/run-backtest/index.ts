@@ -85,7 +85,7 @@ function isInNYSession(timestamp: number, sessionStart: string, sessionEnd: stri
   return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
 }
 
-async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBalance: number, productType: string, leverage: number, makerFee: number, takerFee: number, slippage: number, executionTiming: string, supabaseClient: any, strategyId: string, startDate: string, endDate: string, corsHeaders: any) {
+async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBalance: number, productType: string, leverage: number, makerFee: number, takerFee: number, slippage: number, executionTiming: string, supabaseClient: any, strategyId: string, startDate: string, endDate: string, corsHeaders: any, trailingStopPercent?: number) {
   console.log(`[ATH-GUARD] Starting optimized backtest for ${candles.length} candles`);
   
   let balance = initialBalance;
@@ -122,6 +122,68 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
   
   console.log(`[ATH-GUARD] Indicators calculated, starting simulation...`);
 
+  // Initialize Trailing Stop Manager if configured
+  let trailingStopManager: any = null;
+  if (trailingStopPercent && trailingStopPercent > 0) {
+    trailingStopManager = {
+      maxProfitPercent: 0,
+      trailingPercent: trailingStopPercent,
+      isActive: false,
+      entryPrice: 0,
+      positionType: 'buy' as 'buy' | 'sell',
+      
+      initialize(entryPrice: number, positionType: 'buy' | 'sell'): void {
+        this.entryPrice = entryPrice;
+        this.positionType = positionType;
+        this.maxProfitPercent = 0;
+        this.isActive = false;
+        console.log(`[ATH-GUARD TRAILING] Initialized for ${positionType} at ${entryPrice.toFixed(2)}`);
+      },
+      
+      checkTrailingStop(currentPrice: number): { shouldClose: boolean; reason: string } {
+        if (!this.isActive) {
+          const currentProfitPercent = this.calculateProfitPercent(currentPrice);
+          if (currentProfitPercent > 0) {
+            this.isActive = true;
+            this.maxProfitPercent = currentProfitPercent;
+            console.log(`[ATH-GUARD TRAILING] Activated at ${currentProfitPercent.toFixed(2)}% profit`);
+            return { shouldClose: false, reason: 'TRAILING_ACTIVATED' };
+          }
+          return { shouldClose: false, reason: 'NO_PROFIT_YET' };
+        }
+        
+        const currentProfitPercent = this.calculateProfitPercent(currentPrice);
+        if (currentProfitPercent > this.maxProfitPercent) {
+          this.maxProfitPercent = currentProfitPercent;
+          console.log(`[ATH-GUARD TRAILING] New max profit: ${currentProfitPercent.toFixed(2)}%`);
+        }
+        
+        const trailingThreshold = this.maxProfitPercent - this.trailingPercent;
+        
+        if (currentProfitPercent < trailingThreshold) {
+          console.log(`[ATH-GUARD TRAILING] Triggered: ${currentProfitPercent.toFixed(2)}% < ${trailingThreshold.toFixed(2)}% (max: ${this.maxProfitPercent.toFixed(2)}%)`);
+          return { shouldClose: true, reason: 'TRAILING_STOP_TRIGGERED' };
+        }
+        
+        return { shouldClose: false, reason: 'TRAILING_ACTIVE' };
+      },
+      
+      calculateProfitPercent(currentPrice: number): number {
+        if (this.positionType === 'buy') {
+          return ((currentPrice - this.entryPrice) / this.entryPrice) * 100;
+        } else {
+          return ((this.entryPrice - currentPrice) / this.entryPrice) * 100;
+        }
+      },
+      
+      reset(): void {
+        this.maxProfitPercent = 0;
+        this.isActive = false;
+        this.entryPrice = 0;
+      }
+    };
+  }
+
   // Main backtest loop - now just evaluates conditions
   for (let i = 150; i < candles.length; i++) {
     const signal = evaluateATHGuardStrategyOptimized(
@@ -141,6 +203,29 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
     
     const currentCandle = candles[i];
     const executionPrice = executionTiming === 'open' ? currentCandle.open : currentCandle.close;
+    
+    // Check trailing stop first (if position is open)
+    if (position && trailingStopManager) {
+      const trailingResult = trailingStopManager.checkTrailingStop(executionPrice);
+      if (trailingResult.shouldClose) {
+        const exitPrice = executionPrice * (1 - slippage);
+        const profit = (exitPrice - position.entry_price) * position.quantity;
+        const entryFee = (position.entry_price * position.quantity * makerFee) / 100;
+        const exitFee = (exitPrice * position.quantity * takerFee) / 100;
+        const netProfit = profit - entryFee - exitFee;
+        
+        position.exit_price = exitPrice;
+        position.exit_time = currentCandle.open_time;
+        position.profit = netProfit;
+        balance += (position.entry_price * position.quantity) + netProfit;
+        trades.push(position);
+        position = null;
+        trailingStopManager.reset();
+        
+        console.log(`[${i}] ATH TRAILING STOP at ${exitPrice.toFixed(2)} - P&L: ${netProfit.toFixed(2)}, Balance: ${balance.toFixed(2)}`);
+        continue;
+      }
+    }
 
     if (signal.signal_type === 'BUY' && !position) {
       // Calculate position size with proper leverage and constraints
@@ -159,6 +244,12 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
             quantity 
           };
           balance -= marginRequired; // Lock margin
+          
+          // Initialize trailing stop for LONG position
+          if (trailingStopManager) {
+            trailingStopManager.initialize(entryPrice, 'buy');
+          }
+          
           console.log(`[${i}] ATH BUY at ${entryPrice.toFixed(2)} - Qty: ${quantity.toFixed(6)}, Margin: ${marginRequired.toFixed(2)}`);
         }
       }
@@ -179,6 +270,12 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
             quantity 
           };
           balance -= marginRequired; // Lock margin
+          
+          // Initialize trailing stop for SHORT position
+          if (trailingStopManager) {
+            trailingStopManager.initialize(entryPrice, 'sell');
+          }
+          
           console.log(`[${i}] ATH SHORT at ${entryPrice.toFixed(2)} - Qty: ${quantity.toFixed(6)}, Margin: ${marginRequired.toFixed(2)}`);
         }
       }
@@ -196,6 +293,12 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
       balance += (position.entry_price * position.quantity) + netProfit; // Return margin + P&L
       trades.push(position);
       position = null;
+      
+      // Reset trailing stop
+      if (trailingStopManager) {
+        trailingStopManager.reset();
+      }
+      
       console.log(`[${i}] ATH CLOSE SHORT at ${exitPrice.toFixed(2)} - P&L: ${netProfit.toFixed(2)}, Balance: ${balance.toFixed(2)}`);
     }
     if (balance > maxBalance) maxBalance = balance;
@@ -980,7 +1083,8 @@ serve(async (req) => {
         strategyId,
         startDate,
         endDate,
-        corsHeaders
+        corsHeaders,
+        trailingStopPercent
       );
     }
 
@@ -1004,7 +1108,8 @@ serve(async (req) => {
         strategyId,
         startDate,
         endDate,
-        corsHeaders
+        corsHeaders,
+        trailingStopPercent
       );
     }
 
@@ -1027,7 +1132,8 @@ serve(async (req) => {
         strategyId,
         startDate,
         endDate,
-        corsHeaders
+        corsHeaders,
+        trailingStopPercent
       );
     }
 
@@ -1050,7 +1156,8 @@ serve(async (req) => {
         strategyId,
         startDate,
         endDate,
-        corsHeaders
+        corsHeaders,
+        trailingStopPercent
       );
     }
 
@@ -1073,7 +1180,8 @@ serve(async (req) => {
         strategyId,
         startDate,
         endDate,
-        corsHeaders
+        corsHeaders,
+        trailingStopPercent
       );
     }
 
@@ -1551,7 +1659,8 @@ async function runSMACrossoverBacktest(
   strategyId: string,
   startDate: string,
   endDate: string,
-  corsHeaders: any
+  corsHeaders: any,
+  trailingStopPercent?: number
 ) {
   const startTime = Date.now();
   console.log('[SMA-BACKTEST] Starting optimization...');
@@ -1590,6 +1699,68 @@ async function runSMACrossoverBacktest(
   console.log(`[SMA-BACKTEST] Processing ${candles.length} candles`);
   console.log(`[SMA-BACKTEST] Strategy config:`, config);
 
+  // Initialize Trailing Stop Manager if configured
+  let trailingStopManager: any = null;
+  if (trailingStopPercent && trailingStopPercent > 0) {
+    trailingStopManager = {
+      maxProfitPercent: 0,
+      trailingPercent: trailingStopPercent,
+      isActive: false,
+      entryPrice: 0,
+      positionType: 'buy' as 'buy' | 'sell',
+      
+      initialize(entryPrice: number, positionType: 'buy' | 'sell'): void {
+        this.entryPrice = entryPrice;
+        this.positionType = positionType;
+        this.maxProfitPercent = 0;
+        this.isActive = false;
+        console.log(`[SMA TRAILING] Initialized for ${positionType} at ${entryPrice.toFixed(2)}`);
+      },
+      
+      checkTrailingStop(currentPrice: number): { shouldClose: boolean; reason: string } {
+        if (!this.isActive) {
+          const currentProfitPercent = this.calculateProfitPercent(currentPrice);
+          if (currentProfitPercent > 0) {
+            this.isActive = true;
+            this.maxProfitPercent = currentProfitPercent;
+            console.log(`[SMA TRAILING] Activated at ${currentProfitPercent.toFixed(2)}% profit`);
+            return { shouldClose: false, reason: 'TRAILING_ACTIVATED' };
+          }
+          return { shouldClose: false, reason: 'NO_PROFIT_YET' };
+        }
+        
+        const currentProfitPercent = this.calculateProfitPercent(currentPrice);
+        if (currentProfitPercent > this.maxProfitPercent) {
+          this.maxProfitPercent = currentProfitPercent;
+          console.log(`[SMA TRAILING] New max profit: ${currentProfitPercent.toFixed(2)}%`);
+        }
+        
+        const trailingThreshold = this.maxProfitPercent - this.trailingPercent;
+        
+        if (currentProfitPercent < trailingThreshold) {
+          console.log(`[SMA TRAILING] Triggered: ${currentProfitPercent.toFixed(2)}% < ${trailingThreshold.toFixed(2)}% (max: ${this.maxProfitPercent.toFixed(2)}%)`);
+          return { shouldClose: true, reason: 'TRAILING_STOP_TRIGGERED' };
+        }
+        
+        return { shouldClose: false, reason: 'TRAILING_ACTIVE' };
+      },
+      
+      calculateProfitPercent(currentPrice: number): number {
+        if (this.positionType === 'buy') {
+          return ((currentPrice - this.entryPrice) / this.entryPrice) * 100;
+        } else {
+          return ((this.entryPrice - currentPrice) / this.entryPrice) * 100;
+        }
+      },
+      
+      reset(): void {
+        this.maxProfitPercent = 0;
+        this.isActive = false;
+        this.entryPrice = 0;
+      }
+    };
+  }
+
   // ✅ PRE-CALCULATE ALL INDICATORS ONCE (O(n) instead of O(n²))
   console.log('[SMA-BACKTEST] Pre-calculating indicators...');
   const closes = candles.map(c => c.close);
@@ -1604,6 +1775,32 @@ async function runSMACrossoverBacktest(
     const currentCandle = candles[i];
     const currentPrice = executionTiming === 'open' ? currentCandle.open : currentCandle.close;
     const currentTime = currentCandle.open_time;
+    
+    // Check trailing stop first (if position is open)
+    if (position && trailingStopManager) {
+      const trailingResult = trailingStopManager.checkTrailingStop(currentPrice);
+      if (trailingResult.shouldClose) {
+        const exitPrice = currentPrice * (1 - slippage);
+        const profit = (exitPrice - position.entry_price) * position.quantity;
+        const fees = (position.entry_price * position.quantity * makerFee) + (exitPrice * position.quantity * takerFee);
+        const netProfit = profit - fees;
+        
+        balance += netProfit;
+        availableBalance += lockedMargin + netProfit;
+        lockedMargin = 0;
+        
+        position.exit_price = exitPrice;
+        position.exit_time = currentTime;
+        position.profit = netProfit;
+        
+        trades.push(position);
+        position = null;
+        trailingStopManager.reset();
+        
+        console.log(`[${i}] SMA TRAILING STOP at ${exitPrice.toFixed(2)} - P&L: ${netProfit.toFixed(2)}, Balance: ${balance.toFixed(2)}`);
+        continue;
+      }
+    }
     
     // Progress logging every 1000 candles
     if (i % 1000 === 0) {
@@ -1648,6 +1845,11 @@ async function runSMACrossoverBacktest(
           availableBalance -= marginRequired;
           lockedMargin += marginRequired;
           
+          // Initialize trailing stop for LONG position
+          if (trailingStopManager) {
+            trailingStopManager.initialize(entryPrice, 'buy');
+          }
+          
           console.log(`[${i}] 🟢 BUY at ${entryPrice.toFixed(2)} - SMA(${currentSMAFast.toFixed(2)}/${currentSMASlow.toFixed(2)}), RSI=${currentRSI.toFixed(1)}`);
         }
       }
@@ -1673,6 +1875,11 @@ async function runSMACrossoverBacktest(
           availableBalance -= marginRequired;
           lockedMargin += marginRequired;
           
+          // Initialize trailing stop for SHORT position
+          if (trailingStopManager) {
+            trailingStopManager.initialize(entryPrice, 'sell');
+          }
+          
           console.log(`[${i}] 🔴 SHORT at ${entryPrice.toFixed(2)} - SMA(${currentSMAFast.toFixed(2)}/${currentSMASlow.toFixed(2)}), RSI=${currentRSI.toFixed(1)}`);
         }
       }
@@ -1696,6 +1903,11 @@ async function runSMACrossoverBacktest(
       trades.push(position);
       position = null;
       
+      // Reset trailing stop
+      if (trailingStopManager) {
+        trailingStopManager.reset();
+      }
+      
       console.log(`[${i}] 🔴 CLOSE LONG at ${exitPrice.toFixed(2)} - P&L: ${netProfit.toFixed(2)}, Balance: ${balance.toFixed(2)}`);
     }
     
@@ -1716,6 +1928,11 @@ async function runSMACrossoverBacktest(
       
       trades.push(position);
       position = null;
+      
+      // Reset trailing stop
+      if (trailingStopManager) {
+        trailingStopManager.reset();
+      }
       
       console.log(`[${i}] 🟢 CLOSE SHORT at ${exitPrice.toFixed(2)} - P&L: ${netProfit.toFixed(2)}, Balance: ${balance.toFixed(2)}`);
     }
@@ -1828,7 +2045,8 @@ async function runMTFMomentumBacktest(
   strategyId: string,
   startDate: string,
   endDate: string,
-  corsHeaders: any
+  corsHeaders: any,
+  trailingStopPercent?: number
 ) {
   console.log('Initializing MTF Momentum backtest...');
   
@@ -1865,6 +2083,68 @@ async function runMTFMomentumBacktest(
   console.log(`[MTF-BACKTEST] Starting optimization: ${candles.length} 1m candles`);
   console.log(`Strategy config:`, config);
 
+  // Initialize Trailing Stop Manager if configured
+  let trailingStopManager: any = null;
+  if (trailingStopPercent && trailingStopPercent > 0) {
+    trailingStopManager = {
+      maxProfitPercent: 0,
+      trailingPercent: trailingStopPercent,
+      isActive: false,
+      entryPrice: 0,
+      positionType: 'buy' as 'buy' | 'sell',
+      
+      initialize(entryPrice: number, positionType: 'buy' | 'sell'): void {
+        this.entryPrice = entryPrice;
+        this.positionType = positionType;
+        this.maxProfitPercent = 0;
+        this.isActive = false;
+        console.log(`[MTF TRAILING] Initialized for ${positionType} at ${entryPrice.toFixed(2)}`);
+      },
+      
+      checkTrailingStop(currentPrice: number): { shouldClose: boolean; reason: string } {
+        if (!this.isActive) {
+          const currentProfitPercent = this.calculateProfitPercent(currentPrice);
+          if (currentProfitPercent > 0) {
+            this.isActive = true;
+            this.maxProfitPercent = currentProfitPercent;
+            console.log(`[MTF TRAILING] Activated at ${currentProfitPercent.toFixed(2)}% profit`);
+            return { shouldClose: false, reason: 'TRAILING_ACTIVATED' };
+          }
+          return { shouldClose: false, reason: 'NO_PROFIT_YET' };
+        }
+        
+        const currentProfitPercent = this.calculateProfitPercent(currentPrice);
+        if (currentProfitPercent > this.maxProfitPercent) {
+          this.maxProfitPercent = currentProfitPercent;
+          console.log(`[MTF TRAILING] New max profit: ${currentProfitPercent.toFixed(2)}%`);
+        }
+        
+        const trailingThreshold = this.maxProfitPercent - this.trailingPercent;
+        
+        if (currentProfitPercent < trailingThreshold) {
+          console.log(`[MTF TRAILING] Triggered: ${currentProfitPercent.toFixed(2)}% < ${trailingThreshold.toFixed(2)}% (max: ${this.maxProfitPercent.toFixed(2)}%)`);
+          return { shouldClose: true, reason: 'TRAILING_STOP_TRIGGERED' };
+        }
+        
+        return { shouldClose: false, reason: 'TRAILING_ACTIVE' };
+      },
+      
+      calculateProfitPercent(currentPrice: number): number {
+        if (this.positionType === 'buy') {
+          return ((currentPrice - this.entryPrice) / this.entryPrice) * 100;
+        } else {
+          return ((this.entryPrice - currentPrice) / this.entryPrice) * 100;
+        }
+      },
+      
+      reset(): void {
+        this.maxProfitPercent = 0;
+        this.isActive = false;
+        this.entryPrice = 0;
+      }
+    };
+  }
+
   // Get multi-timeframe data (1m, 5m, 15m)
   const candles1m = candles;
   const candles5m = resampleCandles(candles, '5m');
@@ -1893,6 +2173,33 @@ async function runMTFMomentumBacktest(
     const currentCandle = candles[i];
     const currentPrice = executionTiming === 'open' ? currentCandle.open : currentCandle.close;
     const currentTime = currentCandle.open_time;
+    
+    // Check trailing stop first (if position is open)
+    if (position && trailingStopManager) {
+      const trailingResult = trailingStopManager.checkTrailingStop(currentPrice);
+      if (trailingResult.shouldClose) {
+        const exitPrice = currentPrice * (1 - slippage);
+        const profit = (exitPrice - position.entry_price) * position.quantity;
+        const entryFee = (position.entry_price * position.quantity * makerFee) / 100;
+        const exitFee = (exitPrice * position.quantity * takerFee) / 100;
+        const netProfit = profit - entryFee - exitFee;
+        
+        balance += netProfit;
+        availableBalance += lockedMargin + netProfit;
+        lockedMargin = 0;
+        
+        position.exit_price = exitPrice;
+        position.exit_time = currentTime;
+        position.profit = netProfit;
+        
+        trades.push(position);
+        position = null;
+        trailingStopManager.reset();
+        
+        console.log(`[${i}] MTF TRAILING STOP at ${exitPrice.toFixed(2)} - P&L: ${netProfit.toFixed(2)}, Balance: ${balance.toFixed(2)}`);
+        continue;
+      }
+    }
     
     // Direct evaluation using pre-calculated indicators (index-based access)
     const idx1m = i;
@@ -1956,6 +2263,11 @@ async function runMTFMomentumBacktest(
           availableBalance -= marginRequired;
           lockedMargin += marginRequired;
           
+          // Initialize trailing stop for LONG position
+          if (trailingStopManager) {
+            trailingStopManager.initialize(entryPrice, 'buy');
+          }
+          
           console.log(`[${i}] MTF BUY at ${entryPrice.toFixed(2)} - Qty: ${quantity.toFixed(6)}, Margin: ${marginRequired.toFixed(2)}`);
         }
       }
@@ -1981,6 +2293,11 @@ async function runMTFMomentumBacktest(
           
           availableBalance -= marginRequired;
           lockedMargin += marginRequired;
+          
+          // Initialize trailing stop for SHORT position
+          if (trailingStopManager) {
+            trailingStopManager.initialize(entryPrice, 'sell');
+          }
           
           console.log(`[${i}] MTF SHORT at ${entryPrice.toFixed(2)} - Qty: ${quantity.toFixed(6)}, Margin: ${marginRequired.toFixed(2)}`);
         }
@@ -2012,6 +2329,11 @@ async function runMTFMomentumBacktest(
         trades.push(position);
         position = null;
         
+        // Reset trailing stop
+        if (trailingStopManager) {
+          trailingStopManager.reset();
+        }
+        
         console.log(`[${i}] CLOSE LONG at ${exitPrice.toFixed(2)} - Reason: ${exitOnMomentumLoss ? 'RSI<40' : 'SELL signal'} - P&L: ${netProfit.toFixed(2)}, Balance: ${balance.toFixed(2)}`);
       }
     }
@@ -2040,6 +2362,11 @@ async function runMTFMomentumBacktest(
         
         trades.push(position);
         position = null;
+        
+        // Reset trailing stop
+        if (trailingStopManager) {
+          trailingStopManager.reset();
+        }
         
         console.log(`[${i}] COVER SHORT at ${exitPrice.toFixed(2)} - Reason: ${exitOnMomentumReversal ? 'RSI>60' : 'BUY signal'} - P&L: ${netProfit.toFixed(2)}, Balance: ${balance.toFixed(2)}`);
       }
@@ -2190,7 +2517,8 @@ async function runMSTGBacktest(
   strategyId: string,
   startDate: string,
   endDate: string,
-  corsHeaders: any
+  corsHeaders: any,
+  trailingStopPercent?: number
 ) {
   const benchmarkSymbol = strategy.mstg_benchmark_symbol || 'BTCUSDT';
   console.log(`[MSTG] Starting MSTG backtest for ${strategy.symbol} vs ${benchmarkSymbol}`);
@@ -2354,10 +2682,100 @@ async function runMSTGBacktest(
   const startIndex = Math.max(firstValidIndex + 1, 1);
   console.log(`[MSTG Debug] Starting backtest from index ${startIndex}`);
   
+  // Initialize Trailing Stop Manager if configured
+  let trailingStopManager: any = null;
+  if (trailingStopPercent && trailingStopPercent > 0) {
+    trailingStopManager = {
+      maxProfitPercent: 0,
+      trailingPercent: trailingStopPercent,
+      isActive: false,
+      entryPrice: 0,
+      positionType: 'buy' as 'buy' | 'sell',
+      
+      initialize(entryPrice: number, positionType: 'buy' | 'sell'): void {
+        this.entryPrice = entryPrice;
+        this.positionType = positionType;
+        this.maxProfitPercent = 0;
+        this.isActive = false;
+        console.log(`[MSTG TRAILING] Initialized for ${positionType} at ${entryPrice.toFixed(2)}`);
+      },
+      
+      checkTrailingStop(currentPrice: number): { shouldClose: boolean; reason: string } {
+        if (!this.isActive) {
+          const currentProfitPercent = this.calculateProfitPercent(currentPrice);
+          if (currentProfitPercent > 0) {
+            this.isActive = true;
+            this.maxProfitPercent = currentProfitPercent;
+            console.log(`[MSTG TRAILING] Activated at ${currentProfitPercent.toFixed(2)}% profit`);
+            return { shouldClose: false, reason: 'TRAILING_ACTIVATED' };
+          }
+          return { shouldClose: false, reason: 'NO_PROFIT_YET' };
+        }
+        
+        const currentProfitPercent = this.calculateProfitPercent(currentPrice);
+        if (currentProfitPercent > this.maxProfitPercent) {
+          this.maxProfitPercent = currentProfitPercent;
+          console.log(`[MSTG TRAILING] New max profit: ${currentProfitPercent.toFixed(2)}%`);
+        }
+        
+        const trailingThreshold = this.maxProfitPercent - this.trailingPercent;
+        
+        if (currentProfitPercent < trailingThreshold) {
+          console.log(`[MSTG TRAILING] Triggered: ${currentProfitPercent.toFixed(2)}% < ${trailingThreshold.toFixed(2)}% (max: ${this.maxProfitPercent.toFixed(2)}%)`);
+          return { shouldClose: true, reason: 'TRAILING_STOP_TRIGGERED' };
+        }
+        
+        return { shouldClose: false, reason: 'TRAILING_ACTIVE' };
+      },
+      
+      calculateProfitPercent(currentPrice: number): number {
+        if (this.positionType === 'buy') {
+          return ((currentPrice - this.entryPrice) / this.entryPrice) * 100;
+        } else {
+          return ((this.entryPrice - currentPrice) / this.entryPrice) * 100;
+        }
+      },
+      
+      reset(): void {
+        this.maxProfitPercent = 0;
+        this.isActive = false;
+        this.entryPrice = 0;
+      }
+    };
+  }
+  
   for (let i = startIndex; i < candles.length; i++) {
     const currentCandle = candles[i];
     const ts = tsScore[i - 1]; // Use previous candle to avoid look-ahead bias
     const prevTs = i > 1 ? tsScore[i - 2] : NaN;
+    
+    // Check trailing stop first (if position is open)
+    if (position && trailingStopManager) {
+      const currentPrice = executionTiming === 'open' ? currentCandle.open : currentCandle.close;
+      const trailingResult = trailingStopManager.checkTrailingStop(currentPrice);
+      if (trailingResult.shouldClose) {
+        const exitPrice = currentPrice * (1 - slippage);
+        const profit = (exitPrice - position.entry_price) * position.quantity;
+        const entryFee = (position.entry_price * position.quantity * makerFee) / 100;
+        const exitFee = (exitPrice * position.quantity * takerFee) / 100;
+        const netProfit = profit - entryFee - exitFee;
+        
+        balance += netProfit;
+        availableBalance += lockedMargin + netProfit;
+        lockedMargin = 0;
+        
+        position.exit_price = exitPrice;
+        position.exit_time = currentCandle.open_time;
+        position.profit = netProfit;
+        
+        trades.push(position);
+        position = null;
+        trailingStopManager.reset();
+        
+        console.log(`[${i}] MSTG TRAILING STOP at ${exitPrice.toFixed(2)} - P&L: ${netProfit.toFixed(2)}, Balance: ${balance.toFixed(2)}`);
+        continue;
+      }
+    }
     
     if (isNaN(ts)) {
       skippedNaN++;
@@ -2593,7 +3011,8 @@ async function run4hReentryBacktest(
   strategyId: string,
   startDate: string,
   endDate: string,
-  corsHeaders: any
+  corsHeaders: any,
+  trailingStopPercent?: number
 ) {
   console.log('Initializing 4h Reentry backtest...');
   
@@ -2622,12 +3041,102 @@ async function run4hReentryBacktest(
 
   console.log(`Processing ${candles.length} candles for 4h reentry logic...`);
 
+  // Initialize Trailing Stop Manager if configured
+  let trailingStopManager: any = null;
+  if (trailingStopPercent && trailingStopPercent > 0) {
+    trailingStopManager = {
+      maxProfitPercent: 0,
+      trailingPercent: trailingStopPercent,
+      isActive: false,
+      entryPrice: 0,
+      positionType: 'buy' as 'buy' | 'sell',
+      
+      initialize(entryPrice: number, positionType: 'buy' | 'sell'): void {
+        this.entryPrice = entryPrice;
+        this.positionType = positionType;
+        this.maxProfitPercent = 0;
+        this.isActive = false;
+        console.log(`[4H TRAILING] Initialized for ${positionType} at ${entryPrice.toFixed(2)}`);
+      },
+      
+      checkTrailingStop(currentPrice: number): { shouldClose: boolean; reason: string } {
+        if (!this.isActive) {
+          const currentProfitPercent = this.calculateProfitPercent(currentPrice);
+          if (currentProfitPercent > 0) {
+            this.isActive = true;
+            this.maxProfitPercent = currentProfitPercent;
+            console.log(`[4H TRAILING] Activated at ${currentProfitPercent.toFixed(2)}% profit`);
+            return { shouldClose: false, reason: 'TRAILING_ACTIVATED' };
+          }
+          return { shouldClose: false, reason: 'NO_PROFIT_YET' };
+        }
+        
+        const currentProfitPercent = this.calculateProfitPercent(currentPrice);
+        if (currentProfitPercent > this.maxProfitPercent) {
+          this.maxProfitPercent = currentProfitPercent;
+          console.log(`[4H TRAILING] New max profit: ${currentProfitPercent.toFixed(2)}%`);
+        }
+        
+        const trailingThreshold = this.maxProfitPercent - this.trailingPercent;
+        
+        if (currentProfitPercent < trailingThreshold) {
+          console.log(`[4H TRAILING] Triggered: ${currentProfitPercent.toFixed(2)}% < ${trailingThreshold.toFixed(2)}% (max: ${this.maxProfitPercent.toFixed(2)}%)`);
+          return { shouldClose: true, reason: 'TRAILING_STOP_TRIGGERED' };
+        }
+        
+        return { shouldClose: false, reason: 'TRAILING_ACTIVE' };
+      },
+      
+      calculateProfitPercent(currentPrice: number): number {
+        if (this.positionType === 'buy') {
+          return ((currentPrice - this.entryPrice) / this.entryPrice) * 100;
+        } else {
+          return ((this.entryPrice - currentPrice) / this.entryPrice) * 100;
+        }
+      },
+      
+      reset(): void {
+        this.maxProfitPercent = 0;
+        this.isActive = false;
+        this.entryPrice = 0;
+      }
+    };
+  }
+
   for (let i = 1; i < candles.length; i++) {
     const currentCandle = candles[i];
     const previousCandle = candles[i - 1];
     
     const nyTime = convertToNYTime(currentCandle.open_time);
     const currentDate = nyTime.toISOString().split('T')[0];
+    
+    // Check trailing stop first (if position is open)
+    if (position && trailingStopManager) {
+      const currentPrice = executionTiming === 'open' ? currentCandle.open : currentCandle.close;
+      const trailingResult = trailingStopManager.checkTrailingStop(currentPrice);
+      if (trailingResult.shouldClose) {
+        const exitPrice = currentPrice * (1 - slippage);
+        const profit = (exitPrice - position.entry_price) * position.quantity;
+        const entryFee = (position.entry_price * position.quantity * makerFee) / 100;
+        const exitFee = (exitPrice * position.quantity * takerFee) / 100;
+        const netProfit = profit - entryFee - exitFee;
+        
+        balance += netProfit;
+        availableBalance += lockedMargin + netProfit;
+        lockedMargin = 0;
+        
+        position.exit_price = exitPrice;
+        position.exit_time = currentCandle.open_time;
+        position.profit = netProfit;
+        
+        trades.push(position);
+        position = null;
+        trailingStopManager.reset();
+        
+        console.log(`[${i}] 4H TRAILING STOP at ${exitPrice.toFixed(2)} - P&L: ${netProfit.toFixed(2)}, Balance: ${balance.toFixed(2)}`);
+        continue;
+      }
+    }
     const nyTimeStr = `${nyTime.getUTCHours().toString().padStart(2, '0')}:${nyTime.getUTCMinutes().toString().padStart(2, '0')}`;
 
     // Step 1: Build/update the 4h range for current day
@@ -2755,6 +3264,11 @@ async function run4hReentryBacktest(
             availableBalance -= (actualNotional + entryFee);
           }
           
+          // Initialize trailing stop for position
+          if (trailingStopManager) {
+            trailingStopManager.initialize(priceWithSlippage, shouldEnterLong ? 'buy' : 'sell');
+          }
+          
           console.log(`[${i}] ${nyTimeStr} ✅ Opened ${shouldEnterLong ? 'LONG' : 'SHORT'} at ${priceWithSlippage.toFixed(2)} (qty: ${quantity.toFixed(5)}, notional: ${actualNotional.toFixed(2)}, fee: ${entryFee.toFixed(2)}, SL: ${stopLossPrice.toFixed(2)}, TP: ${takeProfitPrice.toFixed(2)})`);
         }
       }
@@ -2829,6 +3343,11 @@ async function run4hReentryBacktest(
         trades.push(position);
         
         console.log(`[${i}] Closed ${exitReason} at ${exitPriceWithSlippage.toFixed(2)}, profit: ${netProfit.toFixed(2)}`);
+        
+        // Reset trailing stop
+        if (trailingStopManager) {
+          trailingStopManager.reset();
+        }
         
         position = null;
       }
