@@ -3367,14 +3367,8 @@ async function run4hReentryBacktest(
       let exitPrice: number | null = null;
       let exitReason = '';
       
-      // Priority 1: Check for opposite reentry signals (4h Reentry specific)
-      if (shouldExitOnSignal) {
-        exitPrice = executionTiming === 'open' ? currentCandle.open : currentCandle.close;
-        exitReason = exitSignalReason;
-        console.log(`[${i}] ${nyTimeStr} 🚨 EXIT SIGNAL: ${exitSignalReason} at ${exitPrice.toFixed(2)}`);
-      }
-      // Priority 2: Check SL/TP only if no signal exit
-      else if (position.type === 'buy') {
+      // Priority 1: Check SL/TP first (most important for risk management)
+      if (position.type === 'buy') {
         // LONG position
         const slHit = currentCandle.low <= stopLossPrice;
         const tpHit = currentCandle.high >= takeProfitPrice;
@@ -3404,6 +3398,13 @@ async function run4hReentryBacktest(
           exitPrice = takeProfitPrice;
           exitReason = 'TAKE_PROFIT';
         }
+      }
+      
+      // Priority 2: Check for opposite reentry signals (only if no SL/TP hit)
+      if (!exitPrice && shouldExitOnSignal) {
+        exitPrice = executionTiming === 'open' ? currentCandle.open : currentCandle.close;
+        exitReason = exitSignalReason;
+        console.log(`[${i}] ${nyTimeStr} 🚨 EXIT SIGNAL: ${exitSignalReason} at ${exitPrice.toFixed(2)}`);
       }
 
       if (exitPrice) {
