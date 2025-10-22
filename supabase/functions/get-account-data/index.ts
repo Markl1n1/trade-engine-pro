@@ -13,12 +13,16 @@ const corsHeaders = {
 };
 
 Deno.serve(async (req) => {
+  console.log(`[GET-ACCOUNT-DATA] Function called with method: ${req.method}`);
+  
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   let user;
   try {
+    console.log(`[GET-ACCOUNT-DATA] Starting function execution`);
+    
     // Create service role client for credentials operations
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -88,6 +92,8 @@ Deno.serve(async (req) => {
       : (shouldUseTestnetAPI ? 'binance_testnet' : 'binance_mainnet');
 
     // Retrieve API credentials from secure vault using admin client
+    console.log(`[GET-ACCOUNT-DATA] Fetching credentials for type: ${credentialType}`);
+    
     const { data: credentials, error: credError } = await supabaseAdmin
       .rpc('retrieve_credential', {
         p_user_id: user.id,
@@ -99,6 +105,7 @@ Deno.serve(async (req) => {
     let baseUrl: string;
 
     if (credError || !credentials || credentials.length === 0) {
+      console.error(`[GET-ACCOUNT-DATA] No credentials found for ${credentialType}:`, credError);
       const sanitizedError = sanitizeError(credError);
       throw new Error(`API credentials not found or could not be decrypted. Please configure your API keys in Settings. ${sanitizedError}`);
     }
@@ -106,6 +113,8 @@ Deno.serve(async (req) => {
     // Use decrypted credentials
     apiKey = credentials[0].api_key;
     apiSecret = credentials[0].api_secret;
+    
+    console.log(`[GET-ACCOUNT-DATA] Credentials found: apiKey=${apiKey ? 'present' : 'missing'}, apiSecret=${apiSecret ? 'present' : 'missing'}`);
     
     if (exchangeType === 'bybit') {
       baseUrl = shouldUseTestnetAPI ? 'https://api-testnet.bybit.com' : 'https://api.bybit.com';
@@ -448,6 +457,8 @@ Deno.serve(async (req) => {
       }
     );
   } catch (error: any) {
+    console.error(`[GET-ACCOUNT-DATA] Error occurred:`, error);
+    
     const { handleError } = await import('../helpers/error-sanitizer.ts');
     const sanitizedMessage = handleError({
       function: 'get-account-data',
