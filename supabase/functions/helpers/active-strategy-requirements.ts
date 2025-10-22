@@ -45,9 +45,15 @@ export async function getActiveStrategyRequirements(
     console.error('Error fetching conditions:', conditionsError);
   }
 
-  // Extract unique symbols, timeframes, and indicators
-  const uniqueSymbols = [...new Set(activeStrategies.map(s => s.symbol))];
-  const uniqueTimeframes = [...new Set(activeStrategies.map(s => s.timeframe))];
+  // Extract unique symbols, timeframes, and indicators (filter out null/undefined)
+  const uniqueSymbols = [...new Set(activeStrategies
+    .map(s => s.symbol)
+    .filter(symbol => symbol && typeof symbol === 'string' && symbol.trim() !== '')
+  )];
+  const uniqueTimeframes = [...new Set(activeStrategies
+    .map(s => s.timeframe)
+    .filter(timeframe => timeframe && typeof timeframe === 'string' && timeframe.trim() !== '')
+  )];
   const uniqueIndicators = new Set<string>();
 
   if (conditions) {

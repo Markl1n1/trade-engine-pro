@@ -48,12 +48,60 @@ serve(async (req) => {
 
     console.log(`[REFRESH-MARKET-DATA] Found ${requirements.symbols.length} symbols and ${requirements.timeframes.length} timeframes from active strategies`);
 
+    // Validate that we have valid symbols and timeframes
+    if (requirements.symbols.length === 0) {
+      console.log('[REFRESH-MARKET-DATA] No valid symbols found in active strategies');
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: 'No valid symbols found in active strategies',
+          results: []
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (requirements.timeframes.length === 0) {
+      console.log('[REFRESH-MARKET-DATA] No valid timeframes found in active strategies');
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: 'No valid timeframes found in active strategies',
+          results: []
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const results = [];
 
     // Step 2: For each symbol-timeframe combination used by strategies
     for (const symbol of requirements.symbols) {
       for (const timeframe of requirements.timeframes) {
         try {
+          // Validate symbol and timeframe before processing
+          if (!symbol || typeof symbol !== 'string' || symbol.trim() === '') {
+            console.error(`[REFRESH-MARKET-DATA] Invalid symbol: ${symbol}`);
+            results.push({
+              symbol: symbol || 'INVALID',
+              timeframe,
+              error: 'Invalid symbol',
+              success: false
+            });
+            continue;
+          }
+
+          if (!timeframe || typeof timeframe !== 'string' || timeframe.trim() === '') {
+            console.error(`[REFRESH-MARKET-DATA] Invalid timeframe: ${timeframe}`);
+            results.push({
+              symbol,
+              timeframe: timeframe || 'INVALID',
+              error: 'Invalid timeframe',
+              success: false
+            });
+            continue;
+          }
+
           console.log(`[REFRESH-MARKET-DATA] Processing ${symbol} ${timeframe}...`);
           
           // Step 3: Check what data we already have
@@ -154,19 +202,39 @@ serve(async (req) => {
             continue;
           }
 
-          // Convert to database format
-          const candles = klines.map((k: any) => ({
-            symbol,
-            timeframe,
-            exchange_type: 'bybit',
-            open_time: parseInt(k[0]),
-            open: parseFloat(k[1]),
-            high: parseFloat(k[2]),
-            low: parseFloat(k[3]),
-            close: parseFloat(k[4]),
-            volume: parseFloat(k[5]),
-            close_time: parseInt(k[6]),
-          }));
+          // Convert to database format with validation
+          const candles = klines
+            .filter((k: any) => k && k.length >= 7) // Ensure kline has all required fields
+            .map((k: any) => ({
+              symbol: symbol || 'UNKNOWN', // Ensure symbol is never null
+              timeframe: timeframe || '1h', // Ensure timeframe is never null
+              exchange_type: 'bybit',
+              open_time: parseInt(k[0]) || 0,
+              open: parseFloat(k[1]) || 0,
+              high: parseFloat(k[2]) || 0,
+              low: parseFloat(k[3]) || 0,
+              close: parseFloat(k[4]) || 0,
+              volume: parseFloat(k[5]) || 0,
+              close_time: parseInt(k[6]) || 0,
+            }))
+            .filter(candle => 
+              candle.symbol !== 'UNKNOWN' && 
+              candle.open_time > 0 && 
+              candle.close > 0
+            ); // Filter out invalid candles
+
+          // Validate candles before storing
+          if (candles.length === 0) {
+            console.log(`[REFRESH-MARKET-DATA] No valid candles for ${symbol} ${timeframe} after filtering`);
+            results.push({
+              symbol,
+              timeframe,
+              candles: 0,
+              reason: 'NO_VALID_DATA',
+              success: true
+            });
+            continue;
+          }
 
           // Store in database
           const { error: dbError } = await supabase
@@ -175,6 +243,7 @@ serve(async (req) => {
 
           if (dbError) {
             console.error(`[REFRESH-MARKET-DATA] Database error for ${symbol} ${timeframe}:`, dbError);
+            console.error(`[REFRESH-MARKET-DATA] Sample candle data:`, candles.slice(0, 2));
             results.push({
               symbol,
               timeframe,
