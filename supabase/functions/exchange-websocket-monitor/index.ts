@@ -655,6 +655,8 @@ Deno.serve(async (req) => {
 
       exchangeWs.onerror = (error) => {
         console.error('[BYBIT-WS] Error:', error);
+        console.error('[BYBIT-WS] WebSocket state:', exchangeWs?.readyState);
+        console.error('[BYBIT-WS] WebSocket URL:', exchangeWs?.url);
         isConnecting = false;
       };
 

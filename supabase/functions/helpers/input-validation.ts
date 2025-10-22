@@ -1,17 +1,38 @@
 // Input validation schemas for edge functions
 import { z } from 'https://deno.land/x/zod@v3.22.4/mod.ts';
 
-// Signal validation schema
-export const signalSchema = z.object({
-  type: z.literal('signal'),
-  signal: z.object({
+// Signal validation schema - support both nested and flat structures
+export const signalSchema = z.union([
+  // Nested structure: { type: 'signal', signal: { ... } }
+  z.object({
+    type: z.literal('signal'),
+    signal: z.object({
+      id: z.string().uuid(),
+      strategyId: z.string().uuid(),
+      userId: z.string().uuid(),
+      signal: z.enum(['buy', 'sell', 'hold']),
+      symbol: z.string().regex(/^[A-Z0-9]{4,12}$/, 'Invalid symbol format'),
+      price: z.number().positive().finite(),
+      timestamp: z.number().int().positive(),
+      mode: z.string(),
+      priority: z.enum(['critical', 'high', 'medium', 'low']),
+      channels: z.array(z.string()),
+      metadata: z.object({
+        indicators: z.any(),
+        conditions: z.any(),
+        risk: z.any()
+      })
+    })
+  }),
+  // Flat structure: { id, strategyId, userId, signal, symbol, price, timestamp, mode, priority, channels, metadata }
+  z.object({
     id: z.string().uuid(),
     strategyId: z.string().uuid(),
     userId: z.string().uuid(),
     signal: z.enum(['buy', 'sell', 'hold']),
     symbol: z.string().regex(/^[A-Z0-9]{4,12}$/, 'Invalid symbol format'),
     price: z.number().positive().finite(),
-    timestamp: z.number().int().positive(),
+    timestamp: z.union([z.number().int().positive(), z.string().transform(str => parseInt(str))]),
     mode: z.string(),
     priority: z.enum(['critical', 'high', 'medium', 'low']),
     channels: z.array(z.string()),
@@ -21,7 +42,7 @@ export const signalSchema = z.object({
       risk: z.any()
     })
   })
-});
+]);
 
 // Backtest validation schema
 export const backtestSchema = z.object({
