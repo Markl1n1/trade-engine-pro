@@ -3262,16 +3262,18 @@ async function run4hReentryBacktest(
             quantity,
           };
           
-          // Store dynamic SL/TP in position metadata
+          // Store dynamic SL/TP and entry fee in position metadata
           (position as any).stopLossPrice = stopLossPrice;
           (position as any).takeProfitPrice = takeProfitPrice;
+          (position as any).entryFee = entryFee; // FIXED: Store entry fee
+          (position as any).entryNotional = actualNotional; // FIXED: Store entry notional
           
-          // Deduct margin and fee
+          // Deduct margin only (fees will be deducted from PnL)
           if (productType === 'futures') {
             lockedMargin = margin;
-            availableBalance -= (margin + entryFee);
+            availableBalance -= margin; // FIXED: Don't deduct entry fee from balance
           } else {
-            availableBalance -= (actualNotional + entryFee);
+            availableBalance -= actualNotional; // FIXED: Don't deduct entry fee from balance
           }
           
           // Initialize trailing stop for position
@@ -3279,7 +3281,11 @@ async function run4hReentryBacktest(
             trailingStopManager.initialize(priceWithSlippage, shouldEnterLong ? 'buy' : 'sell');
           }
           
-          console.log(`[${i}] ${nyTimeStr} ✅ Opened ${shouldEnterLong ? 'LONG' : 'SHORT'} at ${priceWithSlippage.toFixed(2)} (qty: ${quantity.toFixed(5)}, notional: ${actualNotional.toFixed(2)}, fee: ${entryFee.toFixed(2)}, SL: ${stopLossPrice.toFixed(2)}, TP: ${takeProfitPrice.toFixed(2)})`);
+          console.log(`[${i}] ${nyTimeStr} ✅ Opened ${shouldEnterLong ? 'LONG' : 'SHORT'} at ${priceWithSlippage.toFixed(2)}`);
+          console.log(`  - Quantity: ${quantity.toFixed(5)}, Notional: ${actualNotional.toFixed(2)}, Margin: ${margin.toFixed(2)}`);
+          console.log(`  - Entry Fee: ${entryFee.toFixed(2)} (${(takerFee).toFixed(3)}%)`);
+          console.log(`  - SL: ${stopLossPrice.toFixed(2)}, TP: ${takeProfitPrice.toFixed(2)}`);
+          console.log(`  - Available Balance: ${availableBalance.toFixed(2)}, Locked Margin: ${lockedMargin.toFixed(2)}`);
         }
       }
     } else {
@@ -3364,7 +3370,8 @@ async function run4hReentryBacktest(
         
         const exitNotional = position.quantity * exitPriceWithSlippage;
         const exitFee = exitNotional * (takerFee / 100);
-        const netProfit = pnl - exitFee;
+        const entryFee = (position as any).entryFee || 0; // FIXED: Get entry fee from position
+        const netProfit = pnl - entryFee - exitFee; // FIXED: Deduct both fees
         
         position.exit_price = exitPriceWithSlippage;
         position.exit_time = currentCandle.open_time;
@@ -3381,7 +3388,9 @@ async function run4hReentryBacktest(
         balance = availableBalance + lockedMargin;
         trades.push(position);
         
-        console.log(`[${i}] Closed ${exitReason} at ${exitPriceWithSlippage.toFixed(2)}, profit: ${netProfit.toFixed(2)}`);
+        console.log(`[${i}] ❌ Closed ${position.type.toUpperCase()} via ${exitReason} at ${exitPriceWithSlippage.toFixed(2)}`);
+        console.log(`  - Raw PnL: ${pnl.toFixed(2)}, Entry Fee: ${entryFee.toFixed(2)}, Exit Fee: ${exitFee.toFixed(2)}`);
+        console.log(`  - Net Profit: ${netProfit.toFixed(2)}, Balance: ${balance.toFixed(2)}`);
         
         // Reset trailing stop
         if (trailingStopManager) {
@@ -3416,7 +3425,8 @@ async function run4hReentryBacktest(
     
     const exitNotional = position.quantity * exitPrice;
     const exitFee = exitNotional * (takerFee / 100);
-    const netProfit = pnl - exitFee;
+    const entryFee = (position as any).entryFee || 0; // FIXED: Get entry fee from position
+    const netProfit = pnl - entryFee - exitFee; // FIXED: Deduct both fees
     
     position.exit_price = exitPrice;
     position.exit_time = lastCandle.open_time;
