@@ -3265,7 +3265,7 @@ async function run4hReentryBacktest(
         stopLossPrice = entryPrice * (1 + slPercent / 100); // Use UI SL% (higher price for SHORT)
         takeProfitPrice = entryPrice * (1 - tpPercent / 100); // Use UI TP% (lower price for SHORT)
         
-        console.log(`[${i}] ${nyTimeStr} SHORT re-entry: C_prev=${C_prev.toFixed(2)} > H_4h=${currentDayRange.H_4h.toFixed(2)}, C_curr=${C_curr.toFixed(2)} <= H_4h | Entry=${entryPrice.toFixed(2)}, SL=${stopLossPrice.toFixed(2)} (+${slPercent}%), TP=${takeProfitPrice.toFixed(2)} (-${tpPercent}%)`);
+        console.log(`[${i}] ${nyTimeStr} SHORT re-entry: C_prev=${C_prev.toFixed(2)} > H_4h=${currentDayRange.H_4h.toFixed(2)}, C_curr=${C_curr.toFixed(2)} <= H_4h | Entry=${entryPrice.toFixed(2)}, SL=${stopLossPrice.toFixed(2)} (+${slPercent}%), TP: ${takeProfitPrice.toFixed(2)} (-${tpPercent}%)`);
       }
 
       if (shouldEnterLong || shouldEnterShort) {
