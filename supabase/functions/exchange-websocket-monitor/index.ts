@@ -199,48 +199,8 @@ async function processBinanceKline(
   userSettings: any,
   exchangeWs: WebSocket
 ) {
-  const symbol = klineData.s;
-  const timeframe = klineData.k.i;
-  const key = `${symbol}-${timeframe}-binance`;
-
-  if (!klineData.k.x) return;
-
-  const candle: Candle = {
-    open: parseFloat(klineData.k.o),
-    high: parseFloat(klineData.k.h),
-    low: parseFloat(klineData.k.l),
-    close: parseFloat(klineData.k.c),
-    volume: parseFloat(klineData.k.v),
-    timestamp: klineData.k.t
-  };
-
-  let buffer = candleBuffers.get(key) || [];
-  buffer.push(candle);
-  if (buffer.length > MAX_CANDLES) buffer = buffer.slice(-MAX_CANDLES);
-  candleBuffers.set(key, buffer);
-
-  // Store in database with exchange_type
-  await supabase.from('market_data').insert({
-    symbol,
-    timeframe,
-    exchange_type: 'binance',
-    open_time: candle.timestamp,
-    open: candle.open,
-    high: candle.high,
-    low: candle.low,
-    close: candle.close,
-    volume: candle.volume,
-    close_time: klineData.k.T
-  });
-
-  // Check strategies for this symbol/timeframe
-  const relevantStrategies = strategies.filter(s => 
-    s.symbol === symbol && s.timeframe === timeframe
-  );
-
-  for (const strategy of relevantStrategies) {
-    await evaluateStrategy(supabase, strategy, buffer, userSettings);
-  }
+  // No-op: Binance disabled
+  return;
 }
 
 // Process Bybit kline update
@@ -251,8 +211,23 @@ async function processBybitKline(
   userSettings: any,
   exchangeWs: WebSocket
 ) {
-  const symbol = klineData.data[0].symbol;
-  const timeframe = klineData.data[0].interval;
+  // Prefer fields from payload, but safely parse from topic as fallback
+  let symbol = klineData?.data?.[0]?.symbol as string | undefined;
+  let timeframe = klineData?.data?.[0]?.interval as string | undefined;
+
+  if ((!symbol || !timeframe) && typeof klineData?.topic === 'string') {
+    // topic format: "kline.<interval>.<symbol>"
+    const parts = klineData.topic.split('.');
+    if (parts.length >= 3) {
+      timeframe = timeframe || parts[1];
+      symbol = symbol || parts[2];
+    }
+  }
+
+  if (!symbol || !timeframe) {
+    console.warn('[BYBIT-WS] Skipping kline insert due to missing symbol/timeframe', { topic: klineData?.topic, sample: klineData?.data?.[0] });
+    return;
+  }
   const key = `${symbol}-${timeframe}-bybit`;
   
   const kline = klineData.data[0];
@@ -537,66 +512,8 @@ Deno.serve(async (req) => {
     };
 
     const connectBinance = (strategies: any[], userSettings: any, streams: Set<string>) => {
-      const streamList = Array.from(streams).join('/');
-      exchangeWs = new WebSocket(`wss://fstream.binance.com/stream?streams=${streamList}`);
-
-      exchangeWs.onopen = () => {
-        console.log('[BINANCE-WS] Connected');
-        isConnecting = false;
-        reconnectAttempts = 0;
-        
-        socket.send(JSON.stringify({
-          type: 'connected',
-          exchange: 'binance',
-          streams: streams.size,
-          strategies: strategies.length,
-          timestamp: Date.now()
-        }));
-
-        // Binance heartbeat: ping every 3 minutes
-        if (heartbeatInterval) clearInterval(heartbeatInterval);
-        heartbeatInterval = setInterval(() => {
-          if (exchangeWs?.readyState === WebSocket.OPEN) {
-            exchangeWs.send('ping');
-          }
-          // Client heartbeat
-          if (socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({ type: 'heartbeat', timestamp: Date.now() }));
-          }
-        }, 180000); // 3 minutes
-      };
-
-      exchangeWs.onmessage = async (event) => {
-        if (event.data === 'pong') return; // Binance pong response
-        
-        try {
-          const data = JSON.parse(event.data);
-          if (data.stream && data.data) {
-            await processBinanceKline(supabase, data.data, strategies, userSettings, exchangeWs!);
-          }
-        } catch (error) {
-          console.error('[BINANCE-WS] Error processing message:', error);
-        }
-      };
-
-      exchangeWs.onerror = (error) => {
-        console.error('[BINANCE-WS] Error:', error);
-        isConnecting = false;
-      };
-
-      exchangeWs.onclose = () => {
-        console.log('[BINANCE-WS] Disconnected');
-        isConnecting = false;
-        
-        if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-          reconnectAttempts++;
-          const backoffTime = Math.min(1000 * Math.pow(2, reconnectAttempts), 60000);
-          console.log(`[BINANCE-WS] Reconnecting in ${backoffTime}ms (attempt ${reconnectAttempts})`);
-          
-          if (reconnectTimeout) clearTimeout(reconnectTimeout);
-          reconnectTimeout = setTimeout(() => connectBinance(strategies, userSettings, streams), backoffTime);
-        }
-      };
+      console.warn('[BINANCE-WS] Disabled by configuration: Binance integration is turned off.');
+      return; // Hard-disable Binance integration
     };
 
     const connectBybit = (strategies: any[], userSettings: any, streams: Set<string>) => {
