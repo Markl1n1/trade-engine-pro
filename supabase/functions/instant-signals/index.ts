@@ -196,6 +196,76 @@ ${riskLevel}
   }
 }
 
+// Trailing Stop Manager for Live Trading
+class LiveTrailingStopManager {
+  public maxProfitPercent: number = 0;
+  public trailingPercent: number;
+  public isActive: boolean = false;
+  public entryPrice: number = 0;
+  public positionType: 'buy' | 'sell' = 'buy';
+  public positionId: string = '';
+  
+  constructor(trailingPercent: number) {
+    this.trailingPercent = trailingPercent;
+    console.log(`[LIVE-TRAILING] Initialized with ${trailingPercent}% trailing stop`);
+  }
+  
+  // Initialize with position details
+  initialize(entryPrice: number, positionType: 'buy' | 'sell', positionId: string): void {
+    this.entryPrice = entryPrice;
+    this.positionType = positionType;
+    this.positionId = positionId;
+    this.maxProfitPercent = 0;
+    this.isActive = false;
+    console.log(`[LIVE-TRAILING] Initialized for ${positionType} at ${entryPrice.toFixed(2)} (Position: ${positionId})`);
+  }
+  
+  // Check if trailing stop should trigger
+  checkTrailingStop(currentPrice: number): { shouldClose: boolean; reason: string } {
+    if (!this.isActive) {
+      const currentProfitPercent = this.calculateProfitPercent(currentPrice);
+      if (currentProfitPercent > 0) {
+        this.isActive = true;
+        this.maxProfitPercent = currentProfitPercent;
+        console.log(`[LIVE-TRAILING] Activated at ${currentProfitPercent.toFixed(2)}% profit for position ${this.positionId}`);
+        return { shouldClose: false, reason: 'TRAILING_ACTIVATED' };
+      }
+      return { shouldClose: false, reason: 'NO_PROFIT_YET' };
+    }
+    
+    const currentProfitPercent = this.calculateProfitPercent(currentPrice);
+    if (currentProfitPercent > this.maxProfitPercent) {
+      this.maxProfitPercent = currentProfitPercent;
+      console.log(`[LIVE-TRAILING] New max profit: ${currentProfitPercent.toFixed(2)}% for position ${this.positionId}`);
+    }
+    
+    const trailingThreshold = this.maxProfitPercent - this.trailingPercent;
+    
+    if (currentProfitPercent < trailingThreshold) {
+      console.log(`[LIVE-TRAILING] Triggered: ${currentProfitPercent.toFixed(2)}% < ${trailingThreshold.toFixed(2)}% (max: ${this.maxProfitPercent.toFixed(2)}%) for position ${this.positionId}`);
+      return { shouldClose: true, reason: 'TRAILING_STOP_TRIGGERED' };
+    }
+    
+    return { shouldClose: false, reason: 'TRAILING_ACTIVE' };
+  }
+  
+  // Calculate profit percentage from entry price
+  private calculateProfitPercent(currentPrice: number): number {
+    if (this.positionType === 'buy') {
+      return ((currentPrice - this.entryPrice) / this.entryPrice) * 100;
+    } else {
+      return ((this.entryPrice - currentPrice) / this.entryPrice) * 100;
+    }
+  }
+  
+  reset(): void {
+    this.maxProfitPercent = 0;
+    this.isActive = false;
+    this.entryPrice = 0;
+    this.positionId = '';
+  }
+}
+
 class PositionExecutionManager {
   // ✅ ПРАВИЛЬНО: Helper method to decrypt API credentials with Bybit support
   private async getDecryptedCredentials(userId: string, credentialType: string, settings: any) {
@@ -422,6 +492,21 @@ class PositionExecutionManager {
       
       console.log(`[INSTANT-SIGNALS] Order placed successfully:`, orderResult);
       
+      // Initialize Trailing Stop for the position
+      const trailingStopPercent = signal.trailingStopPercent || 20; // Default 20%
+      const trailingStopManager = new LiveTrailingStopManager(trailingStopPercent);
+      trailingStopManager.initialize(
+        parseFloat(orderResult.price),
+        orderResult.side.toLowerCase() as 'buy' | 'sell',
+        orderResult.orderId.toString()
+      );
+      
+      // Store trailing stop manager in database for monitoring
+      await this.storeTrailingStopState(signal.userId, orderResult.orderId.toString(), trailingStopManager);
+      
+      // Start real-time WebSocket monitoring for this position
+      await this.startRealtimeMonitoring(signal.symbol);
+      
       return {
         orderId: orderResult.orderId.toString(),
         symbol: orderResult.symbol,
@@ -430,12 +515,67 @@ class PositionExecutionManager {
         price: parseFloat(orderResult.price),
         status: orderResult.status,
         executedAt: new Date(orderResult.time).toISOString(),
-        clientOrderId: orderResult.clientOrderId
+        clientOrderId: orderResult.clientOrderId,
+        trailingStopPercent: trailingStopPercent
       };
       
     } catch (error) {
       console.error(`[INSTANT-SIGNALS] Real order execution failed:`, error);
       throw error;
+    }
+  }
+  
+  // Store trailing stop state in database for monitoring
+  private async storeTrailingStopState(userId: string, positionId: string, trailingStopManager: LiveTrailingStopManager) {
+    try {
+      const supabase = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      );
+      
+      await supabase
+        .from('trailing_stop_states')
+        .upsert({
+          user_id: userId,
+          position_id: positionId,
+          symbol: signal.symbol,
+          trailing_percent: trailingStopManager.trailingPercent,
+          entry_price: trailingStopManager.entryPrice,
+          position_type: trailingStopManager.positionType,
+          is_active: trailingStopManager.isActive,
+          max_profit_percent: trailingStopManager.maxProfitPercent,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
+      
+      console.log(`[LIVE-TRAILING] Stored trailing stop state for position ${positionId}`);
+    } catch (error) {
+      console.error(`[LIVE-TRAILING] Failed to store trailing stop state:`, error);
+    }
+  }
+  
+  // Start real-time WebSocket monitoring for trailing stops
+  private async startRealtimeMonitoring(symbol: string) {
+    try {
+      const response = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/trailing-stop-websocket`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          action: 'start_monitoring',
+          symbol: symbol
+        })
+      });
+      
+      if (response.ok) {
+        console.log(`[LIVE-TRAILING] ✅ Started real-time monitoring for ${symbol}`);
+      } else {
+        console.error(`[LIVE-TRAILING] ❌ Failed to start monitoring for ${symbol}:`, await response.text());
+      }
+    } catch (error) {
+      console.error(`[LIVE-TRAILING] ❌ Error starting monitoring for ${symbol}:`, error);
     }
   }
 }
