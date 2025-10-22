@@ -71,6 +71,13 @@ Deno.serve(async (req) => {
     const exchangeType = settings.exchange_type || 'binance';
     const tradingMode = settings.trading_mode || 'hybrid_safe';
     const useTestnet = settings.use_testnet || false;
+    
+    console.log(`[GET-ACCOUNT-DATA] User settings:`, {
+      exchangeType,
+      tradingMode,
+      useTestnet,
+      userId: user.id
+    });
 
     // For Hybrid Live mode, always use testnet API for safety
     const shouldUseTestnetAPI = tradingMode === 'hybrid_live' ? true : useTestnet;
@@ -356,9 +363,19 @@ Deno.serve(async (req) => {
 
       if (positionsResponse.ok) {
         const positionsData = await positionsResponse.json();
+        console.log(`[GET-ACCOUNT-DATA] Bybit positions response:`, JSON.stringify(positionsData, null, 2));
+        
         if (positionsData.retCode === 0) {
-          positions = (positionsData.result.list || [])
-            .filter((pos: any) => parseFloat(pos.size) !== 0)
+          const allPositions = positionsData.result.list || [];
+          console.log(`[GET-ACCOUNT-DATA] Total positions from Bybit: ${allPositions.length}`);
+          
+          positions = allPositions
+            .filter((pos: any) => {
+              const size = parseFloat(pos.size);
+              const hasPosition = size !== 0;
+              console.log(`[GET-ACCOUNT-DATA] Position ${pos.symbol}: size=${size}, hasPosition=${hasPosition}`);
+              return hasPosition;
+            })
             .map((pos: any) => ({
               symbol: pos.symbol,
               positionAmt: parseFloat(pos.size),
@@ -367,7 +384,13 @@ Deno.serve(async (req) => {
               leverage: parseFloat(pos.leverage),
               side: pos.side,
             }));
+          
+          console.log(`[GET-ACCOUNT-DATA] Filtered positions: ${positions.length}`);
+        } else {
+          console.error(`[GET-ACCOUNT-DATA] Bybit positions API error: ${positionsData.retMsg}`);
         }
+      } else {
+        console.error(`[GET-ACCOUNT-DATA] Bybit positions HTTP error: ${positionsResponse.status} ${positionsResponse.statusText}`);
       }
     } else {
       // Binance data structure

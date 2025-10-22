@@ -4,7 +4,6 @@
 -- Add new columns for hybrid trading
 ALTER TABLE public.user_settings 
 ADD COLUMN IF NOT EXISTS trading_mode TEXT NOT NULL DEFAULT 'hybrid_safe' CHECK (trading_mode IN (
-  'testnet_only', 
   'mainnet_only', 
   'hybrid_safe', 
   'hybrid_live', 
