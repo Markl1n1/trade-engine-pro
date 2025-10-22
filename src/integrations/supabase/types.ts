@@ -904,6 +904,48 @@ export type Database = {
         }
         Relationships: []
       }
+      trailing_stop_states: {
+        Row: {
+          created_at: string
+          entry_price: number
+          id: string
+          is_active: boolean
+          max_profit_percent: number
+          position_id: string
+          position_type: string
+          symbol: string
+          trailing_percent: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          entry_price: number
+          id?: string
+          is_active?: boolean
+          max_profit_percent?: number
+          position_id: string
+          position_type: string
+          symbol: string
+          trailing_percent?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          entry_price?: number
+          id?: string
+          is_active?: boolean
+          max_profit_percent?: number
+          position_id?: string
+          position_type?: string
+          symbol?: string
+          trailing_percent?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -1080,14 +1122,8 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      cleanup_old_buffered_signals: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
-      cleanup_old_health_logs: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
+      cleanup_old_buffered_signals: { Args: never; Returns: undefined }
+      cleanup_old_health_logs: { Args: never; Returns: undefined }
       get_user_api_credentials: {
         Args: { user_uuid: string }
         Returns: {
@@ -1113,10 +1149,6 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
-      }
-      immutable_date_trunc_minute: {
-        Args: { "": string }
-        Returns: string
       }
       retrieve_credential: {
         Args: { p_credential_type: string; p_user_id: string }
