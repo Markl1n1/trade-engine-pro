@@ -6,6 +6,7 @@ import { evaluateATHGuardStrategy } from '../helpers/ath-guard-strategy.ts';
 import { evaluateSMACrossoverStrategy, defaultSMACrossoverConfig } from '../helpers/sma-crossover-strategy.ts';
 import { evaluateMTFMomentum } from '../helpers/mtf-momentum-strategy.ts';
 import { EnhancedBacktestEngine } from '../helpers/backtest-engine.ts';
+import { getBybitConstraints, getBinanceConstraints } from '../helpers/exchange-constraints.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -1498,7 +1499,8 @@ async function runSMACrossoverBacktest(
   endDate: string,
   corsHeaders: any
 ) {
-  console.log('Initializing SMA Crossover backtest...');
+  const startTime = Date.now();
+  console.log('[SMA-BACKTEST] Starting optimization...');
   
   let balance = initialBalance || strategy.initial_capital || 10000;
   let availableBalance = balance;
@@ -1509,10 +1511,15 @@ async function runSMACrossoverBacktest(
   let maxDrawdown = 0;
   const balanceHistory: { time: number; balance: number }[] = [{ time: candles[0].open_time, balance }];
 
-  // Exchange constraints
-  const stepSize = 0.00001;
-  const minQty = 0.001;
-  const minNotional = 10;
+  // Get dynamic exchange constraints based on symbol
+  const exchangeType = strategy.exchange_type || 'bybit';
+  const symbol = strategy.symbol || 'BTCUSDT';
+  const constraints = exchangeType === 'bybit' 
+    ? getBybitConstraints(symbol)
+    : getBinanceConstraints(symbol);
+  
+  const { stepSize, minQty, minNotional } = constraints;
+  console.log(`[SMA-BACKTEST] Using ${exchangeType} constraints:`, { stepSize, minQty, minNotional });
 
   // Strategy configuration
   const config = {
@@ -1526,30 +1533,50 @@ async function runSMACrossoverBacktest(
     atr_tp_multiplier: strategy.atr_tp_multiplier || 3.0
   };
 
-  console.log(`Processing ${candles.length} candles for SMA Crossover strategy...`);
-  console.log(`Strategy config:`, config);
+  console.log(`[SMA-BACKTEST] Processing ${candles.length} candles`);
+  console.log(`[SMA-BACKTEST] Strategy config:`, config);
 
-  for (let i = Math.max(config.sma_slow_period, config.rsi_period); i < candles.length; i++) {
+  // ✅ PRE-CALCULATE ALL INDICATORS ONCE (O(n) instead of O(n²))
+  console.log('[SMA-BACKTEST] Pre-calculating indicators...');
+  const closes = candles.map(c => c.close);
+  const smaFast = calculateSMA(closes, config.sma_fast_period);
+  const smaSlow = calculateSMA(closes, config.sma_slow_period);
+  const rsi = calculateRSI(closes, config.rsi_period);
+  const atr = calculateATR(candles, 14);
+  console.log('[SMA-BACKTEST] ✅ Indicators ready, starting backtest loop...');
+
+  const startIdx = Math.max(config.sma_slow_period, config.rsi_period);
+  for (let i = startIdx; i < candles.length; i++) {
     const currentCandle = candles[i];
     const currentPrice = currentCandle.close;
     const currentTime = currentCandle.open_time;
     
-    // Convert candles to the format expected by the strategy
-    const strategyCandles = candles.slice(0, i + 1).map(c => ({
-      open: c.open,
-      high: c.high,
-      low: c.low,
-      close: c.close,
-      volume: c.volume,
-      timestamp: c.open_time
-    }));
-
-    // Evaluate strategy
-    const signal = evaluateSMACrossoverStrategy(strategyCandles, config, position !== null);
+    // Progress logging every 1000 candles
+    if (i % 1000 === 0) {
+      console.log(`[SMA-BACKTEST] Progress: ${i}/${candles.length} candles (${((i/candles.length)*100).toFixed(1)}%)`);
+    }
     
-    if (signal.signal_type === 'BUY' && !position) {
-      // Calculate position size
-      const positionSize = Math.min(availableBalance * 0.95, balance * 0.1); // Max 10% of balance
+    // ✅ Direct indicator access (no slice, no map, just array indexing)
+    const currentSMAFast = smaFast[i];
+    const currentSMASlow = smaSlow[i];
+    const prevSMAFast = smaFast[i - 1];
+    const prevSMASlow = smaSlow[i - 1];
+    const currentRSI = rsi[i];
+    const currentATR = atr[i];
+    
+    // Detect crossovers directly
+    const goldenCross = prevSMAFast <= prevSMASlow && currentSMAFast > currentSMASlow; // Fast crosses above slow
+    const deathCross = prevSMAFast >= prevSMASlow && currentSMAFast < currentSMASlow;   // Fast crosses below slow
+    
+    // Volume confirmation
+    const currentVolume = currentCandle.volume;
+    const last20Volumes = candles.slice(Math.max(0, i - 20), i).map(c => c.volume);
+    const avgVolume = last20Volumes.reduce((a, b) => a + b, 0) / last20Volumes.length;
+    const volumeConfirmed = currentVolume >= avgVolume * config.volume_multiplier;
+    
+    // BUY signal: Golden cross + RSI oversold + Volume
+    if (goldenCross && currentRSI < config.rsi_oversold && volumeConfirmed && !position) {
+      const positionSize = Math.min(availableBalance * 0.95, balance * 0.1);
       const quantity = Math.floor(positionSize / currentPrice / stepSize) * stepSize;
       
       if (quantity >= minQty && quantity * currentPrice >= minNotional) {
@@ -1567,12 +1594,13 @@ async function runSMACrossoverBacktest(
           availableBalance -= marginRequired;
           lockedMargin += marginRequired;
           
-          console.log(`[${i}] BUY at ${entryPrice.toFixed(2)} - Qty: ${quantity.toFixed(6)}, Margin: ${marginRequired.toFixed(2)}`);
+          console.log(`[${i}] 🟢 BUY at ${entryPrice.toFixed(2)} - SMA(${currentSMAFast.toFixed(2)}/${currentSMASlow.toFixed(2)}), RSI=${currentRSI.toFixed(1)}`);
         }
       }
     }
     
-    if (signal.signal_type === 'SELL' && position) {
+    // SELL signal: Death cross OR RSI overbought
+    if (position && (deathCross || currentRSI > config.rsi_overbought)) {
       const exitPrice = currentPrice * (1 - slippage);
       const profit = (exitPrice - position.entry_price) * position.quantity;
       const fees = (position.entry_price * position.quantity * makerFee) + (exitPrice * position.quantity * takerFee);
@@ -1589,7 +1617,7 @@ async function runSMACrossoverBacktest(
       trades.push(position);
       position = null;
       
-      console.log(`[${i}] SELL at ${exitPrice.toFixed(2)} - P&L: ${netProfit.toFixed(2)}, Balance: ${balance.toFixed(2)}`);
+      console.log(`[${i}] 🔴 SELL at ${exitPrice.toFixed(2)} - P&L: ${netProfit.toFixed(2)}, Balance: ${balance.toFixed(2)}`);
     }
     
     // Update balance history
@@ -1635,6 +1663,8 @@ async function runSMACrossoverBacktest(
   const avgLoss = trades.filter(t => (t.profit || 0) < 0).reduce((sum, t) => sum + (t.profit || 0), 0) / Math.max(totalTrades - winTrades, 1);
   const profitFactor = Math.abs(avgWin * winTrades) / Math.abs(avgLoss * (totalTrades - winTrades));
 
+  const executionTime = ((Date.now() - startTime) / 1000).toFixed(2);
+  console.log(`[SMA-BACKTEST] ✅ Completed in ${executionTime}s`);
   console.log(`SMA Crossover Backtest Results:`);
   console.log(`- Total Return: ${totalReturn.toFixed(2)}%`);
   console.log(`- Total Trades: ${totalTrades}`);
@@ -1711,10 +1741,15 @@ async function runMTFMomentumBacktest(
   let maxDrawdown = 0;
   const balanceHistory: { time: number; balance: number }[] = [{ time: candles[0].open_time, balance }];
 
-  // Exchange constraints
-  const stepSize = 0.00001;
-  const minQty = 0.001;
-  const minNotional = 10;
+  // Get dynamic exchange constraints based on symbol
+  const exchangeType = strategy.exchange_type || 'bybit';
+  const symbol = strategy.symbol || 'BTCUSDT';
+  const constraints = exchangeType === 'bybit' 
+    ? getBybitConstraints(symbol)
+    : getBinanceConstraints(symbol);
+  
+  const { stepSize, minQty, minNotional } = constraints;
+  console.log(`[MTF-BACKTEST] Using ${exchangeType} constraints:`, { stepSize, minQty, minNotional });
 
   // Strategy configuration with relaxed volume filter
   const config = {
