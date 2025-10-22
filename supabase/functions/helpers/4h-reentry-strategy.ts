@@ -74,7 +74,9 @@ function isInNYSession(timestamp: number, sessionStart: string, sessionEnd: stri
 export function evaluate4hReentry(
   candles: Candle[],
   liveState: LiveState | null,
-  strategy: any
+  strategy: any,
+  stopLossPercent?: number,
+  takeProfitPercent?: number
 ): ReentrySignal {
   console.log('[4H-REENTRY] Starting evaluation...');
   
@@ -99,8 +101,12 @@ export function evaluate4hReentry(
   const sessionStart = strategy.reentry_session_start || "00:00";
   const sessionEnd = strategy.reentry_session_end || "03:59";
   const riskRewardRatio = strategy.reentry_risk_reward || 2;
+  
+  // Use UI parameters or fallback to strategy defaults
+  const slPercent = stopLossPercent || strategy.stop_loss_percent || 1.0;
+  const tpPercent = takeProfitPercent || strategy.take_profit_percent || 2.0;
 
-  console.log('[4H-REENTRY] Strategy config:', { sessionStart, sessionEnd, riskRewardRatio });
+  console.log('[4H-REENTRY] Strategy config:', { sessionStart, sessionEnd, riskRewardRatio, slPercent, tpPercent });
 
   const nyTime = convertToNYTime(currentTimestamp);
   const currentDate = nyTime.toISOString().split('T')[0];
@@ -217,14 +223,14 @@ export function evaluate4hReentry(
   // LONG setup: C_{t-1} < L_4h AND C_t >= L_4h
   if (C_prev < rangeLow && C_curr >= rangeLow) {
     const entryPrice = C_curr;
-    // Updated to 1:2 ratio: SL = -1%, TP = +2%
-    const stopLoss = entryPrice * (1 - 0.01);  // -1% SL
-    const takeProfit = entryPrice * (1 + 0.02);  // +2% TP (1:2 ratio)
+    // Use UI parameters for SL/TP
+    const stopLoss = entryPrice * (1 - slPercent / 100);  // Use UI SL%
+    const takeProfit = entryPrice * (1 + tpPercent / 100);  // Use UI TP%
     
     console.log(`[4H-REENTRY] 🟢 LONG reentry detected!`);
     console.log(`  - Previous close (${C_prev.toFixed(2)}) < L_4h (${rangeLow.toFixed(2)})`);
     console.log(`  - Current close (${C_curr.toFixed(2)}) >= L_4h (${rangeLow.toFixed(2)})`);
-    console.log(`  - Entry: ${entryPrice.toFixed(2)}, SL: ${stopLoss.toFixed(2)} (-1%), TP: ${takeProfit.toFixed(2)} (+2%) [1:2 ratio]`);
+    console.log(`  - Entry: ${entryPrice.toFixed(2)}, SL: ${stopLoss.toFixed(2)} (-${slPercent}%), TP: ${takeProfit.toFixed(2)} (+${tpPercent}%)`);
     
     return {
       signal_type: 'BUY',
@@ -239,14 +245,14 @@ export function evaluate4hReentry(
   // SHORT setup: C_{t-1} > H_4h AND C_t <= H_4h
   if (C_prev > rangeHigh && C_curr <= rangeHigh) {
     const entryPrice = C_curr;
-    // Updated to 1:2 ratio: SL = +1%, TP = -2%
-    const stopLoss = entryPrice * (1 + 0.01);  // +1% SL (higher price for SHORT)
-    const takeProfit = entryPrice * (1 - 0.02);  // -2% TP (lower price for SHORT, 1:2 ratio)
+    // Use UI parameters for SL/TP
+    const stopLoss = entryPrice * (1 + slPercent / 100);  // Use UI SL% (higher price for SHORT)
+    const takeProfit = entryPrice * (1 - tpPercent / 100);  // Use UI TP% (lower price for SHORT)
     
     console.log(`[4H-REENTRY] 🔴 SHORT reentry detected!`);
     console.log(`  - Previous close (${C_prev.toFixed(2)}) > H_4h (${rangeHigh.toFixed(2)})`);
     console.log(`  - Current close (${C_curr.toFixed(2)}) <= H_4h (${rangeHigh.toFixed(2)})`);
-    console.log(`  - Entry: ${entryPrice.toFixed(2)}, SL: ${stopLoss.toFixed(2)} (+1%), TP: ${takeProfit.toFixed(2)} (-2%) [1:2 ratio]`);
+    console.log(`  - Entry: ${entryPrice.toFixed(2)}, SL: ${stopLoss.toFixed(2)} (+${slPercent}%), TP: ${takeProfit.toFixed(2)} (-${tpPercent}%)`);
     
     return {
       signal_type: 'SELL',
