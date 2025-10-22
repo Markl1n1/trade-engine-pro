@@ -130,10 +130,6 @@ async function triggerInstantSignalExecution(signal: any, userSettings: any, tra
 }
 
 const EXCHANGE_URLS = {
-  binance: {
-    mainnet: 'https://fapi.binance.com',
-    testnet: 'https://testnet.binancefuture.com',
-  },
   bybit: {
     mainnet: 'https://api.bybit.com',
     testnet: 'https://api-testnet.bybit.com',
@@ -141,7 +137,6 @@ const EXCHANGE_URLS = {
 };
 
 const INTERVAL_MAPPING: Record<string, Record<string, string>> = {
-  binance: { '1m': '1m', '5m': '5m', '15m': '15m', '1h': '1h', '4h': '4h', '1d': '1d' },
   bybit: { '1m': '1', '5m': '5', '15m': '15', '1h': '60', '4h': '240', '1d': 'D' },
 };
 
@@ -178,7 +173,7 @@ async function fetchHybridMarketData(
     const config = getOptimalHybridConfig('medium', true);
     
     // Create data manager
-    const dataManager = createHybridDataManager(config, 'binance');
+    const dataManager = createHybridDataManager(config, 'bybit');
     
     // Get market data
     const result = await dataManager.getMarketData({
@@ -206,7 +201,7 @@ async function fetchMarketData(
   symbol: string, 
   timeframe: string, 
   limit = 100, 
-  exchangeType: string = 'binance',
+  exchangeType: string = 'bybit',
   useTestnet: boolean = false,
   maxRetries = 3
 ): Promise<Candle[]> {
@@ -214,13 +209,11 @@ async function fetchMarketData(
   if (Deno.env.get('USE_HYBRID_DATA') === 'true') {
     return await fetchHybridMarketData(symbol, timeframe, limit);
   }
-  const exchange = exchangeType as 'binance' | 'bybit';
+  const exchange = exchangeType as 'bybit';
   const baseUrl = useTestnet ? EXCHANGE_URLS[exchange].testnet : EXCHANGE_URLS[exchange].mainnet;
   const mappedInterval = INTERVAL_MAPPING[exchange][timeframe] || timeframe;
   
-  const endpoint = exchange === 'binance' 
-    ? `/fapi/v1/klines?symbol=${symbol}&interval=${mappedInterval}&limit=${limit}`
-    : `/v5/market/kline?category=linear&symbol=${symbol}&interval=${mappedInterval}&limit=${limit}`;
+  const endpoint = `/v5/market/kline?category=linear&symbol=${symbol}&interval=${mappedInterval}&limit=${limit}`;
   
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
@@ -232,31 +225,20 @@ async function fetchMarketData(
       
       const data = await response.json();
       
-      if (exchange === 'binance') {
-        return data.map((k: any) => ({
-          timestamp: k[0],
-          open: parseFloat(k[1]),
-          high: parseFloat(k[2]),
-          low: parseFloat(k[3]),
-          close: parseFloat(k[4]),
-          volume: parseFloat(k[5]),
-        }));
-      } else {
-        return data.result.list.reverse().map((k: any) => ({
-          timestamp: parseInt(k[0]),
-          open: parseFloat(k[1]),
-          high: parseFloat(k[2]),
-          low: parseFloat(k[3]),
-          close: parseFloat(k[4]),
-          volume: parseFloat(k[5]),
-        }));
-      }
+      return data.result.list.reverse().map((k: any) => ({
+        timestamp: parseInt(k[0]),
+        open: parseFloat(k[1]),
+        high: parseFloat(k[2]),
+        low: parseFloat(k[3]),
+        close: parseFloat(k[4]),
+        volume: parseFloat(k[5]),
+      }));
     } catch (error) {
       const isLastAttempt = attempt === maxRetries - 1;
-      console.error(`[CRON] ${exchange.toUpperCase()} API attempt ${attempt + 1}/${maxRetries} failed for ${symbol}:`, error);
+      console.error(`[CRON] BYBIT API attempt ${attempt + 1}/${maxRetries} failed for ${symbol}:`, error);
       
       if (isLastAttempt) {
-        throw new Error(`Failed to fetch market data for ${symbol} after ${maxRetries} attempts`);
+        throw new Error(`Failed to fetch Bybit market data for ${symbol} after ${maxRetries} attempts`);
       }
       
       const delay = Math.pow(2, attempt) * 1000;
@@ -305,7 +287,7 @@ async function getCandlesWithHistory(
   supabase: any,
   symbol: string,
   timeframe: string,
-  exchangeType: string = 'binance',
+  exchangeType: string = 'bybit',
   useTestnet: boolean = false
 ): Promise<Candle[]> {
   const dbCandles = await loadCandlesFromDatabase(supabase, symbol, timeframe, 500);
@@ -896,10 +878,10 @@ Deno.serve(async (req) => {
               // Only skip if we CONFIRMED position exists (true)
               // If null (API error), continue with signal generation
               if (positionExists === true) {
-                console.log(`[CRON] ⚠️ Skipping entry signal for ${strategy.name} - position confirmed open on ${exchangeType.toUpperCase()}`);
+                console.log(`[CRON] ⚠️ Skipping entry signal for ${strategy.name} - position confirmed open on BYBIT`);
                 continue;
               } else if (positionExists === null) {
-                console.log(`[CRON] ⚠️ Could not verify ${exchangeType.toUpperCase()} position for ${strategy.name} - continuing with signal generation`);
+                console.log(`[CRON] ⚠️ Could not verify BYBIT position for ${strategy.name} - continuing with signal generation`);
               }
             }
           }

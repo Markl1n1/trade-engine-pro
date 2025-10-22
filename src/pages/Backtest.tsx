@@ -684,7 +684,7 @@ const Backtest = () => {
               <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded text-xs space-y-2">
                 <h4 className="font-semibold text-sm mb-2">Backtest Logic Summary</h4>
                 <div className="space-y-1 text-muted-foreground">
-                  <p><strong>Data Source:</strong> Historical market data from Binance ({selectedStrategyData?.symbol}, {selectedStrategyData?.timeframe} timeframe)</p>
+                  <p><strong>Data Source:</strong> Historical market data from Bybit ({selectedStrategyData?.symbol}, {selectedStrategyData?.timeframe} timeframe)</p>
                   <p><strong>Look-ahead Prevention:</strong> Decisions made using indicators calculated through previous candle (i-1)</p>
                   <p><strong>Execution:</strong> Trades executed at candle {executionTiming} with {slippage}% slippage</p>
                   <p><strong>Entry Rules:</strong> BUY conditions must be met on candle close</p>
@@ -766,7 +766,7 @@ const Backtest = () => {
           <div className="mt-6 p-4 bg-secondary/30 rounded-lg">
             <h4 className="font-semibold text-sm mb-3">Backtest Logic Summary</h4>
             <div className="text-xs space-y-2 text-muted-foreground">
-              <p><strong>Data Source:</strong> Historical Binance data from market_data table</p>
+              <p><strong>Data Source:</strong> Historical Bybit data from market_data table</p>
               <p><strong>Entry:</strong> Buy when ALL buy conditions are met (indicators calculated from historical candles)</p>
               <p><strong>Exit:</strong> Sell when ANY of these occur:</p>
               <ul className="ml-4 space-y-1">

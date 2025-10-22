@@ -72,7 +72,7 @@ Deno.serve(async (req) => {
     }
 
     // Determine exchange type
-    const exchangeType = settings.exchange_type || 'binance';
+    const exchangeType = settings.exchange_type || 'bybit';
     const tradingMode = settings.trading_mode || 'hybrid_safe';
     const useTestnet = settings.use_testnet || false;
     
@@ -89,7 +89,7 @@ Deno.serve(async (req) => {
     // Determine credential type based on exchange and environment
     const credentialType = exchangeType === 'bybit' 
       ? (shouldUseTestnetAPI ? 'bybit_testnet' : 'bybit_mainnet')
-      : (shouldUseTestnetAPI ? 'binance_testnet' : 'binance_mainnet');
+      : (shouldUseTestnetAPI ? 'bybit_testnet' : 'bybit_mainnet');
 
     // Retrieve API credentials from secure vault using admin client
     console.log(`[GET-ACCOUNT-DATA] Fetching credentials for type: ${credentialType}`);
@@ -119,7 +119,7 @@ Deno.serve(async (req) => {
     if (exchangeType === 'bybit') {
       baseUrl = shouldUseTestnetAPI ? 'https://api-testnet.bybit.com' : 'https://api.bybit.com';
     } else {
-      baseUrl = shouldUseTestnetAPI ? 'https://testnet.binancefuture.com' : 'https://fapi.binance.com';
+      baseUrl = shouldUseTestnetAPI ? 'https://api-testnet.bybit.com' : 'https://api.bybit.com';
     }
 
     if (!apiKey || !apiSecret) {
@@ -213,8 +213,8 @@ Deno.serve(async (req) => {
 
       if (!accountResponse.ok) {
         const errorData = await accountResponse.text();
-        console.error('Binance account API error:', errorData);
-        throw new Error(`Binance API error: ${errorData}`);
+        console.error('Bybit account API error:', errorData);
+        throw new Error(`Bybit API error: ${errorData}`);
       }
 
       accountData = await accountResponse.json();
@@ -271,7 +271,7 @@ Deno.serve(async (req) => {
         }
       }
     } else {
-      // Binance trades request
+      // Bybit trades request
       const tradesQueryString = `timestamp=${Date.now()}`;
       const tradesKey = await crypto.subtle.importKey(
         'raw',
@@ -402,7 +402,7 @@ Deno.serve(async (req) => {
         console.error(`[GET-ACCOUNT-DATA] Bybit positions HTTP error: ${positionsResponse.status} ${positionsResponse.statusText}`);
       }
     } else {
-      // Binance data structure
+      // Bybit data structure
       positions = accountData.positions
         ?.filter((pos: any) => parseFloat(pos.positionAmt) !== 0)
         .map((pos: any) => ({

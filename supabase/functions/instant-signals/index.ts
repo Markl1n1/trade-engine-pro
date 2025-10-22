@@ -376,7 +376,7 @@ class PositionExecutionManager {
     console.log(`[INSTANT-SIGNALS] Executing hybrid live position for ${signal.symbol}`);
     
     try {
-      const exchangeType = settings.exchange_type || 'binance';
+      const exchangeType = settings.exchange_type || 'bybit';
       
       // ✅ ПРАВИЛЬНО: Поддержка как Binance, так и Bybit
       let credentials;
@@ -450,7 +450,7 @@ class PositionExecutionManager {
     }
   }
   
-  private async executeRealOrder(signal: TradingSignal, credentials: {apiKey: string, apiSecret: string}, useTestnet: boolean, exchangeType: string = 'binance') {
+  private async executeRealOrder(signal: TradingSignal, credentials: {apiKey: string, apiSecret: string}, useTestnet: boolean, exchangeType: string = 'bybit') {
     console.log(`[INSTANT-SIGNALS] Executing real order via ${exchangeType.toUpperCase()} ${useTestnet ? 'testnet' : 'mainnet'} API`);
     
     try {

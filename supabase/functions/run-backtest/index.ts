@@ -778,11 +778,11 @@ serve(async (req) => {
       .single();
 
     if (settingsError) {
-      console.warn('[BACKTEST] Could not fetch user settings, defaulting to binance:', settingsError);
+      console.warn('[BACKTEST] Could not fetch user settings, defaulting to bybit:', settingsError);
     }
 
     // ✅ ПРАВИЛЬНО: Determine exchange-specific fees
-    const exchangeType = userSettings?.exchange_type || 'binance';
+    const exchangeType = userSettings?.exchange_type || 'bybit';
     let exchangeMakerFee = makerFee;
     let exchangeTakerFee = takerFee;
     
@@ -791,7 +791,7 @@ serve(async (req) => {
       exchangeMakerFee = 0.02;
       exchangeTakerFee = 0.055;
     } else {
-      // Binance fees: 0.02% maker, 0.04% taker (default)
+      // Bybit fees: 0.018% maker, 0.04% taker (default)
       exchangeMakerFee = makerFee;
       exchangeTakerFee = takerFee;
     }
@@ -1691,7 +1691,7 @@ async function runSMACrossoverBacktest(
   const symbol = strategy.symbol || 'BTCUSDT';
   const constraints = exchangeType === 'bybit' 
     ? getBybitConstraints(symbol)
-    : getBinanceConstraints(symbol);
+    : getBybitConstraints(symbol);
   
   const { stepSize, minQty, minNotional } = constraints;
   console.log(`[SMA-BACKTEST] Using ${exchangeType} constraints:`, { stepSize, minQty, minNotional });
@@ -2076,7 +2076,7 @@ async function runMTFMomentumBacktest(
   const symbol = strategy.symbol || 'BTCUSDT';
   const constraints = exchangeType === 'bybit' 
     ? getBybitConstraints(symbol)
-    : getBinanceConstraints(symbol);
+    : getBybitConstraints(symbol);
   
   const { stepSize, minQty, minNotional } = constraints;
   console.log(`[MTF-BACKTEST] Using ${exchangeType} constraints:`, { stepSize, minQty, minNotional });

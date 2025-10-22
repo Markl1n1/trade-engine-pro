@@ -52,7 +52,7 @@ ADD COLUMN IF NOT EXISTS risk_tolerance TEXT NOT NULL DEFAULT 'medium' CHECK (ri
 
 -- Add exchange type field (for future multi-exchange support)
 ALTER TABLE public.user_settings 
-ADD COLUMN IF NOT EXISTS exchange_type TEXT NOT NULL DEFAULT 'binance' CHECK (exchange_type IN ('binance', 'bybit'));
+ADD COLUMN IF NOT EXISTS exchange_type TEXT NOT NULL DEFAULT 'bybit' CHECK (exchange_type IN ('binance', 'bybit'));
 
 -- Add testnet API keys (separate from mainnet)
 ALTER TABLE public.user_settings 

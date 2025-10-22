@@ -55,7 +55,7 @@ CREATE TRIGGER update_trailing_stop_states_updated_at
 -- Fix market_data exchange_type column
 ALTER TABLE market_data 
 ALTER COLUMN exchange_type SET NOT NULL,
-ALTER COLUMN exchange_type SET DEFAULT 'binance';
+ALTER COLUMN exchange_type SET DEFAULT 'bybit';
 
 -- Create index for better query performance
 CREATE INDEX IF NOT EXISTS idx_market_data_exchange_symbol_time 
@@ -70,4 +70,4 @@ ADD CONSTRAINT market_data_exchange_type_check
 CHECK (exchange_type IN ('binance', 'bybit'));
 
 -- Add comment
-COMMENT ON COLUMN market_data.exchange_type IS 'Exchange source: binance or bybit. Default binance for legacy data.';
+COMMENT ON COLUMN market_data.exchange_type IS 'Exchange source: binance or bybit. Default bybit for new data.';

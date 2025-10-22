@@ -136,7 +136,7 @@ const Settings = () => {
     lastRun: null
   });
   const [settings, setSettings] = useState<UserSettings>({
-    exchange_type: 'binance',
+    exchange_type: 'bybit',
     use_testnet: true,
     telegram_bot_token: "",
     telegram_chat_id: "",
@@ -241,7 +241,7 @@ const Settings = () => {
       }
       if (data) {
         setSettings({
-          exchange_type: data.exchange_type as 'binance' | 'bybit' || 'binance',
+          exchange_type: data.exchange_type as 'binance' | 'bybit' || 'bybit',
           use_testnet: data.use_testnet,
           telegram_bot_token: data.telegram_bot_token || "",
           telegram_chat_id: data.telegram_chat_id || "",
@@ -516,7 +516,7 @@ const Settings = () => {
       });
       if (error) throw error;
       if (data.success) {
-        const exchangeName = settings.exchange_type === 'binance' ? 'Binance' : 'Bybit';
+        const exchangeName = settings.exchange_type === 'bybit' ? 'Bybit' : 'Bybit';
         const networkType = useTestnet ? 'Testnet' : 'Mainnet';
         toast({
           title: "Success",
@@ -527,7 +527,7 @@ const Settings = () => {
       }
     } catch (error: any) {
       console.error("Error testing exchange:", error);
-      const exchangeName = settings.exchange_type === 'binance' ? 'Binance' : 'Bybit';
+      const exchangeName = settings.exchange_type === 'bybit' ? 'Bybit' : 'Bybit';
       toast({
         title: "Error",
         description: error.message || `Failed to connect to ${exchangeName}`,
@@ -616,7 +616,7 @@ const Settings = () => {
             <div>
               <Label htmlFor="exchange" className="text-base">Select Exchange</Label>
               <p className="text-sm text-muted-foreground">
-                Choose between Binance or Bybit for trading
+                Choose Bybit for trading
               </p>
             </div>
             <Select value={settings.exchange_type} onValueChange={(value: 'binance' | 'bybit') => updateSetting('exchange_type', value)}>
@@ -624,7 +624,6 @@ const Settings = () => {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="binance">Binance</SelectItem>
                 <SelectItem value="bybit">Bybit</SelectItem>
               </SelectContent>
             </Select>
@@ -708,7 +707,7 @@ const Settings = () => {
       {/* API Keys Section */}
       <Card className="p-6">
         <div className="flex items-center gap-2 mb-4">
-          <h2 className="text-xl font-semibold">{settings.exchange_type === 'binance' ? 'Binance' : 'Bybit'} API Keys</h2>
+          <h2 className="text-xl font-semibold">Bybit API Keys</h2>
           <Shield className="h-5 w-5 text-green-500" />
         </div>
         <Alert className="bg-green-500/5 border-green-500/20 mb-4">
@@ -725,7 +724,7 @@ const Settings = () => {
           </TabsList>
           
           <TabsContent value="mainnet" className="space-y-4 mt-4">
-            {settings.exchange_type === 'binance' ? (
+            {settings.exchange_type === 'bybit' ? (
               credentialStatus.binance_mainnet ? (
                 <div className="flex items-center justify-between p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
                   <div className="flex items-center gap-2">
@@ -797,8 +796,8 @@ const Settings = () => {
               variant="outline" 
               onClick={() => handleTestExchange(false)} 
               disabled={testingBinance || (
-                settings.exchange_type === 'binance' 
-                  ? !credentialStatus.binance_mainnet 
+                settings.exchange_type === 'bybit' 
+                  ? !credentialStatus.bybit_mainnet 
                   : !credentialStatus.bybit_mainnet
               )} 
               className="mt-4 w-full"
@@ -811,14 +810,14 @@ const Settings = () => {
               ) : (
                 <>
                   <CheckCircle className="mr-2 h-4 w-4" />
-                  Test {settings.exchange_type === 'binance' ? 'Binance' : 'Bybit'} Mainnet Connection
+                  Test Bybit Mainnet Connection
                 </>
               )}
             </Button>
           </TabsContent>
 
           <TabsContent value="testnet" className="space-y-4 mt-4">
-            {settings.exchange_type === 'binance' ? (
+            {settings.exchange_type === 'bybit' ? (
               credentialStatus.binance_testnet ? (
                 <div className="flex items-center justify-between p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
                   <div className="flex items-center gap-2">
@@ -890,8 +889,8 @@ const Settings = () => {
               variant="outline" 
               onClick={() => handleTestExchange(true)} 
               disabled={testingBinance || (
-                settings.exchange_type === 'binance' 
-                  ? !credentialStatus.binance_testnet 
+                settings.exchange_type === 'bybit' 
+                  ? !credentialStatus.bybit_testnet 
                   : !credentialStatus.bybit_testnet
               )} 
               className="mt-4 w-full"
@@ -904,7 +903,7 @@ const Settings = () => {
               ) : (
                 <>
                   <CheckCircle className="mr-2 h-4 w-4" />
-                  Test {settings.exchange_type === 'binance' ? 'Binance' : 'Bybit'} Testnet Connection
+                  Test Bybit Testnet Connection
                 </>
               )}
             </Button>
@@ -998,7 +997,7 @@ const Settings = () => {
               {credentialTypeToUpdate?.includes('mainnet') ? 'Mainnet' : 'Testnet'} API Credentials
             </DialogTitle>
             <DialogDescription>
-              Enter your {settings.exchange_type === 'binance' ? 'Binance' : 'Bybit'} API credentials. 
+              Enter your Bybit API credentials. 
               They will be encrypted using pgsodium before storage.
             </DialogDescription>
           </DialogHeader>

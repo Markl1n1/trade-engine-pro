@@ -91,7 +91,7 @@ export const tradingModeSchema = z.enum([
 // Test exchange validation schema
 export const testExchangeSchema = z.object({
   useTestnet: z.boolean(),
-  exchangeType: z.enum(['binance', 'bybit']).default('binance')
+  exchangeType: z.enum(['binance', 'bybit']).default('bybit')
 });
 
 // Audit logs validation schema
