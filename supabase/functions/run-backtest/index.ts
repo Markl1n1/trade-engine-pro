@@ -3346,23 +3346,26 @@ async function run4hReentryBacktest(
       const stopLossPrice = (position as any).stopLossPrice;
       const takeProfitPrice = (position as any).takeProfitPrice;
       
-      // Also check for opposite reentry signals (4h Reentry specific)
+      // DISABLED: Opposite reentry signals (4h Reentry specific)
+      // This was causing positions to close on signals instead of SL/TP
+      // Now SL/TP have priority and positions only close on risk management
       let shouldExitOnSignal = false;
       let exitSignalReason = '';
       
-      if (position.type === 'buy') {
-        // Exit LONG on SHORT reentry signal
-        if (C_prev > currentDayRange.H_4h && C_curr <= currentDayRange.H_4h) {
-          shouldExitOnSignal = true;
-          exitSignalReason = 'SHORT_REENTRY_SIGNAL';
-        }
-      } else if (position.type === 'sell') {
-        // Exit SHORT on LONG reentry signal  
-        if (C_prev < currentDayRange.L_4h && C_curr >= currentDayRange.L_4h) {
-          shouldExitOnSignal = true;
-          exitSignalReason = 'LONG_REENTRY_SIGNAL';
-        }
-      }
+      // DISABLED: Check for opposite reentry signals
+      // if (position.type === 'buy') {
+      //   // Exit LONG on SHORT reentry signal
+      //   if (C_prev > currentDayRange.H_4h && C_curr <= currentDayRange.H_4h) {
+      //     shouldExitOnSignal = true;
+      //     exitSignalReason = 'SHORT_REENTRY_SIGNAL';
+      //   }
+      // } else if (position.type === 'sell') {
+      //   // Exit SHORT on LONG reentry signal  
+      //   if (C_prev < currentDayRange.L_4h && C_curr >= currentDayRange.L_4h) {
+      //     shouldExitOnSignal = true;
+      //     exitSignalReason = 'LONG_REENTRY_SIGNAL';
+      //   }
+      // }
       
       let exitPrice: number | null = null;
       let exitReason = '';
