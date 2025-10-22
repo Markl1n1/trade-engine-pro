@@ -3187,34 +3187,34 @@ async function run4hReentryBacktest(
       // LONG setup: C_{t-1} < L_4h AND C_t >= L_4h
       if (C_prev < currentDayRange.L_4h && C_curr >= currentDayRange.L_4h) {
         shouldEnterLong = true;
-        const entryPrice = C_curr;
-        // Use UI parameters for SL/TP instead of hardcoded values
-        const slPercent = stopLossPercent || strategy.stop_loss_percent || 5.0; // Use UI SL% or strategy default
-        const tpPercent = takeProfitPercent || strategy.take_profit_percent || 10.0; // Use UI TP% or strategy default
-        stopLossPrice = entryPrice * (1 - slPercent / 100); // Use UI SL%
-        takeProfitPrice = entryPrice * (1 + tpPercent / 100); // Use UI TP%
-        
-        console.log(`[${i}] ${nyTimeStr} LONG re-entry: C_prev=${C_prev.toFixed(2)} < L_4h=${currentDayRange.L_4h.toFixed(2)}, C_curr=${C_curr.toFixed(2)} >= L_4h | Entry=${entryPrice.toFixed(2)}, SL=${stopLossPrice.toFixed(2)} (-${slPercent}%), TP=${takeProfitPrice.toFixed(2)} (+${tpPercent}%)`);
+        console.log(`[${i}] ${nyTimeStr} LONG re-entry signal: C_prev=${C_prev.toFixed(2)} < L_4h=${currentDayRange.L_4h.toFixed(2)}, C_curr=${C_curr.toFixed(2)} >= L_4h`);
       }
       // SHORT setup: C_{t-1} > H_4h AND C_t <= H_4h
       else if (C_prev > currentDayRange.H_4h && C_curr <= currentDayRange.H_4h) {
         shouldEnterShort = true;
-        const entryPrice = C_curr;
-        // Use UI parameters for SL/TP instead of hardcoded values
-        const slPercent = stopLossPercent || strategy.stop_loss_percent || 5.0; // Use UI SL% or strategy default
-        const tpPercent = takeProfitPercent || strategy.take_profit_percent || 10.0; // Use UI TP% or strategy default
-        stopLossPrice = entryPrice * (1 + slPercent / 100); // Use UI SL% (higher price for SHORT)
-        takeProfitPrice = entryPrice * (1 - tpPercent / 100); // Use UI TP% (lower price for SHORT)
-        
-        console.log(`[${i}] ${nyTimeStr} SHORT re-entry: C_prev=${C_prev.toFixed(2)} > H_4h=${currentDayRange.H_4h.toFixed(2)}, C_curr=${C_curr.toFixed(2)} <= H_4h | Entry=${entryPrice.toFixed(2)}, SL=${stopLossPrice.toFixed(2)} (+${slPercent}%), TP: ${takeProfitPrice.toFixed(2)} (-${tpPercent}%)`);
+        console.log(`[${i}] ${nyTimeStr} SHORT re-entry signal: C_prev=${C_prev.toFixed(2)} > H_4h=${currentDayRange.H_4h.toFixed(2)}, C_curr=${C_curr.toFixed(2)} <= H_4h`);
       }
 
       if (shouldEnterLong || shouldEnterShort) {
-        // Determine execution price
+        // Determine execution price FIRST
         const executionPrice = executionTiming === 'open' ? currentCandle.open : currentCandle.close;
         const priceWithSlippage = shouldEnterLong 
           ? executionPrice * (1 + slippage / 100)
           : executionPrice * (1 - slippage / 100);
+        
+        // FIXED: Calculate SL/TP based on ACTUAL entry price with slippage
+        const slPercent = stopLossPercent || strategy.stop_loss_percent || 5.0;
+        const tpPercent = takeProfitPercent || strategy.take_profit_percent || 10.0;
+        
+        if (shouldEnterLong) {
+          stopLossPrice = priceWithSlippage * (1 - slPercent / 100);
+          takeProfitPrice = priceWithSlippage * (1 + tpPercent / 100);
+        } else {
+          stopLossPrice = priceWithSlippage * (1 + slPercent / 100);
+          takeProfitPrice = priceWithSlippage * (1 - tpPercent / 100);
+        }
+        
+        console.log(`[${i}] ${nyTimeStr} Entry Price: ${priceWithSlippage.toFixed(2)}, SL: ${stopLossPrice.toFixed(2)} (${slPercent}%), TP: ${takeProfitPrice.toFixed(2)} (${tpPercent}%)`);
 
         // Calculate position size
         const positionSizeUSD = (availableBalance * (strategy.position_size_percent || 100)) / 100;
