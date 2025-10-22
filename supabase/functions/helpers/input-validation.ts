@@ -58,7 +58,11 @@ export const backtestSchema = z.object({
   takeProfitPercent: z.number().min(0, 'Take profit cannot be negative').max(1000, 'Take profit cannot exceed 1000%').optional(),
   trailingStopPercent: z.number().min(0, 'Trailing stop cannot be negative').max(100, 'Trailing stop cannot exceed 100%').optional(),
   productType: z.enum(['spot', 'futures']).optional(),
-  executionTiming: z.enum(['open', 'close']).optional()
+  executionTiming: z.enum(['open', 'close']).optional(),
+  // New optional flags to better simulate exchange behavior
+  exitOnOppositeSignal: z.boolean().optional(),
+  useFirstTouch: z.boolean().optional(),
+  executeCloseOnNextOpen: z.boolean().optional()
 });
 
 // Close position validation schema

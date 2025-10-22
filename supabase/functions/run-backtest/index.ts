@@ -230,7 +230,7 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
         position.exit_time = currentCandle.open_time;
         position.profit = netProfit;
         balance += (position.entry_price * position.quantity) + netProfit;
-        trades.push(position);
+      trades.push(position);
         position = null;
         trailingStopManager.reset();
         
@@ -711,7 +711,10 @@ serve(async (req) => {
       takeProfitPercent: body.takeProfitPercent,
       trailingStopPercent: body.trailingStopPercent,
       productType: body.productType || 'spot',
-      executionTiming: body.executionTiming || 'close'
+      executionTiming: body.executionTiming || 'close',
+      exitOnOppositeSignal: body.exitOnOppositeSignal,
+      useFirstTouch: body.useFirstTouch,
+      executeCloseOnNextOpen: body.executeCloseOnNextOpen
     });
     
     const { 
@@ -731,6 +734,9 @@ serve(async (req) => {
     // These have defaults in schema but TypeScript doesn't know that
     const productType = validated.productType ?? 'spot';
     const executionTiming = validated.executionTiming ?? 'close';
+    const exitOnOppositeSignal = validated.exitOnOppositeSignal ?? true;
+    const useFirstTouch = validated.useFirstTouch ?? true;
+    const executeCloseOnNextOpen = validated.executeCloseOnNextOpen ?? true;
 
     log(`Running backtest for strategy ${strategyId} (${productType.toUpperCase()}, ${leverage}x leverage)`);
     log(`[BACKTEST] Parameters received:`, {
@@ -739,7 +745,11 @@ serve(async (req) => {
       trailingStopPercent,
       initialBalance,
       productType,
-      leverage
+      leverage,
+      executionTiming,
+      exitOnOppositeSignal,
+      useFirstTouch,
+      executeCloseOnNextOpen
     });
 
     const supabaseClient = createClient(
@@ -2834,6 +2844,7 @@ async function runMSTGBacktest(
         position.exit_price = exitPriceWithSlippage;
         position.exit_time = currentCandle.open_time;
         position.profit = pnl;
+        (position as any).exit_reason = exitReason;
         trades.push({ ...position });
         position = null;
 
@@ -2943,6 +2954,7 @@ async function runMSTGBacktest(
     position.exit_price = exitPrice;
     position.exit_time = lastCandle.open_time;
     position.profit = pnl;
+    (position as any).exit_reason = 'END_OF_PERIOD';
     trades.push({ ...position });
   }
 
@@ -3197,7 +3209,11 @@ async function run4hReentryBacktest(
 
       if (shouldEnterLong || shouldEnterShort) {
         // Determine execution price FIRST
-        const executionPrice = executionTiming === 'open' ? currentCandle.open : currentCandle.close;
+        let executionPrice = executionTiming === 'open' ? currentCandle.open : currentCandle.close;
+        // If we execute on close but want exchange-like next-open fill, shift to next candle open when available
+        if (executeCloseOnNextOpen && executionTiming === 'close' && (i + 1) < candles.length) {
+          executionPrice = candles[i + 1].open;
+        }
         const priceWithSlippage = shouldEnterLong 
           ? executionPrice * (1 + slippage / 100)
           : executionPrice * (1 - slippage / 100);
@@ -3324,14 +3340,23 @@ async function run4hReentryBacktest(
         const tpHit = currentCandle.high >= takeProfitPrice;
         
         if (slHit && tpHit) {
-          exitPrice = stopLossPrice;
-          exitReason = 'STOP_LOSS';
+          if (useFirstTouch) {
+            // First-touch heuristic using distance from open
+            const distToSL = Math.abs((executionTiming === 'open' ? currentCandle.open : currentCandle.close) - stopLossPrice);
+            const distToTP = Math.abs((executionTiming === 'open' ? currentCandle.open : currentCandle.close) - takeProfitPrice);
+            if (distToSL <= distToTP) {
+              exitPrice = stopLossPrice; exitReason = 'STOP_LOSS_FIRST_TOUCH';
+            } else {
+              exitPrice = takeProfitPrice; exitReason = 'TAKE_PROFIT_FIRST_TOUCH';
+            }
+          } else {
+            // Conservative
+            exitPrice = stopLossPrice; exitReason = 'STOP_LOSS';
+          }
         } else if (slHit) {
-          exitPrice = stopLossPrice;
-          exitReason = 'STOP_LOSS';
+          exitPrice = stopLossPrice; exitReason = 'STOP_LOSS';
         } else if (tpHit) {
-          exitPrice = takeProfitPrice;
-          exitReason = 'TAKE_PROFIT';
+          exitPrice = takeProfitPrice; exitReason = 'TAKE_PROFIT';
         }
       } else {
         // SHORT position
@@ -3339,20 +3364,31 @@ async function run4hReentryBacktest(
         const tpHit = currentCandle.low <= takeProfitPrice;
         
         if (slHit && tpHit) {
-          exitPrice = stopLossPrice;
-          exitReason = 'STOP_LOSS';
+          if (useFirstTouch) {
+            const distToSL = Math.abs((executionTiming === 'open' ? currentCandle.open : currentCandle.close) - stopLossPrice);
+            const distToTP = Math.abs((executionTiming === 'open' ? currentCandle.open : currentCandle.close) - takeProfitPrice);
+            if (distToSL <= distToTP) {
+              exitPrice = stopLossPrice; exitReason = 'STOP_LOSS_FIRST_TOUCH';
+            } else {
+              exitPrice = takeProfitPrice; exitReason = 'TAKE_PROFIT_FIRST_TOUCH';
+            }
+          } else {
+            exitPrice = stopLossPrice; exitReason = 'STOP_LOSS';
+          }
         } else if (slHit) {
-          exitPrice = stopLossPrice;
-          exitReason = 'STOP_LOSS';
+          exitPrice = stopLossPrice; exitReason = 'STOP_LOSS';
         } else if (tpHit) {
-          exitPrice = takeProfitPrice;
-          exitReason = 'TAKE_PROFIT';
+          exitPrice = takeProfitPrice; exitReason = 'TAKE_PROFIT';
         }
       }
       
       // Priority 2: Check for opposite reentry signals (only if no SL/TP hit)
       if (!exitPrice && shouldExitOnSignal) {
-        exitPrice = executionTiming === 'open' ? currentCandle.open : currentCandle.close;
+        let execPrice = executionTiming === 'open' ? currentCandle.open : currentCandle.close;
+        if (executeCloseOnNextOpen && executionTiming === 'close' && (i + 1) < candles.length) {
+          execPrice = candles[i + 1].open;
+        }
+        exitPrice = execPrice;
         exitReason = exitSignalReason;
         console.log(`[${i}] ${nyTimeStr} 🚨 EXIT SIGNAL: ${exitSignalReason} at ${exitPrice.toFixed(2)}`);
       }
@@ -3459,6 +3495,13 @@ async function run4hReentryBacktest(
 
   console.log(`4h Reentry backtest complete: ${trades.length} trades, ${winRate.toFixed(1)}% win rate, PF: ${profitFactor.toFixed(2)}`);
 
+  // Exit reason summary
+  const exitSummary = trades.reduce((acc: Record<string, number>, t: any) => {
+    const reason = (t as any).exit_reason || 'UNKNOWN';
+    acc[reason] = (acc[reason] || 0) + 1;
+    return acc;
+  }, {});
+
   // Save backtest results
   await supabaseClient
     .from('strategy_backtest_results')
@@ -3492,21 +3535,9 @@ async function run4hReentryBacktest(
         profit_factor: profitFactor,
         avg_win: avgWin,
         avg_loss: avgLoss,
-        balance_history: balanceHistory,
-        trades,
-        config: {
-          strategy_type: '4h_reentry',
-          product_type: productType,
-          leverage,
-          maker_fee: makerFee,
-          taker_fee: takerFee,
-          slippage,
-          execution_timing: executionTiming,
-          session_start: sessionStart,
-          session_end: sessionEnd,
-          risk_reward_ratio: riskRewardRatio
-        }
+        exit_summary: exitSummary
       },
+      trades
     }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
   );
