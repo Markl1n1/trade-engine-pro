@@ -3346,10 +3346,35 @@ async function run4hReentryBacktest(
       const stopLossPrice = (position as any).stopLossPrice;
       const takeProfitPrice = (position as any).takeProfitPrice;
       
+      // Also check for opposite reentry signals (4h Reentry specific)
+      let shouldExitOnSignal = false;
+      let exitSignalReason = '';
+      
+      if (position.type === 'buy') {
+        // Exit LONG on SHORT reentry signal
+        if (C_prev > currentDayRange.H_4h && C_curr <= currentDayRange.H_4h) {
+          shouldExitOnSignal = true;
+          exitSignalReason = 'SHORT_REENTRY_SIGNAL';
+        }
+      } else if (position.type === 'sell') {
+        // Exit SHORT on LONG reentry signal  
+        if (C_prev < currentDayRange.L_4h && C_curr >= currentDayRange.L_4h) {
+          shouldExitOnSignal = true;
+          exitSignalReason = 'LONG_REENTRY_SIGNAL';
+        }
+      }
+      
       let exitPrice: number | null = null;
       let exitReason = '';
       
-      if (position.type === 'buy') {
+      // Priority 1: Check for opposite reentry signals (4h Reentry specific)
+      if (shouldExitOnSignal) {
+        exitPrice = executionTiming === 'open' ? currentCandle.open : currentCandle.close;
+        exitReason = exitSignalReason;
+        console.log(`[${i}] ${nyTimeStr} 🚨 EXIT SIGNAL: ${exitSignalReason} at ${exitPrice.toFixed(2)}`);
+      }
+      // Priority 2: Check SL/TP only if no signal exit
+      else if (position.type === 'buy') {
         // LONG position
         const slHit = currentCandle.low <= stopLossPrice;
         const tpHit = currentCandle.high >= takeProfitPrice;
