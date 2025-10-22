@@ -37,6 +37,9 @@ verify_jwt = false
 [functions.get-hybrid-market-data]
 verify_jwt = true
 
+[functions.refresh-market-data]
+verify_jwt = false
+
 # MONITORING AND QUALITY
 [functions.data-quality-monitor]
 verify_jwt = true
