@@ -274,6 +274,27 @@ const Backtest = () => {
                 onChange={(e) => setStartDate(e.target.value)}
                 className="mt-1"
               />
+              {selectedStrategyData && (() => {
+                const timeframeToHours: Record<string, number> = {
+                  '1m': 1/60, '5m': 5/60, '15m': 15/60, '30m': 0.5, '1h': 1, '2h': 2, '4h': 4, '1d': 24
+                };
+                const hoursPerCandle = timeframeToHours[selectedStrategyData.timeframe] || 1;
+                const requiredCandles = selectedStrategyData.strategy_type === 'sma_crossover' || 
+                                       selectedStrategyData.strategy_type === 'sma_20_200_rsi' ? 240 : 150;
+                const minimumDays = Math.ceil((requiredCandles * hoursPerCandle) / 24);
+                const currentRangeDays = Math.floor(
+                  (new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)
+                );
+                
+                if (currentRangeDays < minimumDays) {
+                  return (
+                    <p className="text-[10px] text-yellow-600 dark:text-yellow-500 mt-1">
+                      ⚠️ Insufficient range: {currentRangeDays} days (need {minimumDays}+ days for {selectedStrategyData.strategy_type || 'standard'} on {selectedStrategyData.timeframe})
+                    </p>
+                  );
+                }
+                return null;
+              })()}
             </div>
 
             <div>
@@ -483,6 +504,9 @@ const Backtest = () => {
               <div>
                 <Label className="text-xs text-muted-foreground flex items-center gap-2">
                   Trailing Stop (%)
+                  {parseFloat(trailingStopPercent) === 0 && (
+                    <span className="text-[10px] text-yellow-600 dark:text-yellow-500">⚠️ Disabled</span>
+                  )}
                   <TooltipProvider>
                     <UITooltip>
                       <TooltipTrigger asChild>
@@ -508,6 +532,11 @@ const Backtest = () => {
                   step="1"
                   placeholder="20"
                 />
+                {parseFloat(trailingStopPercent) === 0 && (
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Trailing stop disabled. Consider enabling (15-20%) to lock in profits during strong trends.
+                  </p>
+                )}
               </div>
             </div>
 

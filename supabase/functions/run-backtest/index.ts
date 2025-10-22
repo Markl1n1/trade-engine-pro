@@ -343,7 +343,8 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
     losing_trades: losingTrades, 
     win_rate: winRate, 
     max_drawdown: maxDrawdown, 
-    sharpe_ratio: 0 
+    sharpe_ratio: 0,
+    balance_history: balanceHistory
   });
 
   return new Response(
@@ -1009,11 +1010,70 @@ serve(async (req) => {
       sample: marketData[0]
     });
     
-    const requiredCandles = strategy.timeframe === '15m' ? 400 : strategy.timeframe === '5m' ? 1200 : 5000;
-    log(`Required minimum for timeframe`, { timeframe: strategy.timeframe, requiredCandles });
+    // Calculate required candles based on strategy type and indicators
+    let requiredCandles = 200; // Default minimum
     
+    // Check if strategy uses SMA-200 or other long-period indicators
+    const strategyType = strategy.strategy_type || 'standard';
+    if (strategyType === 'sma_crossover' || strategyType === 'sma_20_200_rsi') {
+      requiredCandles = Math.max(requiredCandles, 200); // SMA-200 needs 200 candles
+    }
+    
+    // Check conditions for large period indicators
+    if (normalizedConditions && normalizedConditions.length > 0) {
+      normalizedConditions.forEach((cond: any) => {
+        const period1 = cond.period_1 || 0;
+        const period2 = cond.period_2 || 0;
+        const maxPeriod = Math.max(period1, period2);
+        if (maxPeriod > requiredCandles) {
+          requiredCandles = maxPeriod;
+        }
+      });
+    }
+    
+    // Add 20% buffer for warmup
+    requiredCandles = Math.ceil(requiredCandles * 1.2);
+    
+    // Calculate minimum days needed based on timeframe
+    const timeframeToHours: Record<string, number> = {
+      '1m': 1/60, '5m': 5/60, '15m': 15/60, '30m': 0.5, '1h': 1, '2h': 2, '4h': 4, '1d': 24
+    };
+    const hoursPerCandle = timeframeToHours[strategy.timeframe] || 1;
+    const minimumDays = Math.ceil((requiredCandles * hoursPerCandle) / 24);
+    
+    log(`Required minimum for strategy`, { 
+      strategyType, 
+      timeframe: strategy.timeframe, 
+      requiredCandles, 
+      minimumDays 
+    });
+    
+    // CRITICAL VALIDATION: Return error if insufficient data
     if (marketData.length < requiredCandles) {
-      log(`Only partial candles available`, { have: marketData.length, required: requiredCandles });
+      const errorMessage = `Insufficient data: Have ${marketData.length} candles, need ${requiredCandles} minimum. Please extend date range to at least ${minimumDays} days.`;
+      log(`BACKTEST BLOCKED: ${errorMessage}`, { 
+        available: marketData.length, 
+        required: requiredCandles,
+        currentDays: Math.floor((new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)),
+        recommendedDays: minimumDays
+      });
+      
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: errorMessage,
+          debug: {
+            available_candles: marketData.length,
+            required_candles: requiredCandles,
+            timeframe: strategy.timeframe,
+            strategy_type: strategyType,
+            current_date_range_days: Math.floor((new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)),
+            recommended_minimum_days: minimumDays,
+            debugLogs: debug ? debugLogs : undefined
+          }
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
     }
 
     log(`Preparing candles`, { count: marketData.length });
@@ -2972,6 +3032,7 @@ async function runMSTGBacktest(
       losing_trades: losingTrades,
       win_rate: winRate,
       max_drawdown: maxDrawdown,
+      balance_history: balanceHistory
     });
 
   return new Response(
@@ -3425,6 +3486,7 @@ async function run4hReentryBacktest(
       losing_trades: losingTrades,
       win_rate: winRate,
       max_drawdown: maxDrawdown,
+      balance_history: balanceHistory
     });
 
   return new Response(

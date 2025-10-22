@@ -527,6 +527,7 @@ export type Database = {
       }
       strategy_backtest_results: {
         Row: {
+          balance_history: Json | null
           created_at: string
           end_date: string
           final_balance: number
@@ -543,6 +544,7 @@ export type Database = {
           winning_trades: number
         }
         Insert: {
+          balance_history?: Json | null
           created_at?: string
           end_date: string
           final_balance: number
@@ -559,6 +561,7 @@ export type Database = {
           winning_trades: number
         }
         Update: {
+          balance_history?: Json | null
           created_at?: string
           end_date?: string
           final_balance?: number
