@@ -86,6 +86,7 @@ async function getCurrentPrice(symbol: string, exchangeType: string = 'bybit'): 
       const data = await response.json();
       return parseFloat(data.price);
     }
+    throw new Error(`Failed to fetch price for ${symbol}`);
   } catch (error) {
     console.error(`[TRAILING-MONITOR] Failed to get current price for ${symbol}:`, error);
     throw error;

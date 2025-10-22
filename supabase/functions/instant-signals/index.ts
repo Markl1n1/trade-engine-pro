@@ -17,6 +17,7 @@ interface TradingSignal {
   mode: string;
   priority: 'critical' | 'high' | 'medium' | 'low';
   channels: string[];
+  trailingStopPercent?: number;
   metadata: {
     indicators?: any;
     conditions?: any;
@@ -502,7 +503,7 @@ class PositionExecutionManager {
       );
       
       // Store trailing stop manager in database for monitoring
-      await this.storeTrailingStopState(signal.userId, orderResult.orderId.toString(), trailingStopManager);
+      await this.storeTrailingStopState(signal.userId, orderResult.orderId.toString(), signal, trailingStopManager);
       
       // Start real-time WebSocket monitoring for this position
       await this.startRealtimeMonitoring(signal.symbol);
@@ -526,7 +527,7 @@ class PositionExecutionManager {
   }
   
   // Store trailing stop state in database for monitoring
-  private async storeTrailingStopState(userId: string, positionId: string, trailingStopManager: LiveTrailingStopManager) {
+  private async storeTrailingStopState(userId: string, positionId: string, signal: TradingSignal, trailingStopManager: LiveTrailingStopManager) {
     try {
       const supabase = createClient(
         Deno.env.get('SUPABASE_URL') ?? '',
