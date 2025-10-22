@@ -60,6 +60,7 @@ serve(async (req) => {
           const candles = klines.map((k: any) => ({
             symbol,
             timeframe: interval,
+            exchange_type: 'binance',
             open_time: k[0],
             open: parseFloat(k[1]),
             high: parseFloat(k[2]),
@@ -134,6 +135,7 @@ serve(async (req) => {
     const candles = klines.map((k: any) => ({
       symbol,
       timeframe: interval,
+      exchange_type: 'binance',
       open_time: k[0],
       open: parseFloat(k[1]),
       high: parseFloat(k[2]),

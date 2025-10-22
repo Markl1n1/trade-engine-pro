@@ -688,7 +688,6 @@ serve(async (req) => {
         .select('*')
         .eq('symbol', strategy.symbol)
         .eq('timeframe', strategy.timeframe)
-        .eq('exchange_type', exchangeType)
         .gte('open_time', new Date(startDate).getTime())
         .lte('open_time', new Date(endDate).getTime())
         .order('open_time', { ascending: true })
@@ -713,6 +712,63 @@ serve(async (req) => {
     }
 
     let marketData = allMarketData;
+
+    // If nothing found, try again constrained by exchange_type for explicit datasets
+    if ((!marketData || marketData.length === 0) && exchangeType) {
+      console.warn(`[BACKTEST] No candles without exchange filter. Retrying with exchange_type='${exchangeType}'`);
+      allMarketData = [];
+      from = 0;
+      hasMore = true;
+      while (hasMore) {
+        const { data: batch, error: batchError } = await supabaseClient
+          .from('market_data')
+          .select('*')
+          .eq('symbol', strategy.symbol)
+          .eq('timeframe', strategy.timeframe)
+          .eq('exchange_type', exchangeType)
+          .gte('open_time', new Date(startDate).getTime())
+          .lte('open_time', new Date(endDate).getTime())
+          .order('open_time', { ascending: true })
+          .range(from, from + batchSize - 1);
+
+        if (batchError) break;
+        if (!batch || batch.length === 0) { hasMore = false; } else {
+          allMarketData = allMarketData.concat(batch);
+          if (batch.length < batchSize) { hasMore = false; } else { from += batchSize; }
+        }
+      }
+      marketData = allMarketData;
+    }
+
+    // If still no data and exchange is Bybit, try Binance fallback first
+    if ((!marketData || marketData.length === 0) && exchangeType === 'bybit') {
+      console.warn(`[BACKTEST] No Bybit data found. Attempting Binance fallback...`);
+      allMarketData = [];
+      from = 0;
+      hasMore = true;
+      while (hasMore) {
+        const { data: batch, error: batchError } = await supabaseClient
+          .from('market_data')
+          .select('*')
+          .eq('symbol', strategy.symbol)
+          .eq('timeframe', strategy.timeframe)
+          .eq('exchange_type', 'binance')
+          .gte('open_time', new Date(startDate).getTime())
+          .lte('open_time', new Date(endDate).getTime())
+          .order('open_time', { ascending: true })
+          .range(from, from + batchSize - 1);
+
+        if (batchError) break;
+        if (!batch || batch.length === 0) { hasMore = false; } else {
+          allMarketData = allMarketData.concat(batch);
+          if (batch.length < batchSize) { hasMore = false; } else { from += batchSize; }
+        }
+      }
+      if (allMarketData.length > 0) {
+        marketData = allMarketData;
+        console.log(`✅ Using ${allMarketData.length} Binance candles as fallback for Bybit backtest`);
+      }
+    }
 
     // Fallback to Binance data if selected exchange has no data
     if ((!marketData || marketData.length === 0) && exchangeType !== 'binance') {
@@ -759,18 +815,35 @@ serve(async (req) => {
     }
 
     if (!marketData || marketData.length === 0) {
-      const exchangeInfo = exchangeType === 'bybit' ? 'ByBit (tried Binance fallback)' : exchangeType;
-      throw new Error(
-        `No market data found for ${strategy.symbol} on ${strategy.timeframe} timeframe for ${exchangeInfo} exchange.\n\n` +
-        `📊 Data Range Requested: ${new Date(startDate).toISOString().split('T')[0]} to ${new Date(endDate).toISOString().split('T')[0]}\n\n` +
-        `✅ Solutions:\n` +
-        `1. Ensure exchange-websocket-monitor is running and collecting data for ${strategy.symbol}\n` +
-        `2. Check if ${strategy.symbol} is added in Trading Pairs Manager\n` +
-        `3. Wait 15-30 minutes for enough ${strategy.timeframe} candles to accumulate\n` +
-        `4. Try a different date range with existing historical data\n` +
-        `5. For ${exchangeType === 'bybit' ? 'ByBit' : 'Binance'}, verify the symbol is available on the exchange\n\n` +
-        `💡 Tip: Start with a smaller date range (1-7 days) for faster testing.`
-      );
+      console.warn(`[BACKTEST] No market data found locally. Fetching from Binance API for on-the-fly backtest...`);
+      // On-the-fly fetch from Binance without persisting is enough to run a backtest
+      const interval = strategy.timeframe;
+      const startMs = new Date(startDate).getTime();
+      const endMs = new Date(endDate).getTime();
+      const batchSize = 1000;
+      const intervalMs = (() => { const u = interval.slice(-1), v = parseInt(interval.slice(0,-1));
+        switch(u){case 'm': return v*60*1000; case 'h': return v*60*60*1000; case 'd': return v*24*60*60*1000; default: return 60*1000;} })();
+      let pointer = startMs;
+      const fetched:any[] = [];
+      while (pointer < endMs) {
+        const endChunk = Math.min(pointer + batchSize*intervalMs, endMs);
+        const url = `https://api.binance.com/api/v3/klines?symbol=${strategy.symbol}&interval=${interval}&limit=${batchSize}&startTime=${pointer}&endTime=${endChunk}`;
+        const resp = await fetch(url);
+        if (!resp.ok) break;
+        const kl = await resp.json();
+        if (!kl || kl.length===0) break;
+        fetched.push(...kl.map((k:any)=>({
+          open: parseFloat(k[1]), high: parseFloat(k[2]), low: parseFloat(k[3]), close: parseFloat(k[4]), volume: parseFloat(k[5]),
+          open_time: k[0], close_time: k[6]
+        })));
+        pointer = kl[kl.length-1][6] + 1;
+        if (kl.length < batchSize) break;
+      }
+      if (fetched.length === 0) {
+        const exchangeInfo = exchangeType === 'bybit' ? 'ByBit (tried Binance fallback)' : exchangeType;
+        throw new Error(`No market data available for ${strategy.symbol} ${strategy.timeframe} on ${exchangeInfo} and Binance.`);
+      }
+      marketData = fetched as any[];
     }
 
     console.log(`Total candles fetched: ${marketData.length}`);

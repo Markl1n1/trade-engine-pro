@@ -30,12 +30,6 @@ const Backtest = () => {
   const [executionTiming, setExecutionTiming] = useState<string>("close");
   const [isRunning, setIsRunning] = useState(false);
   const [results, setResults] = useState<any>(null);
-  const [isLoadingData, setIsLoadingData] = useState(false);
-  const [loadingProgress, setLoadingProgress] = useState<{
-    current: number;
-    total: number;
-    percentage: number;
-  } | null>(null);
   const [dataStats, setDataStats] = useState<any>(null);
   const [backtestEngine, setBacktestEngine] = useState<string>("advanced");
   const [comparisonResults, setComparisonResults] = useState<any>(null);
@@ -91,100 +85,32 @@ const Backtest = () => {
   };
 
   const checkDataAvailability = async () => {
-    const { data, error } = await supabase
-      .from('market_data')
-      .select('symbol, timeframe, open_time')
-      .order('open_time', { ascending: false })
-      .limit(1);
-
-    if (error) {
-      console.error('Error checking data availability:', error);
-      return;
-    }
-
-    if (data && data.length > 0) {
-      const { count } = await supabase
-        .from('market_data')
-        .select('*', { count: 'exact', head: true });
-      
-      setDataStats({
-        available: true,
-        totalRecords: count || 0,
-        lastUpdate: new Date(data[0].open_time),
-      });
-    } else {
-      setDataStats({ available: false, totalRecords: 0 });
-    }
-  };
-
-  const loadHistoricalData = async (months: number = 1) => {
-    if (!selectedStrategy) {
-      toast({
-        title: "Please select a strategy first",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsLoadingData(true);
-    setLoadingProgress(null);
-    
+    // Optional informational card; no longer blocks running
     try {
-      const strategy = strategies.find(s => s.id === selectedStrategy);
-      const endTimestamp = new Date().getTime();
-      const startTimestamp = endTimestamp - (months * 30 * 24 * 60 * 60 * 1000);
-
-      toast({
-        title: "Loading historical data",
-        description: `Fetching ${months} month(s) of ${strategy.symbol} data. This may take a moment...`,
-      });
-
-      const { data, error } = await supabase.functions.invoke('binance-market-data', {
-        body: {
-          symbol: strategy.symbol,
-          interval: strategy.timeframe,
-          startTime: startTimestamp,
-          endTime: endTimestamp,
-          batchMode: true
-        }
-      });
-
-      if (error) throw error;
-
-      const totalCandles = data.totalCandles || 0;
-      const batches = data.batches || { total: 0, successful: 0, failed: 0 };
-
-      if (batches.failed > 0) {
-        toast({
-          title: "Partial data load",
-          description: `Loaded ${totalCandles.toLocaleString()} candles. ${batches.failed} batches failed.`,
-          variant: "default",
-        });
-      } else {
-        toast({
-          title: "Historical data loaded successfully",
-          description: `Loaded ${totalCandles.toLocaleString()} candles for ${strategy.symbol} (${batches.successful} batches)`,
-        });
-      }
-
-      await checkDataAvailability();
-    } catch (error: any) {
-      console.error('Error loading historical data:', error);
-      toast({
-        title: "Failed to load historical data",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoadingData(false);
-      setLoadingProgress(null);
+      const { count } = await supabase.from('market_data').select('*', { count: 'exact', head: true });
+      setDataStats({ available: (count || 0) > 0, totalRecords: count || 0 });
+    } catch {
+      setDataStats(null);
     }
   };
+
+  // Historical data buttons removed; backtest will fetch as needed
 
   const runBacktest = async (engineOverride?: string) => {
     if (!selectedStrategy) {
       toast({
         title: "Please select a strategy",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Basic validation: strategy must have symbol and timeframe
+    const strategy = strategies.find(s => s.id === selectedStrategy);
+    if (!strategy?.symbol || !strategy?.timeframe) {
+      toast({
+        title: "Invalid strategy configuration",
+        description: "Strategy must have Symbol and Timeframe set before backtesting.",
         variant: "destructive",
       });
       return;
@@ -562,46 +488,12 @@ const Backtest = () => {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">Load Historical Data</Label>
-              <div className="grid grid-cols-3 gap-2">
-                <Button
-                  onClick={() => loadHistoricalData(1)}
-                  disabled={!selectedStrategy || isLoadingData}
-                  variant="outline"
-                  size="sm"
-                >
-                  1 Month
-                </Button>
-                <Button
-                  onClick={() => loadHistoricalData(3)}
-                  disabled={!selectedStrategy || isLoadingData}
-                  variant="outline"
-                  size="sm"
-                >
-                  3 Months
-                </Button>
-                <Button
-                  onClick={() => loadHistoricalData(6)}
-                  disabled={!selectedStrategy || isLoadingData}
-                  variant="outline"
-                  size="sm"
-                >
-                  6 Months
-                </Button>
-              </div>
-              {isLoadingData && (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>Loading historical data... This may take a few moments.</span>
-                </div>
-              )}
-            </div>
+            {/* Historical data controls removed: data is fetched automatically during backtest */}
 
             <Button 
               className="w-full gap-2" 
               onClick={() => runBacktest()}
-              disabled={isRunning || !selectedStrategy || !dataStats?.available}
+              disabled={isRunning || !selectedStrategy}
             >
               {isRunning ? (
                 <>
