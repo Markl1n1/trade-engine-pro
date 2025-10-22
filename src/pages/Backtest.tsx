@@ -22,7 +22,7 @@ const Backtest = () => {
   const [takeProfitPercent, setTakeProfitPercent] = useState<string>("6");
   const [trailingStopPercent, setTrailingStopPercent] = useState<string>("20");
   const [isStrategyDefaults, setIsStrategyDefaults] = useState(true);
-  const [productType, setProductType] = useState<string>("spot");
+  const [productType, setProductType] = useState<string>("futures");
   const [leverage, setLeverage] = useState<string>("1");
   const [makerFee, setMakerFee] = useState<string>("0.02");
   const [takerFee, setTakerFee] = useState<string>("0.04");

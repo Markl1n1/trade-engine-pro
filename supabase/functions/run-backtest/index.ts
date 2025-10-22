@@ -140,19 +140,63 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
     );
     
     const currentCandle = candles[i];
-    const executionPrice = currentCandle.close;
+    const executionPrice = executionTiming === 'open' ? currentCandle.open : currentCandle.close;
 
     if (signal.signal_type === 'BUY' && !position) {
-      const quantity = (balance * 0.95) / executionPrice;
-      position = { entry_price: executionPrice, entry_time: currentCandle.open_time, type: 'buy', quantity };
-      trades.push(position);
-    } else if (signal.signal_type === 'SELL' && position) {
-      const profit = (executionPrice - position.entry_price) * position.quantity;
-      position.exit_price = executionPrice;
+      // Calculate position size with proper leverage and constraints
+      const positionSize = Math.min(balance * 0.1, balance * 0.95); // Max 10% of balance
+      const quantity = Math.floor(positionSize / executionPrice / 0.00001) * 0.00001; // Apply step size
+      
+      if (quantity >= 0.001 && quantity * executionPrice >= 10) { // Min quantity and notional
+        const entryPrice = executionPrice * (1 + slippage);
+        const marginRequired = (entryPrice * quantity) / leverage;
+        
+        if (marginRequired <= balance) {
+          position = { 
+            entry_price: entryPrice, 
+            entry_time: currentCandle.open_time, 
+            type: 'buy', 
+            quantity 
+          };
+          balance -= marginRequired; // Lock margin
+          console.log(`[${i}] ATH BUY at ${entryPrice.toFixed(2)} - Qty: ${quantity.toFixed(6)}, Margin: ${marginRequired.toFixed(2)}`);
+        }
+      }
+    } else if (signal.signal_type === 'SELL' && !position) {
+      // SHORT entry (new SELL position)
+      const positionSize = Math.min(balance * 0.1, balance * 0.95); // Max 10% of balance
+      const quantity = Math.floor(positionSize / executionPrice / 0.00001) * 0.00001; // Apply step size
+      
+      if (quantity >= 0.001 && quantity * executionPrice >= 10) { // Min quantity and notional
+        const entryPrice = executionPrice * (1 - slippage); // Better price for SHORT
+        const marginRequired = (entryPrice * quantity) / leverage;
+        
+        if (marginRequired <= balance) {
+          position = { 
+            entry_price: entryPrice, 
+            entry_time: currentCandle.open_time, 
+            type: 'sell', // SHORT position
+            quantity 
+          };
+          balance -= marginRequired; // Lock margin
+          console.log(`[${i}] ATH SHORT at ${entryPrice.toFixed(2)} - Qty: ${quantity.toFixed(6)}, Margin: ${marginRequired.toFixed(2)}`);
+        }
+      }
+    } else if (signal.signal_type === 'BUY' && position && position.type === 'sell') {
+      // Close SHORT position
+      const exitPrice = executionPrice * (1 + slippage);
+      const profit = (position.entry_price - exitPrice) * position.quantity; // SHORT profit calculation
+      const entryFee = (position.entry_price * position.quantity * makerFee) / 100;
+      const exitFee = (exitPrice * position.quantity * takerFee) / 100;
+      const netProfit = profit - entryFee - exitFee;
+      
+      position.exit_price = exitPrice;
       position.exit_time = currentCandle.open_time;
-      position.profit = profit;
-      balance += profit;
+      position.profit = netProfit;
+      balance += (position.entry_price * position.quantity) + netProfit; // Return margin + P&L
+      trades.push(position);
       position = null;
+      console.log(`[${i}] ATH CLOSE SHORT at ${exitPrice.toFixed(2)} - P&L: ${netProfit.toFixed(2)}, Balance: ${balance.toFixed(2)}`);
     }
     if (balance > maxBalance) maxBalance = balance;
     maxDrawdown = Math.max(maxDrawdown, ((maxBalance - balance) / maxBalance) * 100);
@@ -1558,7 +1602,7 @@ async function runSMACrossoverBacktest(
   const startIdx = Math.max(config.sma_slow_period, config.rsi_period);
   for (let i = startIdx; i < candles.length; i++) {
     const currentCandle = candles[i];
-    const currentPrice = currentCandle.close;
+    const currentPrice = executionTiming === 'open' ? currentCandle.open : currentCandle.close;
     const currentTime = currentCandle.open_time;
     
     // Progress logging every 1000 candles
@@ -1609,8 +1653,33 @@ async function runSMACrossoverBacktest(
       }
     }
     
-    // SELL signal: Death cross OR RSI overbought
-    if (position && (deathCross || currentRSI > config.rsi_overbought)) {
+    // SHORT signal: Death cross + RSI overbought + Volume
+    if (deathCross && currentRSI > config.rsi_overbought && volumeConfirmed && !position) {
+      const positionSize = Math.min(availableBalance * 0.95, balance * 0.1);
+      const quantity = Math.floor(positionSize / currentPrice / stepSize) * stepSize;
+      
+      if (quantity >= minQty && quantity * currentPrice >= minNotional) {
+        const entryPrice = currentPrice * (1 - slippage); // Better price for SHORT
+        const marginRequired = (entryPrice * quantity) / leverage;
+        
+        if (marginRequired <= availableBalance) {
+          position = {
+            entry_price: entryPrice,
+            entry_time: currentTime,
+            type: 'sell', // SHORT position
+            quantity: quantity
+          };
+          
+          availableBalance -= marginRequired;
+          lockedMargin += marginRequired;
+          
+          console.log(`[${i}] 🔴 SHORT at ${entryPrice.toFixed(2)} - SMA(${currentSMAFast.toFixed(2)}/${currentSMASlow.toFixed(2)}), RSI=${currentRSI.toFixed(1)}`);
+        }
+      }
+    }
+    
+    // Exit LONG position: Death cross OR RSI overbought
+    if (position && position.type === 'buy' && (deathCross || currentRSI > config.rsi_overbought)) {
       const exitPrice = currentPrice * (1 - slippage);
       const profit = (exitPrice - position.entry_price) * position.quantity;
       const fees = (position.entry_price * position.quantity * makerFee) + (exitPrice * position.quantity * takerFee);
@@ -1627,7 +1696,28 @@ async function runSMACrossoverBacktest(
       trades.push(position);
       position = null;
       
-      console.log(`[${i}] 🔴 SELL at ${exitPrice.toFixed(2)} - P&L: ${netProfit.toFixed(2)}, Balance: ${balance.toFixed(2)}`);
+      console.log(`[${i}] 🔴 CLOSE LONG at ${exitPrice.toFixed(2)} - P&L: ${netProfit.toFixed(2)}, Balance: ${balance.toFixed(2)}`);
+    }
+    
+    // Exit SHORT position: Golden cross OR RSI oversold
+    if (position && position.type === 'sell' && (goldenCross || currentRSI < config.rsi_oversold)) {
+      const exitPrice = currentPrice * (1 + slippage);
+      const profit = (position.entry_price - exitPrice) * position.quantity; // SHORT profit calculation
+      const fees = (position.entry_price * position.quantity * makerFee) + (exitPrice * position.quantity * takerFee);
+      const netProfit = profit - fees;
+      
+      balance += netProfit;
+      availableBalance += lockedMargin + netProfit;
+      lockedMargin = 0;
+      
+      position.exit_price = exitPrice;
+      position.exit_time = currentTime;
+      position.profit = netProfit;
+      
+      trades.push(position);
+      position = null;
+      
+      console.log(`[${i}] 🟢 CLOSE SHORT at ${exitPrice.toFixed(2)} - P&L: ${netProfit.toFixed(2)}, Balance: ${balance.toFixed(2)}`);
     }
     
     // Update balance history
@@ -1801,7 +1891,7 @@ async function runMTFMomentumBacktest(
 
   for (let i = Math.max(config.mtf_rsi_period, config.mtf_macd_slow); i < candles.length; i++) {
     const currentCandle = candles[i];
-    const currentPrice = currentCandle.close;
+    const currentPrice = executionTiming === 'open' ? currentCandle.open : currentCandle.close;
     const currentTime = currentCandle.open_time;
     
     // Direct evaluation using pre-calculated indicators (index-based access)
@@ -1847,7 +1937,7 @@ async function runMTFMomentumBacktest(
     };
     
     if (signal.signal_type === 'BUY' && !position) {
-      // Calculate position size
+      // Calculate position size with proper leverage
       const positionSize = Math.min(availableBalance * 0.95, balance * 0.1); // Max 10% of balance
       const quantity = Math.floor(positionSize / currentPrice / stepSize) * stepSize;
       
@@ -1866,7 +1956,7 @@ async function runMTFMomentumBacktest(
           availableBalance -= marginRequired;
           lockedMargin += marginRequired;
           
-          console.log(`[${i}] BUY at ${entryPrice.toFixed(2)} - Qty: ${quantity.toFixed(6)}, Margin: ${marginRequired.toFixed(2)}`);
+          console.log(`[${i}] MTF BUY at ${entryPrice.toFixed(2)} - Qty: ${quantity.toFixed(6)}, Margin: ${marginRequired.toFixed(2)}`);
         }
       }
     }
@@ -1892,7 +1982,7 @@ async function runMTFMomentumBacktest(
           availableBalance -= marginRequired;
           lockedMargin += marginRequired;
           
-          console.log(`[${i}] SHORT at ${entryPrice.toFixed(2)} - Qty: ${quantity.toFixed(6)}, Margin: ${marginRequired.toFixed(2)}`);
+          console.log(`[${i}] MTF SHORT at ${entryPrice.toFixed(2)} - Qty: ${quantity.toFixed(6)}, Margin: ${marginRequired.toFixed(2)}`);
         }
       }
     }
