@@ -692,8 +692,8 @@ serve(async (req) => {
       endDate: body.endDate,
       initialBalance: body.initialBalance || 10000,
       leverage: body.leverage || 1,
-      makerFee: body.makerFee || 0.02,
-      takerFee: body.takerFee || 0.04,
+      makerFee: body.makerFee || 0.018,  // Updated to match Bybit VIP1 rates
+      takerFee: body.takerFee || 0.04,   // Updated to match Bybit VIP1 rates
       slippage: body.slippage || 0.01,
       stopLossPercent: body.stopLossPercent,
       takeProfitPercent: body.takeProfitPercent,

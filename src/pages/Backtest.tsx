@@ -24,8 +24,8 @@ const Backtest = () => {
   const [isStrategyDefaults, setIsStrategyDefaults] = useState(true);
   const [productType, setProductType] = useState<string>("futures");
   const [leverage, setLeverage] = useState<string>("1");
-  const [makerFee, setMakerFee] = useState<string>("0.02");
-  const [takerFee, setTakerFee] = useState<string>("0.04");
+  const [makerFee, setMakerFee] = useState<string>("0.018");  // Updated to match Bybit VIP1 rates
+  const [takerFee, setTakerFee] = useState<string>("0.04");    // Updated to match Bybit VIP1 rates
   const [slippage, setSlippage] = useState<string>("0.01");
   const [executionTiming, setExecutionTiming] = useState<string>("close");
   const [isRunning, setIsRunning] = useState(false);
