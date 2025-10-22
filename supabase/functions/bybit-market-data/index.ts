@@ -101,6 +101,7 @@ serve(async (req) => {
           const candles = klines.map((k: any) => ({
             symbol,
             timeframe: interval,
+            exchange_type: 'bybit',
             open_time: parseInt(k[0]),
             open: parseFloat(k[1]),
             high: parseFloat(k[2]),
@@ -170,6 +171,7 @@ serve(async (req) => {
     const candles = klines.map((k: any) => ({
       symbol,
       timeframe: interval,
+      exchange_type: 'bybit',
       open_time: parseInt(k[0]),
       open: parseFloat(k[1]),
       high: parseFloat(k[2]),
