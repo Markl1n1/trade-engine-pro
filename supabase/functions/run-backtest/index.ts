@@ -85,6 +85,18 @@ function isInNYSession(timestamp: number, sessionStart: string, sessionEnd: stri
   return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
 }
 
+function getIntervalMs(timeframe: string): number {
+  const unit = timeframe.slice(-1);
+  const value = parseInt(timeframe.slice(0, -1));
+  
+  switch (unit) {
+    case 'm': return value * 60 * 1000;
+    case 'h': return value * 60 * 60 * 1000;
+    case 'd': return value * 24 * 60 * 60 * 1000;
+    default: return 60 * 1000; // Default to 1 minute
+  }
+}
+
 async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBalance: number, productType: string, leverage: number, makerFee: number, takerFee: number, slippage: number, executionTiming: string, supabaseClient: any, strategyId: string, startDate: string, endDate: string, corsHeaders: any, trailingStopPercent?: number) {
   console.log(`[ATH-GUARD] Starting optimized backtest for ${candles.length} candles`);
   
@@ -850,6 +862,7 @@ serve(async (req) => {
         .range(from, from + batchSize - 1);
 
       if (batchError) {
+        log(`Database error on batch ${Math.floor(from / batchSize) + 1}`, { error: batchError.message, from, batchSize });
         throw new Error(`Error fetching market data: ${batchError.message}`);
       }
 
@@ -869,9 +882,9 @@ serve(async (req) => {
 
     let marketData = allMarketData;
 
-    // If nothing found, try again constrained by exchange_type for explicit datasets
-    if ((!marketData || marketData.length === 0) && exchangeType) {
-      log(`[BACKTEST] No candles without exchange filter. Retrying with exchange_type`, { exchangeType });
+    // If nothing found, try again with Bybit mainnet only
+    if (!marketData || marketData.length === 0) {
+      log(`[BACKTEST] No candles found. Retrying with Bybit mainnet only`, { exchangeType: 'bybit' });
       allMarketData = [];
       from = 0;
       hasMore = true;
@@ -881,13 +894,13 @@ serve(async (req) => {
           .select('*')
           .eq('symbol', strategy.symbol)
           .eq('timeframe', strategy.timeframe)
-          .eq('exchange_type', exchangeType)
+          .eq('exchange_type', 'bybit')
           .gte('open_time', new Date(startDate).getTime())
           .lte('open_time', new Date(endDate).getTime())
           .order('open_time', { ascending: true })
           .range(from, from + batchSize - 1);
 
-        if (batchError) { log('Exchange filter batch error', { error: batchError.message }); break; }
+        if (batchError) { log('Bybit filter batch error', { error: batchError.message }); break; }
         if (!batch || batch.length === 0) { hasMore = false; } else {
           allMarketData = allMarketData.concat(batch);
           if (batch.length < batchSize) { hasMore = false; } else { from += batchSize; }
@@ -896,111 +909,38 @@ serve(async (req) => {
       marketData = allMarketData;
     }
 
-    // If still no data and exchange is Bybit, try Binance fallback first
-    if ((!marketData || marketData.length === 0) && exchangeType === 'bybit') {
-      log(`[BACKTEST] No Bybit data found. Attempting Binance fallback...`);
-      allMarketData = [];
-      from = 0;
-      hasMore = true;
-      while (hasMore) {
-        const { data: batch, error: batchError } = await supabaseClient
-          .from('market_data')
-          .select('*')
-          .eq('symbol', strategy.symbol)
-          .eq('timeframe', strategy.timeframe)
-          .eq('exchange_type', 'binance')
-          .gte('open_time', new Date(startDate).getTime())
-          .lte('open_time', new Date(endDate).getTime())
-          .order('open_time', { ascending: true })
-          .range(from, from + batchSize - 1);
+    // No Binance fallback - Bybit only
 
-        if (batchError) { log('Binance fallback batch error', { error: batchError.message }); break; }
-        if (!batch || batch.length === 0) { hasMore = false; } else {
-          allMarketData = allMarketData.concat(batch);
-          if (batch.length < batchSize) { hasMore = false; } else { from += batchSize; }
-        }
-      }
-      if (allMarketData.length > 0) {
-        marketData = allMarketData;
-        log(`Using Binance fallback`, { candles: allMarketData.length });
-      }
+    if (!marketData || marketData.length === 0) {
+      throw new Error(`No Bybit market data available for ${strategy.symbol} ${strategy.timeframe}. Please ensure Bybit data is loaded for the specified date range.`);
     }
 
-    // Fallback to Binance data if selected exchange has no data
-    if ((!marketData || marketData.length === 0) && exchangeType !== 'binance') {
-      log(`No market data found for selected exchange, attempting on-the-fly Binance fetch`, { exchangeType });
-      
-      // Try to fetch Binance data as fallback
-      let binanceFallbackData: any[] = [];
-      let fallbackFrom = 0;
-      let fallbackHasMore = true;
-
-      while (fallbackHasMore) {
-        const { data: fallbackBatch, error: fallbackError } = await supabaseClient
-          .from('market_data')
-          .select('*')
-          .eq('symbol', strategy.symbol)
-          .eq('timeframe', strategy.timeframe)
-          .eq('exchange_type', 'binance')
-          .gte('open_time', new Date(startDate).getTime())
-          .lte('open_time', new Date(endDate).getTime())
-          .order('open_time', { ascending: true })
-          .range(fallbackFrom, fallbackFrom + batchSize - 1);
-
-        if (fallbackError) {
-          console.error('Fallback fetch error:', fallbackError);
-          fallbackHasMore = false;
-        } else if (!fallbackBatch || fallbackBatch.length === 0) {
-          fallbackHasMore = false;
-        } else {
-          binanceFallbackData = binanceFallbackData.concat(fallbackBatch);
-          console.log(`Fetched Binance fallback batch: ${fallbackBatch.length} candles (total: ${binanceFallbackData.length})`);
-          
-          if (fallbackBatch.length < batchSize) {
-            fallbackHasMore = false;
-          } else {
-            fallbackFrom += batchSize;
+    // Validate data integrity
+    if (marketData.length > 0) {
+      // Check for data gaps
+      let gaps = 0;
+      for (let i = 1; i < marketData.length; i++) {
+        const prevTime = marketData[i-1].open_time;
+        const currTime = marketData[i].open_time;
+        const expectedInterval = getIntervalMs(strategy.timeframe);
+        const actualInterval = currTime - prevTime;
+        
+        if (actualInterval > expectedInterval * 1.5) {
+          gaps++;
+          if (gaps <= 5) { // Log first 5 gaps only
+            log(`Data gap detected`, { 
+              from: new Date(prevTime).toISOString(), 
+              to: new Date(currTime).toISOString(),
+              expected: expectedInterval,
+              actual: actualInterval
+            });
           }
         }
       }
-
-      if (binanceFallbackData.length > 0) {
-        marketData = binanceFallbackData;
-        console.log(`✅ Using ${binanceFallbackData.length} candles from Binance as fallback data`);
+      
+      if (gaps > 0) {
+        log(`Data validation`, { totalGaps: gaps, candles: marketData.length });
       }
-    }
-
-    if (!marketData || marketData.length === 0) {
-      console.warn(`[BACKTEST] No market data found locally. Fetching from Binance API for on-the-fly backtest...`);
-      // On-the-fly fetch from Binance without persisting is enough to run a backtest
-      const interval = strategy.timeframe;
-      const startMs = new Date(startDate).getTime();
-      const endMs = new Date(endDate).getTime();
-      const batchSize = 1000;
-      const intervalMs = (() => { const u = interval.slice(-1), v = parseInt(interval.slice(0,-1));
-        switch(u){case 'm': return v*60*1000; case 'h': return v*60*60*1000; case 'd': return v*24*60*60*1000; default: return 60*1000;} })();
-      let pointer = startMs;
-      const fetched:any[] = [];
-      while (pointer < endMs) {
-        const endChunk = Math.min(pointer + batchSize*intervalMs, endMs);
-        const url = `https://api.binance.com/api/v3/klines?symbol=${strategy.symbol}&interval=${interval}&limit=${batchSize}&startTime=${pointer}&endTime=${endChunk}`;
-        const resp = await fetch(url);
-        if (!resp.ok) { log('Binance API error', { status: resp.status }); break; }
-        const kl = await resp.json();
-        if (!kl || kl.length===0) { log('Binance API returned empty'); break; }
-        fetched.push(...kl.map((k:any)=>({
-          open: parseFloat(k[1]), high: parseFloat(k[2]), low: parseFloat(k[3]), close: parseFloat(k[4]), volume: parseFloat(k[5]),
-          open_time: k[0], close_time: k[6]
-        })));
-        pointer = kl[kl.length-1][6] + 1;
-        if (kl.length < batchSize) break;
-      }
-      if (fetched.length === 0) {
-        const exchangeInfo = exchangeType === 'bybit' ? 'ByBit (tried Binance fallback)' : exchangeType;
-        throw new Error(`No market data available for ${strategy.symbol} ${strategy.timeframe} on ${exchangeInfo} and Binance.`);
-      }
-      marketData = fetched as any[];
-      log('On-the-fly Binance fetch complete', { candles: marketData.length });
     }
 
     log(`Final market data selected`, {
@@ -2585,7 +2525,7 @@ async function runMSTGBacktest(
   const benchmarkSymbol = strategy.mstg_benchmark_symbol || 'BTCUSDT';
   console.log(`[MSTG] Starting MSTG backtest for ${strategy.symbol} vs ${benchmarkSymbol}`);
   
-  // Fetch benchmark data (fetch ALL candles)
+  // Fetch benchmark data from Bybit only (fetch ALL candles)
   let allBenchmarkData: any[] = [];
   let from = 0;
   const batchSize = 1000;
@@ -2597,13 +2537,14 @@ async function runMSTGBacktest(
       .select('*')
       .eq('symbol', benchmarkSymbol)
       .eq('timeframe', strategy.timeframe)
+      .eq('exchange_type', 'bybit')
       .gte('open_time', new Date(startDate).getTime())
       .lte('open_time', new Date(endDate).getTime())
       .order('open_time', { ascending: true })
       .range(from, from + batchSize - 1);
 
     if (batchError) {
-      console.warn('Error fetching benchmark batch:', batchError);
+      console.warn('Error fetching Bybit benchmark batch:', batchError);
       break;
     }
 
