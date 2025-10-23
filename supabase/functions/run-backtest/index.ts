@@ -1854,8 +1854,8 @@ async function runSMACrossoverBacktest(
     const avgVolume = last20Volumes.reduce((a, b) => a + b, 0) / last20Volumes.length;
     const volumeConfirmed = currentVolume >= avgVolume * config.volume_multiplier;
     
-    // BUY signal: Golden cross + RSI oversold + Volume
-    if (goldenCross && currentRSI < config.rsi_oversold && volumeConfirmed && !position) {
+    // BUY signal: Golden cross + RSI overbought (momentum) + Volume
+    if (goldenCross && currentRSI > config.rsi_overbought && volumeConfirmed && !position) {
       const positionSize = Math.min(availableBalance * 0.95, balance * 0.1);
       const quantity = Math.floor(positionSize / currentPrice / stepSize) * stepSize;
       
@@ -1884,8 +1884,8 @@ async function runSMACrossoverBacktest(
       }
     }
     
-    // SHORT signal: Death cross + RSI overbought + Volume
-    if (deathCross && currentRSI > config.rsi_overbought && volumeConfirmed && !position) {
+    // SHORT signal: Death cross + RSI oversold (momentum reversal) + Volume
+    if (deathCross && currentRSI < config.rsi_oversold && volumeConfirmed && !position) {
       const positionSize = Math.min(availableBalance * 0.95, balance * 0.1);
       const quantity = Math.floor(positionSize / currentPrice / stepSize) * stepSize;
       

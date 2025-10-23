@@ -329,9 +329,9 @@ export function evaluateATHGuardStrategy(
 ): ATHGuardSignal {
   console.log('[ATH-GUARD] 🔍 Starting evaluation...');
   
-  // Need minimum candles for all indicators
-  if (candles.length < 150) {
-    console.log(`[ATH-GUARD] ❌ Insufficient data: ${candles.length} candles (need 150)`);
+  // Need minimum candles for all indicators (reduced from 150 to 100 for better compatibility)
+  if (candles.length < 100) {
+    console.log(`[ATH-GUARD] ❌ Insufficient data: ${candles.length} candles (need 100)`);
     return { signal_type: null, reason: 'Insufficient candle data' };
   }
   
