@@ -149,6 +149,9 @@ export class EnhancedBacktestEngine {
   private stepSize: number;
   private minQty: number;
   private minNotional: number;
+  private maxQty: number = 1000000; // Default max quantity
+  private maxNotional: number = 100000000; // Default max notional
+  private currentIndex: number = 0; // Track current candle index
   
   constructor(candles: Candle[], config: BacktestConfig) {
     this.candles = candles;
@@ -508,7 +511,7 @@ export class EnhancedBacktestEngine {
     
     if (!validation.isValid) {
       console.warn(`[POSITION-SIZING] Invalid position size: ${validation.errors.join(', ')}`);
-      return null;
+      return;
     }
     
     // Apply exchange constraints

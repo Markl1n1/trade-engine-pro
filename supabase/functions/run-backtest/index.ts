@@ -982,7 +982,7 @@ serve(async (req) => {
     let requiredCandles = 200; // Default minimum
     
     // Check if strategy uses SMA-200 or other long-period indicators
-    const strategyType = strategy.strategy_type || 'standard';
+    const strategyType = strategy.strategy_type || 'standard'; // Declare early for use in logging
     if (strategyType === 'sma_crossover' || strategyType === 'sma_20_200_rsi') {
       requiredCandles = Math.max(requiredCandles, 200); // SMA-200 needs 200 candles
     }
@@ -1063,7 +1063,6 @@ serve(async (req) => {
     log(`[MARKET-REGIME] Detected regime: ${marketRegime.regime} (${marketRegime.strength}% strength, ${marketRegime.direction} direction, ${marketRegime.confidence}% confidence)`);
     
     // Check if strategy is suitable for current market regime
-    const strategyType = strategy.strategy_type || 'standard';
     const isSuitable = isStrategySuitableForRegime(strategyType, marketRegime);
     
     if (!isSuitable) {
@@ -1856,6 +1855,10 @@ async function runSMACrossoverBacktest(
   const rsi = calculateRSI(closes, config.rsi_period);
   const atr = calculateATR(candles, 14);
   console.log('[SMA-BACKTEST] ✅ Indicators ready, starting backtest loop...');
+
+  // Calculate market regime for adaptive parameters
+  const marketRegime = detectMarketRegime(candles);
+  console.log(`[SMA-BACKTEST] Market regime: ${marketRegime.regime} (${marketRegime.strength}% strength)`);
 
   const startIdx = Math.max(config.sma_slow_period, config.rsi_period);
   for (let i = startIdx; i < candles.length; i++) {

@@ -236,10 +236,38 @@ serve(async (req) => {
             continue;
           }
 
-          // Store in database
+          // Deduplicate candles before storing (remove duplicates based on symbol, timeframe, open_time)
+          const seenKeys = new Set();
+          const uniqueCandles = candles.filter((candle: any) => {
+            const key = `${candle.symbol}-${candle.timeframe}-${candle.open_time}`;
+            if (seenKeys.has(key)) {
+              return false;
+            }
+            seenKeys.add(key);
+            return true;
+          });
+
+          console.log(`[REFRESH-MARKET-DATA] Deduplicated ${candles.length} -> ${uniqueCandles.length} candles for ${symbol} ${timeframe}`);
+
+          if (uniqueCandles.length === 0) {
+            console.log(`[REFRESH-MARKET-DATA] No unique candles to insert for ${symbol} ${timeframe}`);
+            results.push({
+              symbol,
+              timeframe,
+              candles: 0,
+              reason: 'NO_UNIQUE_CANDLES',
+              success: true
+            });
+            continue;
+          }
+
+          // Store in database with batch upsert
           const { error: dbError } = await supabase
             .from('market_data')
-            .upsert(candles, { onConflict: 'symbol,timeframe,open_time' });
+            .upsert(uniqueCandles, { 
+              onConflict: 'symbol,timeframe,open_time',
+              ignoreDuplicates: false 
+            });
 
           if (dbError) {
             console.error(`[REFRESH-MARKET-DATA] Database error for ${symbol} ${timeframe}:`, dbError);
@@ -256,12 +284,12 @@ serve(async (req) => {
           results.push({
             symbol,
             timeframe,
-            candles: candles.length,
+            candles: uniqueCandles.length,
             reason: fetchReason,
             success: true
           });
 
-          console.log(`[REFRESH-MARKET-DATA] ✅ Updated ${symbol} ${timeframe}: ${candles.length} candles (${fetchReason})`);
+          console.log(`[REFRESH-MARKET-DATA] ✅ Updated ${symbol} ${timeframe}: ${uniqueCandles.length} candles (${fetchReason})`);
 
         } catch (error) {
           console.error(`[REFRESH-MARKET-DATA] Error processing ${symbol} ${timeframe}:`, error);
