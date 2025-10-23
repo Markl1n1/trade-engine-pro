@@ -236,10 +236,40 @@ serve(async (req) => {
             continue;
           }
 
-          // Store in database
-          const { error: dbError } = await supabase
-            .from('market_data')
-            .upsert(candles, { onConflict: 'symbol,timeframe,open_time' });
+          // Deduplicate candles before storing (remove duplicates based on symbol, timeframe, open_time)
+          const uniqueCandles = candles.reduce((acc: any[], candle: any) => {
+            const key = `${candle.symbol}-${candle.timeframe}-${candle.open_time}`;
+            if (!acc.find(c => `${c.symbol}-${c.timeframe}-${c.open_time}` === key)) {
+              acc.push(candle);
+            }
+            return acc;
+          }, []);
+
+          console.log(`[LOAD-MARKET-DATA] Deduplicated ${candles.length} -> ${uniqueCandles.length} candles for ${symbol} ${timeframe}`);
+
+          // Store in database with individual inserts to avoid conflicts
+          let insertCount = 0;
+          let errorCount = 0;
+          
+          for (const candle of uniqueCandles) {
+            try {
+              const { error: insertError } = await supabase
+                .from('market_data')
+                .upsert(candle, { onConflict: 'symbol,timeframe,open_time' });
+              
+              if (insertError) {
+                console.warn(`[LOAD-MARKET-DATA] Insert error for candle ${candle.symbol} ${candle.timeframe} ${candle.open_time}:`, insertError.message);
+                errorCount++;
+              } else {
+                insertCount++;
+              }
+            } catch (err) {
+              console.warn(`[LOAD-MARKET-DATA] Insert exception for candle ${candle.symbol} ${candle.timeframe} ${candle.open_time}:`, err);
+              errorCount++;
+            }
+          }
+
+          const dbError = errorCount > 0 ? new Error(`${errorCount} insert errors`) : null;
 
           if (dbError) {
             console.error(`[LOAD-MARKET-DATA] Database error for ${symbol} ${timeframe}:`, dbError);
@@ -252,11 +282,12 @@ serve(async (req) => {
             continue;
           }
 
-          totalCandles += candles.length;
+          totalCandles += insertCount;
           results.push({
             symbol,
             timeframe,
-            candles: candles.length,
+            candles: insertCount,
+            errors: errorCount,
             reason: fetchReason,
             success: true
           });
