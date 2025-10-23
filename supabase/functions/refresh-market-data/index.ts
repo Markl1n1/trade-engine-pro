@@ -32,7 +32,7 @@ serve(async (req) => {
     console.log('[REFRESH-MARKET-DATA] Starting smart market data refresh...');
 
     // Step 1: Get active strategy requirements
-    const requirements = await getActiveStrategyRequirements(supabase);
+    const requirements = await getActiveStrategyRequirements(supabase as any);
     
     if (requirements.symbols.length === 0) {
       console.log('[REFRESH-MARKET-DATA] No active strategies found, skipping refresh');
@@ -217,7 +217,7 @@ serve(async (req) => {
               volume: parseFloat(k[5]) || 0,
               close_time: parseInt(k[6]) || 0,
             }))
-            .filter(candle => 
+            .filter((candle: any) => 
               candle.symbol !== 'UNKNOWN' && 
               candle.open_time > 0 && 
               candle.close > 0
@@ -268,7 +268,7 @@ serve(async (req) => {
           results.push({
             symbol,
             timeframe,
-            error: error.message,
+            error: error instanceof Error ? error.message : String(error),
             success: false
           });
         }
@@ -299,7 +299,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         timestamp: new Date().toISOString()
       }),
       { 

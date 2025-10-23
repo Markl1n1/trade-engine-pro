@@ -674,8 +674,8 @@ Deno.serve(async (req) => {
       const body = await req.json();
       
       // Validate input
-      const validated = validateInput(signalSchema, body);
-      const signal: TradingSignal = validated.type === 'signal' ? validated.signal : validated;
+      const validated = validateInput(signalSchema, body) as any;
+      const signal: TradingSignal = ('type' in validated && validated.type === 'signal') ? validated.signal : validated;
       
       // Get user settings
       const supabase = createClient(

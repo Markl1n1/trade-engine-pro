@@ -1096,7 +1096,9 @@ serve(async (req) => {
         corsHeaders,
         trailingStopPercent,
         stopLossPercent,
-        takeProfitPercent
+        takeProfitPercent,
+        useFirstTouch,
+        executeCloseOnNextOpen
       );
     }
 
@@ -3030,7 +3032,9 @@ async function run4hReentryBacktest(
   corsHeaders: any,
   trailingStopPercent?: number,
   stopLossPercent?: number,
-  takeProfitPercent?: number
+  takeProfitPercent?: number,
+  useFirstTouch: boolean = true,
+  executeCloseOnNextOpen: boolean = true
 ) {
   console.log('Initializing 4h Reentry backtest...');
   
