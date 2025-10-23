@@ -972,8 +972,8 @@ export type Database = {
       }
       user_settings: {
         Row: {
-          bybit_api_key: string | null
-          bybit_api_secret: string | null
+          binance_api_key: string | null
+          binance_api_secret: string | null
           cache_indicators: boolean
           created_at: string
           credentials_migrated_at: string | null
@@ -1003,8 +1003,8 @@ export type Database = {
           validate_data_integrity: boolean
         }
         Insert: {
-          bybit_api_key?: string | null
-          bybit_api_secret?: string | null
+          binance_api_key?: string | null
+          binance_api_secret?: string | null
           cache_indicators?: boolean
           created_at?: string
           credentials_migrated_at?: string | null
@@ -1034,8 +1034,8 @@ export type Database = {
           validate_data_integrity?: boolean
         }
         Update: {
-          bybit_api_key?: string | null
-          bybit_api_secret?: string | null
+          binance_api_key?: string | null
+          binance_api_secret?: string | null
           cache_indicators?: boolean
           created_at?: string
           credentials_migrated_at?: string | null
@@ -1130,8 +1130,8 @@ export type Database = {
       get_user_api_credentials: {
         Args: { user_uuid: string }
         Returns: {
-          bybit_api_key: string
-          bybit_api_secret: string
+          binance_api_key: string
+          binance_api_secret: string
           use_testnet: boolean
         }[]
       }
