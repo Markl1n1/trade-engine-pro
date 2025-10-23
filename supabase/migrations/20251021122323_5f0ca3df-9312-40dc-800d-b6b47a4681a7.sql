@@ -10,8 +10,3 @@ ON public.market_data(exchange_type, symbol, timeframe, open_time DESC);
 ALTER TABLE public.market_data 
 ADD CONSTRAINT valid_exchange_type 
 CHECK (exchange_type IN ('binance', 'bybit'));
-
--- Update existing data to mark as binance (since all current data is from binance)
-UPDATE public.market_data 
-SET exchange_type = 'binance' 
-WHERE exchange_type IS NULL OR exchange_type = '';
