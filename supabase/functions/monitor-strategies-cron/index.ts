@@ -209,7 +209,8 @@ async function fetchMarketData(
   if (Deno.env.get('USE_HYBRID_DATA') === 'true') {
     return await fetchHybridMarketData(symbol, timeframe, limit);
   }
-  const exchange = exchangeType as 'bybit';
+  // Ensure exchange type is valid, default to bybit
+  const exchange = (exchangeType === 'bybit' ? 'bybit' : 'bybit') as 'bybit';
   const baseUrl = useTestnet ? EXCHANGE_URLS[exchange].testnet : EXCHANGE_URLS[exchange].mainnet;
   const mappedInterval = INTERVAL_MAPPING[exchange][timeframe] || timeframe;
   
@@ -650,7 +651,7 @@ Deno.serve(async (req) => {
           liveState = newState;
         }
 
-        const exchangeType = userSettings?.exchange_type || 'binance';
+        const exchangeType = userSettings?.exchange_type || 'bybit';
         const useTestnet = userSettings?.use_testnet || false;
         // For Hybrid Live mode, always use mainnet data (useTestnet = false)
         const useMainnetData = tradingMode === 'hybrid_live' ? false : useTestnet;
@@ -826,7 +827,7 @@ Deno.serve(async (req) => {
         }
         else if (!liveState.position_open) {
           // Check if position already exists on exchange before generating entry signal
-          const exchangeType = userSettings?.exchange_type || 'binance';
+          const exchangeType = userSettings?.exchange_type || 'bybit';
           const useTestnet = userSettings?.use_testnet || false;
           
           // Get appropriate API keys - try encrypted first, fallback to plaintext

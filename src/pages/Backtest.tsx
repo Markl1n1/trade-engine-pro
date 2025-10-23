@@ -69,21 +69,37 @@ const Backtest = () => {
   }, [selectedStrategy, strategies, isStrategyDefaults]);
 
   const loadStrategies = async () => {
-    const { data, error } = await supabase
-      .from('strategies')
-      .select('*')
-      .order('created_at', { ascending: false });
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setStrategies([]);
+        return;
+      }
 
-    if (error) {
+      const { data, error } = await supabase
+        .from('strategies')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        toast({
+          title: "Error loading strategies",
+          description: error.message,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setStrategies(data || []);
+    } catch (error: any) {
       toast({
         title: "Error loading strategies",
         description: error.message,
         variant: "destructive",
       });
-      return;
+      setStrategies([]);
     }
-
-    setStrategies(data || []);
   };
 
   const checkDataAvailability = async () => {
