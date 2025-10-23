@@ -103,11 +103,53 @@ const Backtest = () => {
   };
 
   const checkDataAvailability = async () => {
-    // Optional informational card; no longer blocks running
+    // Check data availability for user's trading pairs
     try {
-      const { count } = await supabase.from('market_data').select('*', { count: 'exact', head: true });
-      setDataStats({ available: (count || 0) > 0, totalRecords: count || 0 });
-    } catch {
+      // Get user's trading pairs
+      const { data: userPairs, error: pairsError } = await supabase
+        .from('user_trading_pairs')
+        .select('symbol');
+      
+      if (pairsError) {
+        console.error('Error fetching user pairs:', pairsError);
+        setDataStats(null);
+        return;
+      }
+
+      const userSymbols = userPairs?.map(p => p.symbol) || [];
+      
+      if (userSymbols.length === 0) {
+        setDataStats({ available: false, totalRecords: 0, userSymbols: [] });
+        return;
+      }
+
+      // Check if we have data for user's symbols
+      const { data: marketData, error: dataError } = await supabase
+        .from('market_data')
+        .select('symbol')
+        .in('symbol', userSymbols)
+        .limit(1);
+
+      if (dataError) {
+        console.error('Error checking market data:', dataError);
+        setDataStats(null);
+        return;
+      }
+
+      // Get total count for user's symbols
+      const { count } = await supabase
+        .from('market_data')
+        .select('*', { count: 'exact', head: true })
+        .in('symbol', userSymbols);
+
+      setDataStats({ 
+        available: marketData && marketData.length > 0, 
+        totalRecords: count || 0,
+        userSymbols: userSymbols,
+        hasDataForUserPairs: marketData && marketData.length > 0
+      });
+    } catch (error) {
+      console.error('Error in checkDataAvailability:', error);
       setDataStats(null);
     }
   };
@@ -264,9 +306,14 @@ const Backtest = () => {
           <div className="flex items-start gap-3">
             <div className="flex-1">
               <h4 className="font-semibold text-sm mb-1">No Historical Data Available</h4>
-              <p className="text-xs text-muted-foreground mb-3">
-                Load historical market data before running backtests. Click the button below to fetch data for all major trading pairs and timeframes.
+              <p className="text-xs text-muted-foreground mb-2">
+                Load historical market data before running backtests. This will fetch data for your configured trading pairs.
               </p>
+              {dataStats.userSymbols && dataStats.userSymbols.length > 0 && (
+                <p className="text-xs text-muted-foreground mb-3">
+                  Will load data for: {dataStats.userSymbols.join(', ')}
+                </p>
+              )}
               <Button 
                 onClick={loadMarketData} 
                 disabled={isLoadingData}
@@ -295,9 +342,14 @@ const Backtest = () => {
           <div className="flex items-start gap-3">
             <div className="flex-1">
               <h4 className="font-semibold text-sm mb-1">Data Available</h4>
-              <p className="text-xs text-muted-foreground mb-3">
-                {dataStats.totalRecords.toLocaleString()} candles loaded. Last update: {dataStats.lastUpdate?.toLocaleString()}
+              <p className="text-xs text-muted-foreground mb-2">
+                {dataStats.totalRecords.toLocaleString()} candles loaded for your trading pairs.
               </p>
+              {dataStats.userSymbols && dataStats.userSymbols.length > 0 && (
+                <p className="text-xs text-muted-foreground mb-3">
+                  Monitoring: {dataStats.userSymbols.join(', ')}
+                </p>
+              )}
               <Button 
                 onClick={loadMarketData} 
                 disabled={isLoadingData}
