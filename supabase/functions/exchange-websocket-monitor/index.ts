@@ -329,6 +329,11 @@ async function evaluateStrategy(
       atr_tp2_multiplier: strategy.ath_guard_atr_tp2_multiplier || 2.0,
       ath_safety_distance: strategy.ath_guard_ath_safety_distance || 0.2,
       rsi_threshold: strategy.ath_guard_rsi_threshold || 70,
+      adx_threshold: 25,
+      bollinger_period: 20,
+      bollinger_std: 2.0,
+      trailing_stop_percent: 20,
+      momentum_threshold: 30
     }, liveState.position_open);
 
     if (athSignal.signal_type) {

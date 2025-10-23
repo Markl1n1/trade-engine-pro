@@ -1,7 +1,7 @@
 // ATH Guard Strategy Test Script
 // Tests the optimized ATH Guard strategy with enhanced parameters
 
-import { evaluateATHGuardStrategy, defaultATHGuardConfig } from './ath-guard-strategy';
+import { evaluateATHGuardStrategy, defaultATHGuardConfig } from './ath-guard-strategy.ts';
 
 interface Candle {
   open: number;

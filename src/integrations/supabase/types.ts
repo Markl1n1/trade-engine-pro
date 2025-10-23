@@ -106,51 +106,6 @@ export type Database = {
         }
         Relationships: []
       }
-      encrypted_credentials: {
-        Row: {
-          created_at: string
-          credential_type: string
-          id: string
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          credential_type: string
-          id?: string
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          credential_type?: string
-          id?: string
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
-      encryption_keys: {
-        Row: {
-          created_at: string
-          id: string
-          key_id: number
-          purpose: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          key_id: number
-          purpose?: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          key_id?: number
-          purpose?: string
-        }
-        Relationships: []
-      }
       exchange_metrics: {
         Row: {
           created_at: string
@@ -321,59 +276,6 @@ export type Database = {
           user_id?: string | null
         }
         Relationships: []
-      }
-      signal_buffer: {
-        Row: {
-          buffered_at: string | null
-          candle_timestamp: number
-          created_at: string | null
-          id: string
-          price: number
-          processed: boolean | null
-          processed_at: string | null
-          reason: string | null
-          signal_type: string
-          strategy_id: string
-          symbol: string
-          user_id: string
-        }
-        Insert: {
-          buffered_at?: string | null
-          candle_timestamp: number
-          created_at?: string | null
-          id?: string
-          price: number
-          processed?: boolean | null
-          processed_at?: string | null
-          reason?: string | null
-          signal_type: string
-          strategy_id: string
-          symbol: string
-          user_id: string
-        }
-        Update: {
-          buffered_at?: string | null
-          candle_timestamp?: number
-          created_at?: string | null
-          id?: string
-          price?: number
-          processed?: boolean | null
-          processed_at?: string | null
-          reason?: string | null
-          signal_type?: string
-          strategy_id?: string
-          symbol?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "signal_buffer_strategy_id_fkey"
-            columns: ["strategy_id"]
-            isOneToOne: false
-            referencedRelation: "strategies"
-            referencedColumns: ["id"]
-          },
-        ]
       }
       strategies: {
         Row: {

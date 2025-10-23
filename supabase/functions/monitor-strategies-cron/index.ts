@@ -864,19 +864,7 @@ Deno.serve(async (req) => {
               apiSecret = credentials[0].api_secret;
             }
           } catch (e) {
-            console.log(`[CRON] Could not fetch encrypted credentials for ${strategy.name}, checking encrypted_credentials table directly`);
-            
-            // Fallback: check if encrypted credentials exist
-            const { data: encryptedExists } = await supabase
-              .from('encrypted_credentials')
-              .select('id')
-              .eq('user_id', strategy.user_id)
-              .eq('credential_type', credentialType)
-              .maybeSingle();
-            
-            if (!encryptedExists) {
-              console.log(`[CRON] No encrypted credentials found for ${credentialType}`);
-            }
+            console.log(`[CRON] Could not fetch credentials for ${strategy.name}:`, e);
           }
           
           // Проверяем позицию только для режимов с реальным выполнением

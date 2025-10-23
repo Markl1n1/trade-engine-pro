@@ -1,7 +1,7 @@
 // 4h Reentry Strategy Test Script
 // Tests the optimized 4h Reentry strategy with enhanced parameters
 
-import { evaluate4hReentry } from './4h-reentry-strategy';
+import { evaluate4hReentry } from './4h-reentry-strategy.ts';
 
 interface Candle {
   open: number;

@@ -553,13 +553,13 @@ export function evaluateATHGuardStrategy(
   
   console.log(`[ATH-GUARD] 📈 Step 2 - Enhanced Confirmation:`, {
     volume: hasVolume ? '✅ PASS' : '❌ FAIL',
-    adx: adxConfirmed ? '✅ PASS' : '❌ FAIL',
-    momentum: momentumConfirmed ? '✅ PASS' : '❌ FAIL',
+    adx_confirmed: adxConfirmed ? '✅ PASS' : '❌ FAIL',
+    momentum_confirmed: momentumConfirmed ? '✅ PASS' : '❌ FAIL',
     currentVolume: currentVolume.toFixed(0),
     avgVolume: avgVolume.toFixed(0),
     ratio: `${volumeRatio.toFixed(2)}x`,
-    adx: currentADX.toFixed(2),
-    momentum: momentumScore.toFixed(2)
+    adx_value: currentADX.toFixed(2),
+    momentum_score: momentumScore.toFixed(2)
   });
   
   if (!hasVolume || !adxConfirmed || !momentumConfirmed) {
