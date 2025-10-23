@@ -333,7 +333,10 @@ async function evaluateStrategy(
       bollinger_period: 20,
       bollinger_std: 2.0,
       trailing_stop_percent: 20,
-      momentum_threshold: 30
+      momentum_threshold: 30,
+      max_position_time: 240,
+      min_volume_spike: 1.5,
+      support_resistance_lookback: 50
     }, liveState.position_open);
 
     if (athSignal.signal_type) {

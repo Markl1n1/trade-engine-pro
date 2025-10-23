@@ -109,7 +109,7 @@ export class UnifiedBacktestEngine {
               signal, 
               executionPrice, 
               positionSize, 
-              currentCandle.open_time
+              currentCandle.open_time || currentCandle.timestamp || 0
             );
             
             if (this.config.trailingStopPercent) {
@@ -134,7 +134,7 @@ export class UnifiedBacktestEngine {
       }
       
       balanceHistory.push({
-        time: currentCandle.open_time,
+        time: currentCandle.open_time || currentCandle.timestamp || 0,
         balance: currentBalance
       });
     }
@@ -303,7 +303,8 @@ export class UnifiedBacktestEngine {
   private shouldExitByTime(position: Trade, currentCandle: Candle): boolean {
     if (!position.time_to_expire) return false;
     
-    const timeElapsed = currentCandle.open_time - position.entry_time;
+    const candleTime = currentCandle.open_time || currentCandle.timestamp || 0;
+    const timeElapsed = candleTime - position.entry_time;
     const maxTime = position.time_to_expire * 60 * 1000; // Convert to milliseconds
     
     return timeElapsed >= maxTime;

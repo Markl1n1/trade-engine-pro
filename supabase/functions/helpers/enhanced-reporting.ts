@@ -194,8 +194,8 @@ export class EnhancedReporting {
     return {
       recommendations,
       priority_order: recommendations.sort((a, b) => {
-        const priorityOrder = { high: 3, medium: 2, low: 1 };
-        return priorityOrder[b.priority] - priorityOrder[a.priority];
+        const priorityOrder: Record<string, number> = { high: 3, medium: 2, low: 1 };
+        return priorityOrder[b.priority as string] - priorityOrder[a.priority as string];
       })
     };
   }

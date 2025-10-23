@@ -218,7 +218,7 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
     // Use the optimized strategy function
     const recentCandles = candles.slice(0, i + 1);
     const signal = evaluateATHGuardStrategy(
-      recentCandles, 
+      recentCandles.map(c => ({ ...c, timestamp: c.open_time || c.close_time || 0 })), 
       athGuardConfig, 
       position !== null
     );
@@ -1740,10 +1740,14 @@ async function runSMACrossoverBacktest(
     // Use the optimized strategy function
     const recentCandles = candles.slice(0, i + 1);
     const signal = evaluateSMACrossoverStrategy(
-      recentCandles, 
+      recentCandles.map(c => ({ ...c, timestamp: c.open_time || c.close_time || 0 })), 
       config, 
       position !== null
     );
+    
+    // Calculate crossover signals
+    const goldenCross = prevSMAFast <= prevSMASlow && currentSMAFast > currentSMASlow;
+    const deathCross = prevSMAFast >= prevSMASlow && currentSMAFast < currentSMASlow;
     
     // BUY signal from optimized strategy
     if (signal.signal_type === 'BUY' && !position) {
@@ -2130,8 +2134,14 @@ async function runMTFMomentumBacktest(
     
     // Use the optimized strategy function
     const recentCandles = candles.slice(0, i + 1);
+    const recentCandles1m = candles1m.slice(0, i + 1).map(c => ({ ...c, timestamp: c.open_time || c.close_time || 0 }));
+    const recentCandles5m = candles5m.slice(0, Math.floor((i + 1) / 5)).map(c => ({ ...c, timestamp: c.open_time || c.close_time || 0 }));
+    const recentCandles15m = candles15m.slice(0, Math.floor((i + 1) / 15)).map(c => ({ ...c, timestamp: c.open_time || c.close_time || 0 }));
+    
     const signal = evaluateMTFMomentum(
-      recentCandles, 
+      recentCandles1m,
+      recentCandles5m,
+      recentCandles15m,
       config, 
       position !== null
     );
@@ -2199,7 +2209,8 @@ async function runMTFMomentumBacktest(
     
     // Handle exit for LONG position (RSI-based exit or opposite signal)
     if (position && position.type === 'buy') {
-      // Exit on RSI momentum loss (RSI drops below 40)
+      // Exit on RSI momentum loss (RSI drops below 40) using 1m RSI
+      const currentRSI1m = rsi1m[i];
       const exitOnMomentumLoss = currentRSI1m < 40;
       
       // Exit on opposite signal
@@ -2233,7 +2244,8 @@ async function runMTFMomentumBacktest(
     
     // Handle exit for SHORT position (RSI-based exit or opposite signal)
     if (position && position.type === 'sell') {
-      // Exit on RSI momentum reversal (RSI rises above 60)
+      // Exit on RSI momentum reversal (RSI rises above 60) using 1m RSI
+      const currentRSI1m = rsi1m[i];
       const exitOnMomentumReversal = currentRSI1m > 60;
       
       // Exit on opposite signal

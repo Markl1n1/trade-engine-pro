@@ -711,11 +711,19 @@ Deno.serve(async (req) => {
             volume_multiplier: strategy.ath_guard_volume_multiplier || 1.8,
             stoch_oversold: strategy.ath_guard_stoch_oversold || 25,
             stoch_overbought: strategy.ath_guard_stoch_overbought || 75,
-            atr_sl_multiplier: strategy.ath_guard_atr_sl_multiplier || 1.0,  // 1:2 ratio - SL = 1.0x ATR
-            atr_tp1_multiplier: strategy.ath_guard_atr_tp1_multiplier || 1.0, // Partial TP = 1.0x ATR
-            atr_tp2_multiplier: strategy.ath_guard_atr_tp2_multiplier || 2.0, // Full TP = 2.0x ATR (1:2 ratio)
+            atr_sl_multiplier: strategy.ath_guard_atr_sl_multiplier || 1.0,
+            atr_tp1_multiplier: strategy.ath_guard_atr_tp1_multiplier || 1.0,
+            atr_tp2_multiplier: strategy.ath_guard_atr_tp2_multiplier || 2.0,
             ath_safety_distance: strategy.ath_guard_ath_safety_distance || 0.2,
             rsi_threshold: strategy.ath_guard_rsi_threshold || 70,
+            adx_threshold: 25,
+            bollinger_period: 20,
+            bollinger_std: 2.0,
+            trailing_stop_percent: 20,
+            max_position_time: 240,
+            min_volume_spike: 1.5,
+            momentum_threshold: 30,
+            support_resistance_lookback: 50
           };
 
           // Reduced logging - only log when signal is generated or error occurs

@@ -210,13 +210,13 @@ const DataQuality = () => {
 
       const exchanges: ExchangeStatus[] = [];
 
-      // Check for encrypted credentials
-      const { data: encryptedCreds } = await supabase
-        .from('encrypted_credentials')
+      // Check for API credentials
+      const { data: apiCreds } = await supabase
+        .from('api_credentials')
         .select('credential_type');
 
       const hasCredential = (type: string) => 
-        encryptedCreds?.some(cred => cred.credential_type === type);
+        apiCreds?.some(cred => cred.credential_type === type);
 
       // Check Binance APIs
       if (hasCredential('binance_mainnet')) {
