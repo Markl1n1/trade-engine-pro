@@ -35,6 +35,7 @@ const Backtest = () => {
   const [comparisonResults, setComparisonResults] = useState<any>(null);
   const [isComparing, setIsComparing] = useState(false);
   const [debugMode, setDebugMode] = useState(false);
+  const [isLoadingData, setIsLoadingData] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -92,6 +93,35 @@ const Backtest = () => {
       setDataStats({ available: (count || 0) > 0, totalRecords: count || 0 });
     } catch {
       setDataStats(null);
+    }
+  };
+
+  const loadMarketData = async () => {
+    setIsLoadingData(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('load-market-data', {
+        body: { load: true }
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      toast({
+        title: "Market Data Loading",
+        description: `Successfully loaded ${data.summary?.totalCandles || 0} candles for ${data.summary?.successful || 0} symbol-timeframe combinations.`,
+      });
+
+      // Refresh data availability check
+      await checkDataAvailability();
+    } catch (error: any) {
+      toast({
+        title: "Error Loading Data",
+        description: error.message || "Failed to load market data",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingData(false);
     }
   };
 
@@ -219,8 +249,26 @@ const Backtest = () => {
             <div className="flex-1">
               <h4 className="font-semibold text-sm mb-1">No Historical Data Available</h4>
               <p className="text-xs text-muted-foreground mb-3">
-                Load historical market data before running backtests. Select a strategy and date range below, then click "Load Historical Data".
+                Load historical market data before running backtests. Click the button below to fetch data for all major trading pairs and timeframes.
               </p>
+              <Button 
+                onClick={loadMarketData} 
+                disabled={isLoadingData}
+                size="sm"
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                {isLoadingData ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Loading Data...
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-4 h-4 mr-2" />
+                    Load Market Data
+                  </>
+                )}
+              </Button>
             </div>
           </div>
         </Card>
@@ -231,9 +279,28 @@ const Backtest = () => {
           <div className="flex items-start gap-3">
             <div className="flex-1">
               <h4 className="font-semibold text-sm mb-1">Data Available</h4>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-muted-foreground mb-3">
                 {dataStats.totalRecords.toLocaleString()} candles loaded. Last update: {dataStats.lastUpdate?.toLocaleString()}
               </p>
+              <Button 
+                onClick={loadMarketData} 
+                disabled={isLoadingData}
+                size="sm"
+                variant="outline"
+                className="border-green-500 text-green-600 hover:bg-green-500 hover:text-white"
+              >
+                {isLoadingData ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Updating Data...
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-4 h-4 mr-2" />
+                    Refresh Market Data
+                  </>
+                )}
+              </Button>
             </div>
           </div>
         </Card>
