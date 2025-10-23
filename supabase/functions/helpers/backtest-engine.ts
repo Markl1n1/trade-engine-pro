@@ -2,6 +2,7 @@
 // Solves look-ahead bias, improves P&L calculations, and adds trailing stops
 
 import { getBybitConstraints, getBinanceConstraints } from './exchange-constraints.ts';
+import { calculateOptimalPositionSize, getDefaultPositionSizingConfig, validatePositionSize } from './position-sizer.ts';
 
 interface Candle {
   open: number;
@@ -447,8 +448,30 @@ export class EnhancedBacktestEngine {
   private executeEntry(currentCandle: Candle): void {
     const executionPrice = this.getExecutionPrice(currentCandle);
     
-    // Calculate position size
-    const positionSizeUSD = (this.availableBalance * this.config.positionSizePercent) / 100;
+    // 🎯 PHASE 3: Dynamic Position Sizing
+    const positionSizingConfig = getDefaultPositionSizingConfig();
+    const stopLossPrice = executionPrice * (1 - (this.config.stopLossPercent || 2) / 100);
+    
+    // Calculate optimal position size based on risk and volatility
+    const positionSizingResult = calculateOptimalPositionSize(
+      this.availableBalance,
+      executionPrice,
+      stopLossPrice,
+      this.candles.slice(0, this.currentIndex + 1),
+      positionSizingConfig,
+      {
+        minQty: this.minQty,
+        maxQty: this.maxQty,
+        stepSize: this.stepSize,
+        minNotional: this.minNotional,
+        maxNotional: this.maxNotional
+      },
+      1.0, // regimeMultiplier (would be passed from market regime detection)
+      1.0  // correlationFactor (would be calculated from portfolio correlation)
+    );
+    
+    // Use dynamic position size instead of fixed percentage
+    const positionSizeUSD = positionSizingResult.positionSize * executionPrice;
     
     let quantity: number;
     let margin: number;
@@ -472,6 +495,20 @@ export class EnhancedBacktestEngine {
       priceWithSlippage = executionPrice * (1 + this.config.slippage / 100);
       quantity = notional / priceWithSlippage;
       margin = notional;
+    }
+    
+    // Validate position size
+    const validation = validatePositionSize(quantity, executionPrice, {
+      minQty: this.minQty,
+      maxQty: this.maxQty,
+      stepSize: this.stepSize,
+      minNotional: this.minNotional,
+      maxNotional: this.maxNotional
+    });
+    
+    if (!validation.isValid) {
+      console.warn(`[POSITION-SIZING] Invalid position size: ${validation.errors.join(', ')}`);
+      return null;
     }
     
     // Apply exchange constraints

@@ -7,6 +7,9 @@ import { evaluateSMACrossoverStrategy, defaultSMACrossoverConfig } from '../help
 import { evaluateMTFMomentum } from '../helpers/mtf-momentum-strategy.ts';
 import { EnhancedBacktestEngine } from '../helpers/backtest-engine.ts';
 import { getBybitConstraints, getBinanceConstraints } from '../helpers/exchange-constraints.ts';
+import { detectMarketRegime, isStrategySuitableForRegime, getRegimePositionAdjustment } from '../helpers/market-regime-detector.ts';
+import { calculateOptimalPositionSize, getDefaultPositionSizingConfig } from '../helpers/position-sizer.ts';
+import { getAdaptiveParameters, getDefaultAdaptiveConfig } from '../helpers/adaptive-parameters.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -1054,6 +1057,61 @@ serve(async (req) => {
       close_time: d.close_time,
     }));
 
+    // 🎯 PHASE 2: Market Regime Detection
+    log(`[MARKET-REGIME] Analyzing market conditions...`);
+    const marketRegime = detectMarketRegime(candles);
+    log(`[MARKET-REGIME] Detected regime: ${marketRegime.regime} (${marketRegime.strength}% strength, ${marketRegime.direction} direction, ${marketRegime.confidence}% confidence)`);
+    
+    // Check if strategy is suitable for current market regime
+    const strategyType = strategy.strategy_type || 'standard';
+    const isSuitable = isStrategySuitableForRegime(strategyType, marketRegime);
+    
+    if (!isSuitable) {
+      log(`[MARKET-REGIME] Strategy ${strategyType} not suitable for ${marketRegime.regime} market`, {
+        regime: marketRegime.regime,
+        strength: marketRegime.strength,
+        direction: marketRegime.direction,
+        confidence: marketRegime.confidence
+      });
+      
+      return new Response(
+        JSON.stringify({
+          success: true,
+          results: {
+            initial_balance: initialBalance,
+            final_balance: initialBalance,
+            total_return: 0,
+            total_trades: 0,
+            winning_trades: 0,
+            losing_trades: 0,
+            win_rate: 0,
+            max_drawdown: 0,
+            profit_factor: 0,
+            avg_win: 0,
+            avg_loss: 0,
+            balance_history: [],
+            trades: [],
+            market_regime: marketRegime,
+            reason: `Market regime: ${marketRegime.regime} - strategy not suitable`
+          },
+          config: {
+            product_type: productType,
+            leverage,
+            maker_fee: makerFee,
+            taker_fee: takerFee,
+            slippage,
+            execution_timing: executionTiming,
+            trailing_stop_percent: trailingStopPercent
+          }
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    // Get regime-specific position size adjustment
+    const regimePositionAdjustment = getRegimePositionAdjustment(marketRegime);
+    log(`[MARKET-REGIME] Position size adjustment: ${regimePositionAdjustment}x`);
+
     // Pre-calculate all needed indicators
     const closePrices = candles.map(c => c.close);
     const indicatorCache: IndicatorCache = {};
@@ -1848,14 +1906,35 @@ async function runSMACrossoverBacktest(
     const goldenCross = prevSMAFast <= prevSMASlow && currentSMAFast > currentSMASlow; // Fast crosses above slow
     const deathCross = prevSMAFast >= prevSMASlow && currentSMAFast < currentSMASlow;   // Fast crosses below slow
     
-    // Volume confirmation
+    // Enhanced Volume confirmation
     const currentVolume = currentCandle.volume;
     const last20Volumes = candles.slice(Math.max(0, i - 20), i).map(c => c.volume);
     const avgVolume = last20Volumes.reduce((a, b) => a + b, 0) / last20Volumes.length;
-    const volumeConfirmed = currentVolume >= avgVolume * config.volume_multiplier;
     
-    // BUY signal: Golden cross + RSI overbought (momentum) + Volume
-    if (goldenCross && currentRSI > config.rsi_overbought && volumeConfirmed && !position) {
+    // Volume spike: 50% above average
+    const volumeSpike = currentVolume >= avgVolume * 1.5;
+    
+    // Volume trend: increasing volume
+    const volumeTrend = i > 0 ? currentVolume > candles[i-1].volume : true;
+    
+    // Enhanced volume confirmation
+    const volumeConfirmed = volumeSpike && volumeTrend && currentVolume >= avgVolume * config.volume_multiplier;
+    
+    // 🎯 PHASE 5: Adaptive Parameters for SMA Strategy
+    const adaptiveConfig = getAdaptiveParameters(
+      candles.slice(0, i + 1),
+      config,
+      marketRegime,
+      getDefaultAdaptiveConfig()
+    );
+    
+    // Use adaptive RSI thresholds
+    const adaptiveRSIOverbought = adaptiveConfig.rsi_overbought;
+    const adaptiveRSIOversold = adaptiveConfig.rsi_oversold;
+    const adaptiveVolumeMultiplier = adaptiveConfig.volume_multiplier;
+    
+    // BUY signal: Golden cross + Adaptive RSI overbought (momentum) + Volume
+    if (goldenCross && currentRSI > adaptiveRSIOverbought && volumeConfirmed && !position) {
       const positionSize = Math.min(availableBalance * 0.95, balance * 0.1);
       const quantity = Math.floor(positionSize / currentPrice / stepSize) * stepSize;
       
@@ -1884,8 +1963,8 @@ async function runSMACrossoverBacktest(
       }
     }
     
-    // SHORT signal: Death cross + RSI oversold (momentum reversal) + Volume
-    if (deathCross && currentRSI < config.rsi_oversold && volumeConfirmed && !position) {
+    // SHORT signal: Death cross + Adaptive RSI oversold (momentum reversal) + Volume
+    if (deathCross && currentRSI < adaptiveRSIOversold && volumeConfirmed && !position) {
       const positionSize = Math.min(availableBalance * 0.95, balance * 0.1);
       const quantity = Math.floor(positionSize / currentPrice / stepSize) * stepSize;
       

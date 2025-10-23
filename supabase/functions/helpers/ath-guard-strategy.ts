@@ -173,7 +173,7 @@ function calculateATR(candles: Candle[], period: number = 14): number[] {
   return [0, ...calculateEMA(tr, period)];
 }
 
-// Check Bias Filter
+// Simplified Bias Filter (Step 1) - EMA alignment only
 function checkBiasFilter(
   price: number,
   ema50: number,
@@ -182,23 +182,12 @@ function checkBiasFilter(
   ema150Slope: number,
   config: ATHGuardConfig
 ): 'LONG' | 'SHORT' | 'NEUTRAL' {
-  // Long bias
-  if (
-    price > ema150 &&
-    ema50 > ema100 &&
-    ema100 > ema150 &&
-    ema150Slope > config.ema_slope_threshold
-  ) {
+  // Simplified: Just check EMA alignment and basic slope
+  if (price > ema150 && ema50 > ema100 && ema150Slope > 0) {
     return 'LONG';
   }
   
-  // Short bias
-  if (
-    price < ema150 &&
-    ema50 < ema100 &&
-    ema100 < ema150 &&
-    ema150Slope < -config.ema_slope_threshold
-  ) {
+  if (price < ema150 && ema50 < ema100 && ema150Slope < 0) {
     return 'SHORT';
   }
   
@@ -240,10 +229,10 @@ function checkPullback(
   }
 }
 
-// Check Momentum Triggers
+// Simplified Momentum Confirmation (Step 3) - RSI + MACD only
 function checkMomentum(
   macd: { macd: number[], signal: number[], histogram: number[] },
-  stoch: { k: number[], d: number[] },
+  rsi: number[],
   bias: 'LONG' | 'SHORT',
   config: ATHGuardConfig
 ): boolean {
@@ -255,34 +244,17 @@ function checkMomentum(
   const currentMACD = macd.macd[idx];
   const currentSignal = macd.signal[idx];
   const currentHistogram = macd.histogram[idx];
-  const prevMACD = macd.macd[prevIdx];
-  const prevSignal = macd.signal[prevIdx];
+  const currentRSI = rsi[idx];
   
-  const currentK = stoch.k[idx];
-  const currentD = stoch.d[idx];
-  const prevK = stoch.k[prevIdx];
-  const prevD = stoch.d[prevIdx];
-  
+  // Simplified momentum check: RSI + MACD histogram
   if (bias === 'LONG') {
-    // MACD crossover above signal + histogram > 0
-    const macdCross = prevMACD <= prevSignal && currentMACD > currentSignal && currentHistogram > 0;
-    
-    // Stochastic %K crosses above %D from below oversold zone
-    const stochCross = prevK <= prevD && currentK > currentD && prevK < config.stoch_oversold;
-    
-    return macdCross && stochCross;
+    return currentRSI > 50 && currentHistogram > 0; // Simple momentum
   } else {
-    // MACD crossover below signal + histogram < 0
-    const macdCross = prevMACD >= prevSignal && currentMACD < currentSignal && currentHistogram < 0;
-    
-    // Stochastic %K crosses below %D from above overbought zone
-    const stochCross = prevK >= prevD && currentK < currentD && prevK > config.stoch_overbought;
-    
-    return macdCross && stochCross;
+    return currentRSI < 50 && currentHistogram < 0; // Simple momentum
   }
 }
 
-// Check Volume Validation
+// Simplified Volume Confirmation (Step 2) - Basic volume spike
 function checkVolume(candles: Candle[], config: ATHGuardConfig): boolean {
   if (candles.length < 21) return false;
   
@@ -290,7 +262,8 @@ function checkVolume(candles: Candle[], config: ATHGuardConfig): boolean {
   const last20Volumes = candles.slice(-21, -1).map(c => c.volume);
   const avgVolume = last20Volumes.reduce((a, b) => a + b, 0) / 20;
   
-  return currentVolume >= avgVolume * config.volume_multiplier;
+  // Simplified: Just check for volume spike (20% above average)
+  return currentVolume >= avgVolume * 1.2;
 }
 
 // Check ATH Safety
@@ -368,13 +341,13 @@ export function evaluateATHGuardStrategy(
     positionOpen
   });
   
-  // Step 1: Check bias filter
+  // Step 1: Simplified Bias Filter (EMA alignment only)
   const bias = checkBiasFilter(currentPrice, currentEMA50, currentEMA100, currentEMA150, ema150Slope, config);
   
-  console.log(`[ATH-GUARD] 🎯 Step 1 - Bias Filter: ${bias}`, {
+  console.log(`[ATH-GUARD] 🎯 Step 1 - Simplified Bias Filter: ${bias}`, {
     priceVsEMA150: currentPrice > currentEMA150 ? 'ABOVE' : 'BELOW',
-    emaAlignment: `EMA50(${currentEMA50.toFixed(2)}) ${currentEMA50 > currentEMA100 ? '>' : '<'} EMA100(${currentEMA100.toFixed(2)}) ${currentEMA100 > currentEMA150 ? '>' : '<'} EMA150(${currentEMA150.toFixed(2)})`,
-    slope: `${ema150Slope.toFixed(4)}% (threshold: ${config.ema_slope_threshold}%)`,
+    emaAlignment: `EMA50(${currentEMA50.toFixed(2)}) ${currentEMA50 > currentEMA100 ? '>' : '<'} EMA100(${currentEMA100.toFixed(2)})`,
+    slope: `${ema150Slope.toFixed(4)}%`,
     passed: bias !== 'NEUTRAL'
   });
   
@@ -382,54 +355,7 @@ export function evaluateATHGuardStrategy(
     return { signal_type: null, reason: 'No clear bias - EMA alignment not met' };
   }
   
-  // Step 2: Check pullback
-  const hasPullback = checkPullback(candles, currentVWAP, currentEMA50, bias, config);
-  
-  const prevPrice = candles[candles.length - 2]?.close || currentPrice;
-  console.log(`[ATH-GUARD] 🔄 Step 2 - Pullback Check: ${hasPullback ? '✅ PASS' : '❌ FAIL'}`, {
-    bias,
-    prevPrice: prevPrice.toFixed(2),
-    currentPrice: currentPrice.toFixed(2),
-    vwap: currentVWAP.toFixed(2),
-    ema50: currentEMA50.toFixed(2),
-    tolerance: `${config.pullback_tolerance}%`
-  });
-  
-  if (!hasPullback) {
-    return { signal_type: null, reason: 'Waiting for pullback to VWAP/EMA50' };
-  }
-  
-  // Step 3: Check momentum triggers
-  const hasMomentum = checkMomentum(macd, stoch, bias, config);
-  
-  const idx = macd.macd.length - 1;
-  const currentMACD = macd.macd[idx];
-  const currentSignal = macd.signal[idx];
-  const currentHistogram = macd.histogram[idx];
-  const currentK = stoch.k[idx];
-  const currentD = stoch.d[idx];
-  
-  console.log(`[ATH-GUARD] ⚡ Step 3 - Momentum Check: ${hasMomentum ? '✅ PASS' : '❌ FAIL'}`, {
-    bias,
-    macd: {
-      line: currentMACD.toFixed(4),
-      signal: currentSignal.toFixed(4),
-      histogram: currentHistogram.toFixed(4),
-      crossover: currentMACD > currentSignal ? 'ABOVE' : 'BELOW'
-    },
-    stochastic: {
-      k: currentK.toFixed(2),
-      d: currentD.toFixed(2),
-      crossover: currentK > currentD ? 'ABOVE' : 'BELOW',
-      zone: bias === 'LONG' ? `oversold(<${config.stoch_oversold})` : `overbought(>${config.stoch_overbought})`
-    }
-  });
-  
-  if (!hasMomentum) {
-    return { signal_type: null, reason: 'Momentum triggers not aligned (MACD + Stochastic)' };
-  }
-  
-  // Step 4: Check volume
+  // Step 2: Simplified Volume Confirmation
   const hasVolume = checkVolume(candles, config);
   
   const currentVolume = candles[candles.length - 1].volume;
@@ -437,34 +363,35 @@ export function evaluateATHGuardStrategy(
   const avgVolume = last20Volumes.reduce((a, b) => a + b, 0) / 20;
   const volumeRatio = currentVolume / avgVolume;
   
-  console.log(`[ATH-GUARD] 📈 Step 4 - Volume Check: ${hasVolume ? '✅ PASS' : '❌ FAIL'}`, {
+  console.log(`[ATH-GUARD] 📈 Step 2 - Volume Confirmation: ${hasVolume ? '✅ PASS' : '❌ FAIL'}`, {
     currentVolume: currentVolume.toFixed(0),
     avgVolume: avgVolume.toFixed(0),
-    ratio: `${volumeRatio.toFixed(2)}x (need ${config.volume_multiplier}x)`
+    ratio: `${volumeRatio.toFixed(2)}x (need 1.2x)`
   });
   
   if (!hasVolume) {
-    return { signal_type: null, reason: `Volume too low (< ${config.volume_multiplier}x average)` };
+    return { signal_type: null, reason: 'Volume too low (< 1.2x average)' };
   }
   
-  // Step 5: Check ATH safety
-  const athSafe = checkATHSafety(candles, currentRSI, bias, config);
+  // Step 3: Simplified Momentum Confirmation (RSI + MACD)
+  const hasMomentum = checkMomentum(macd, rsi, bias, config);
   
-  const lookback = Math.min(100, candles.length);
-  const recentCandles = candles.slice(-lookback);
-  const recentHigh = Math.max(...recentCandles.map(c => c.high));
-  const distanceToATH = ((currentPrice - recentHigh) / recentHigh) * 100;
+  const idx = macd.macd.length - 1;
+  const currentMACD = macd.macd[idx];
+  const currentSignal = macd.signal[idx];
+  const currentHistogram = macd.histogram[idx];
   
-  console.log(`[ATH-GUARD] 🛡️ Step 5 - ATH Safety Check: ${athSafe ? '✅ PASS' : '❌ FAIL'}`, {
+  console.log(`[ATH-GUARD] ⚡ Step 3 - Momentum Confirmation: ${hasMomentum ? '✅ PASS' : '❌ FAIL'}`, {
     bias,
-    currentPrice: currentPrice.toFixed(2),
-    recentHigh: recentHigh.toFixed(2),
-    distanceToATH: `${distanceToATH.toFixed(2)}% (threshold: ${config.ath_safety_distance}%)`,
-    rsi: `${currentRSI.toFixed(2)} (threshold: ${config.rsi_threshold})`
+    rsi: `${currentRSI.toFixed(2)} (need ${bias === 'LONG' ? '>50' : '<50'})`,
+    macd: {
+      histogram: currentHistogram.toFixed(4),
+      condition: bias === 'LONG' ? '>0' : '<0'
+    }
   });
   
-  if (!athSafe) {
-    return { signal_type: null, reason: 'Near ATH with high RSI - skipping aggressive entry' };
+  if (!hasMomentum) {
+    return { signal_type: null, reason: 'Momentum not aligned (RSI + MACD histogram)' };
   }
   
   // All conditions met - generate signal
@@ -487,7 +414,7 @@ export function evaluateATHGuardStrategy(
     
     return {
       signal_type: 'BUY',
-      reason: 'ATH Guard LONG: Bias filter + Pullback + MACD cross + Stoch cross + Volume spike',
+      reason: 'ATH Guard LONG: Simplified 3-step (Bias + Volume + Momentum)',
       stop_loss: stopLoss,
       take_profit_1: takeProfit1,
       take_profit_2: takeProfit2,
@@ -511,7 +438,7 @@ export function evaluateATHGuardStrategy(
     
     return {
       signal_type: 'SELL',
-      reason: 'ATH Guard SHORT: Bias filter + Rejection + MACD cross + Stoch cross + Volume spike',
+      reason: 'ATH Guard SHORT: Simplified 3-step (Bias + Volume + Momentum)',
       stop_loss: stopLoss,
       take_profit_1: takeProfit1,
       take_profit_2: takeProfit2,
