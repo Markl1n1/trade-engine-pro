@@ -134,10 +134,15 @@ const EXCHANGE_URLS = {
     mainnet: 'https://api.bybit.com',
     testnet: 'https://api-testnet.bybit.com',
   },
+  binance: {
+    mainnet: 'https://fapi.binance.com',
+    testnet: 'https://testnet.binancefuture.com',
+  },
 };
 
 const INTERVAL_MAPPING: Record<string, Record<string, string>> = {
   bybit: { '1m': '1', '5m': '5', '15m': '15', '1h': '60', '4h': '240', '1d': 'D' },
+  binance: { '1m': '1m', '5m': '5m', '15m': '15m', '1h': '1h', '4h': '4h', '1d': '1d' },
 };
 
 interface Candle {
@@ -209,8 +214,17 @@ async function fetchMarketData(
   if (Deno.env.get('USE_HYBRID_DATA') === 'true') {
     return await fetchHybridMarketData(symbol, timeframe, limit);
   }
-  // Ensure exchange type is valid, default to bybit
-  const exchange = (exchangeType === 'bybit' ? 'bybit' : 'bybit') as 'bybit';
+  
+  // Ensure exchange type is valid, default to bybit if not found
+  const validExchange = (exchangeType === 'binance' || exchangeType === 'bybit') ? exchangeType : 'bybit';
+  const exchange = validExchange as 'bybit' | 'binance';
+  
+  // Safety check
+  if (!EXCHANGE_URLS[exchange]) {
+    console.error(`[CRON] Invalid exchange type: ${exchangeType}, defaulting to bybit`);
+    throw new Error(`Unsupported exchange type: ${exchangeType}`);
+  }
+  
   const baseUrl = useTestnet ? EXCHANGE_URLS[exchange].testnet : EXCHANGE_URLS[exchange].mainnet;
   const mappedInterval = INTERVAL_MAPPING[exchange][timeframe] || timeframe;
   
