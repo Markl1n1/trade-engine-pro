@@ -6,13 +6,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Comprehensive list of major trading pairs and timeframes
-const MAJOR_SYMBOLS = [
-  'BTCUSDT', 'ETHUSDT', 'ADAUSDT', 'SOLUSDT', 'XRPUSDT', 
-  'DOGEUSDT', 'MATICUSDT', 'AVAXUSDT', 'DOTUSDT', 'LINKUSDT',
-  'UNIUSDT', 'LTCUSDT', 'BCHUSDT', 'ATOMUSDT', 'FTMUSDT'
-];
-
 const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1d'];
 
 // Bybit interval mapping
@@ -33,17 +26,38 @@ serve(async (req) => {
 
   try {
     const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? ''),
+      Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    console.log('[LOAD-MARKET-DATA] Starting comprehensive market data loading...');
+    console.log('[LOAD-MARKET-DATA] Fetching user trading pairs...');
+
+    // Get unique symbols from user_trading_pairs table
+    const { data: tradingPairsData, error: pairsError } = await supabase
+      .from('user_trading_pairs')
+      .select('symbol')
+      .order('symbol');
+
+    if (pairsError) {
+      console.error('[LOAD-MARKET-DATA] Error fetching trading pairs:', pairsError);
+      throw new Error(`Failed to fetch trading pairs: ${pairsError.message}`);
+    }
+
+    // Extract unique symbols
+    const userSymbols = [...new Set((tradingPairsData || []).map(p => p.symbol))];
+
+    // Fallback to default symbols if no trading pairs configured
+    const SYMBOLS_TO_FETCH = userSymbols.length > 0 
+      ? userSymbols 
+      : ['BTCUSDT', 'ETHUSDT'];
+
+    console.log(`[LOAD-MARKET-DATA] Found ${SYMBOLS_TO_FETCH.length} trading pairs to fetch: ${SYMBOLS_TO_FETCH.join(', ')}`);
 
     const results = [];
     let totalCandles = 0;
 
     // Process all symbol-timeframe combinations
-    for (const symbol of MAJOR_SYMBOLS) {
+    for (const symbol of SYMBOLS_TO_FETCH) {
       for (const timeframe of TIMEFRAMES) {
         try {
           console.log(`[LOAD-MARKET-DATA] Processing ${symbol} ${timeframe}...`);
@@ -161,7 +175,7 @@ serve(async (req) => {
               volume: parseFloat(k[5]) || 0,
               close_time: parseInt(k[6]) || (parseInt(k[0]) + 60000), // Fallback close_time
             }))
-            .filter(candle => 
+            .filter((candle: any) => 
               candle.symbol && 
               candle.timeframe &&
               candle.open_time > 0 && 
@@ -213,7 +227,7 @@ serve(async (req) => {
           results.push({
             symbol,
             timeframe,
-            error: error.message,
+            error: error instanceof Error ? error.message : String(error),
             success: false
           });
         }
@@ -245,7 +259,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         timestamp: new Date().toISOString()
       }),
       { 
