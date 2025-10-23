@@ -249,36 +249,52 @@ serve(async (req) => {
           }
 
           // Deduplicate candles before storing (remove duplicates based on symbol, timeframe, open_time)
-          const uniqueCandles = candles.reduce((acc: any[], candle: any) => {
+          const seenKeys = new Set();
+          const uniqueCandles = candles.filter((candle: any) => {
             const key = `${candle.symbol}-${candle.timeframe}-${candle.open_time}`;
-            if (!acc.find(c => `${c.symbol}-${c.timeframe}-${c.open_time}` === key)) {
-              acc.push(candle);
+            if (seenKeys.has(key)) {
+              return false;
             }
-            return acc;
-          }, []);
+            seenKeys.add(key);
+            return true;
+          });
 
           console.log(`[LOAD-MARKET-DATA] Deduplicated ${candles.length} -> ${uniqueCandles.length} candles for ${symbol} ${timeframe}`);
 
-          // Store in database with individual inserts to avoid conflicts
+          // Store in database with batch upsert to avoid conflicts
           let insertCount = 0;
           let errorCount = 0;
           
-          for (const candle of uniqueCandles) {
-            try {
-              const { error: insertError } = await supabase
-                .from('market_data')
-                .upsert(candle, { onConflict: 'symbol,timeframe,open_time' });
-              
-              if (insertError) {
-                console.warn(`[LOAD-MARKET-DATA] Insert error for candle ${candle.symbol} ${candle.timeframe} ${candle.open_time}:`, insertError.message);
-                errorCount++;
-              } else {
-                insertCount++;
-              }
-            } catch (err) {
-              console.warn(`[LOAD-MARKET-DATA] Insert exception for candle ${candle.symbol} ${candle.timeframe} ${candle.open_time}:`, err);
-              errorCount++;
+          if (uniqueCandles.length === 0) {
+            console.log(`[LOAD-MARKET-DATA] No unique candles to insert for ${symbol} ${timeframe}`);
+            results.push({
+              symbol,
+              timeframe,
+              candles: 0,
+              reason: 'NO_UNIQUE_CANDLES',
+              success: true
+            });
+            continue;
+          }
+          
+          try {
+            // Use batch upsert to avoid individual conflict issues
+            const { data: upsertData, error: upsertError } = await supabase
+              .from('market_data')
+              .upsert(uniqueCandles, { 
+                onConflict: 'symbol,timeframe,open_time',
+                ignoreDuplicates: false 
+              });
+            
+            if (upsertError) {
+              console.warn(`[LOAD-MARKET-DATA] Batch upsert error for ${symbol} ${timeframe}:`, upsertError.message);
+              errorCount = uniqueCandles.length;
+            } else {
+              insertCount = uniqueCandles.length;
             }
+          } catch (err) {
+            console.warn(`[LOAD-MARKET-DATA] Batch upsert exception for ${symbol} ${timeframe}:`, err);
+            errorCount = uniqueCandles.length;
           }
 
           const dbError = errorCount > 0 ? new Error(`${errorCount} insert errors`) : null;
