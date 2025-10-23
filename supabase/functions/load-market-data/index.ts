@@ -121,6 +121,7 @@ serve(async (req) => {
           const bybitInterval = BYBIT_INTERVALS[timeframe] || timeframe;
           const bybitUrl = `https://api.bybit.com/v5/market/kline?category=linear&symbol=${symbol}&interval=${bybitInterval}&limit=${limit}&start=${startTime}`;
           
+          console.log(`[LOAD-MARKET-DATA] Bybit URL: ${bybitUrl}`);
           const response = await fetch(bybitUrl);
 
           if (!response.ok) {

@@ -860,6 +860,21 @@ serve(async (req) => {
 
     log(`Fetching market data`, { startDate, endDate, symbol: strategy.symbol, timeframe: strategy.timeframe });
 
+    // First, check what data exists for this symbol/timeframe
+    const { data: dataCheck, error: checkError } = await supabaseClient
+      .from('market_data')
+      .select('symbol, timeframe, exchange_type, COUNT(*) as count')
+      .eq('symbol', strategy.symbol)
+      .eq('timeframe', strategy.timeframe)
+      .group('symbol, timeframe, exchange_type');
+    
+    log(`Data availability check`, { 
+      symbol: strategy.symbol, 
+      timeframe: strategy.timeframe, 
+      availableData: dataCheck,
+      checkError: checkError?.message 
+    });
+
     while (hasMore) {
       const { data: batch, error: batchError } = await supabaseClient
         .from('market_data')
