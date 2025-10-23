@@ -221,6 +221,11 @@ serve(async (req) => {
             success: true
           });
 
+          // Calculate date range for logging
+          const startDateTime = new Date(Math.min(...candles.map(c => c.open_time))).toISOString();
+          const endDateTime = new Date(Math.max(...candles.map(c => c.open_time))).toISOString();
+
+          console.log(`[MONITOR] ${symbol} | ${timeframe} | ${startDateTime} - ${endDateTime}`);
           console.log(`[LOAD-MARKET-DATA] ✅ Updated ${symbol} ${timeframe}: ${candles.length} candles (${fetchReason})`);
 
         } catch (error) {
