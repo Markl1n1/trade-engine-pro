@@ -119,7 +119,16 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
     atr_tp1_multiplier: 1.0, 
     atr_tp2_multiplier: 2.0, 
     ath_safety_distance: 0.2, 
-    rsi_threshold: 70 
+    rsi_threshold: 70,
+    // New enhanced parameters
+    adx_threshold: 20,
+    bollinger_period: 20,
+    bollinger_std: 2.0,
+    trailing_stop_percent: 0.5,
+    max_position_time: 60,
+    min_volume_spike: 1.2,
+    momentum_threshold: 15,
+    support_resistance_lookback: 20
   };
 
   // Pre-calculate all indicators once
@@ -1770,16 +1779,23 @@ async function runSMACrossoverBacktest(
   const { stepSize, minQty, minNotional } = constraints;
   console.log(`[SMA-BACKTEST] Using ${exchangeType} constraints:`, { stepSize, minQty, minNotional });
 
-  // Strategy configuration
+  // Enhanced strategy configuration optimized for 15m timeframe
   const config = {
     sma_fast_period: strategy.sma_fast_period || 20,
     sma_slow_period: strategy.sma_slow_period || 200,
     rsi_period: strategy.rsi_period || 14,
-    rsi_overbought: strategy.rsi_overbought || 70,
-    rsi_oversold: strategy.rsi_oversold || 30,
-    volume_multiplier: strategy.volume_multiplier || 1.2,
-    atr_sl_multiplier: strategy.atr_sl_multiplier || 2.0,
-    atr_tp_multiplier: strategy.atr_tp_multiplier || 3.0
+    rsi_overbought: strategy.rsi_overbought || 75,           // More restrictive for 15m
+    rsi_oversold: strategy.rsi_oversold || 25,               // More restrictive for 15m
+    volume_multiplier: strategy.volume_multiplier || 1.3,     // Higher volume requirement for 15m
+    atr_sl_multiplier: strategy.atr_sl_multiplier || 2.5,     // Larger stop loss for 15m
+    atr_tp_multiplier: strategy.atr_tp_multiplier || 4.0,     // Larger take profit for 15m
+    // New enhanced parameters
+    adx_threshold: strategy.adx_threshold || 25,              // Minimum trend strength
+    bollinger_period: strategy.bollinger_period || 20,         // Bollinger Bands period
+    bollinger_std: strategy.bollinger_std || 2,                // Bollinger Bands standard deviation
+    trailing_stop_percent: strategy.trailing_stop_percent || 1.0, // Trailing stop for trends
+    max_position_time: strategy.max_position_time || 240,      // Max time in position (4 hours)
+    min_trend_strength: strategy.min_trend_strength || 0.6     // Minimum trend strength score
   };
 
   console.log(`[SMA-BACKTEST] Processing ${candles.length} candles`);
@@ -2180,14 +2196,20 @@ async function runMTFMomentumBacktest(
   const { stepSize, minQty, minNotional } = constraints;
   console.log(`[MTF-BACKTEST] Using ${exchangeType} constraints:`, { stepSize, minQty, minNotional });
 
-  // Strategy configuration with relaxed volume filter
+  // Optimized strategy configuration for ETH scalping
   const config = {
     mtf_rsi_period: strategy.mtf_rsi_period || 14,
-    mtf_rsi_entry_threshold: strategy.mtf_rsi_entry_threshold || 55,
-    mtf_macd_fast: strategy.mtf_macd_fast || 12,
-    mtf_macd_slow: strategy.mtf_macd_slow || 26,
-    mtf_macd_signal: strategy.mtf_macd_signal || 9,
-    mtf_volume_multiplier: strategy.mtf_volume_multiplier || 1.3 // Reduced from 1.8 to 1.3
+    mtf_rsi_entry_threshold: strategy.mtf_rsi_entry_threshold || 50,  // Reduced from 55 for more signals
+    mtf_macd_fast: strategy.mtf_macd_fast || 8,                       // Faster for scalping
+    mtf_macd_slow: strategy.mtf_macd_slow || 21,                      // Faster for scalping
+    mtf_macd_signal: strategy.mtf_macd_signal || 5,                    // Faster for scalping
+    mtf_volume_multiplier: strategy.mtf_volume_multiplier || 1.1,     // Reduced from 1.3 for more signals
+    // New parameters for enhanced scalping
+    atr_sl_multiplier: strategy.atr_sl_multiplier || 1.5,             // ATR-based stop loss
+    atr_tp_multiplier: strategy.atr_tp_multiplier || 2.0,             // ATR-based take profit
+    trailing_stop_percent: strategy.trailing_stop_percent || 0.5,      // Fast trailing stop
+    max_position_time: strategy.max_position_time || 30,              // Max time in position (minutes)
+    min_profit_percent: strategy.min_profit_percent || 0.2            // Min profit for trailing activation
   };
 
   const startTime = Date.now();
@@ -3153,6 +3175,19 @@ async function run4hReentryBacktest(
   const sessionStart = "00:00";
   const sessionEnd = "03:59";
   const riskRewardRatio = 2;
+  
+  // Enhanced parameters for 4h Reentry strategy
+  const enhancedConfig = {
+    adx_threshold: 20,
+    bollinger_period: 20,
+    bollinger_std: 2.0,
+    rsi_oversold: 30,
+    rsi_overbought: 70,
+    momentum_threshold: 10,
+    volume_multiplier: 1.2,
+    session_strength_threshold: 0.5,
+    max_position_time: 240 // 4 hours
+  };
 
   // State tracking for 4h range
   let currentDayRange: { date: string; H_4h: number; L_4h: number } | null = null;

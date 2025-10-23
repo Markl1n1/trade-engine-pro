@@ -11,18 +11,29 @@ interface Candle {
 
 export interface MTFMomentumConfig {
   rsi_period?: number;           // default 14
-  rsi_entry_threshold?: number;  // e.g., > 55 for longs, < 45 for shorts
-  macd_fast?: number;            // default 12
-  macd_slow?: number;            // default 26
-  macd_signal?: number;          // default 9
+  rsi_entry_threshold?: number;  // e.g., > 50 for longs, < 50 for shorts (optimized for ETH)
+  macd_fast?: number;            // default 8 (optimized for scalping)
+  macd_slow?: number;            // default 21 (optimized for scalping)
+  macd_signal?: number;          // default 5 (optimized for scalping)
   supertrend_atr_period?: number;// default 10
   supertrend_multiplier?: number;// default 3
-  volume_multiplier?: number;    // default 1.2 (current volume vs 20 SMA volume)
+  volume_multiplier?: number;    // default 1.1 (optimized for ETH)
+  // New parameters for enhanced scalping
+  atr_sl_multiplier?: number;   // default 1.5 (ATR-based stop loss)
+  atr_tp_multiplier?: number;    // default 2.0 (ATR-based take profit)
+  trailing_stop_percent?: number;// default 0.5 (fast trailing stop)
+  max_position_time?: number;    // default 30 (max time in position, minutes)
+  min_profit_percent?: number;   // default 0.2 (min profit to activate trailing)
 }
 
 export interface MTFMomentumSignal {
   signal_type: 'BUY' | 'SELL' | null;
   reason: string;
+  // Enhanced signal information for scalping
+  stop_loss?: number;
+  take_profit?: number;
+  confidence?: number;        // Signal confidence (0-1)
+  time_to_expire?: number;    // Signal expiration time (minutes)
 }
 
 function sma(values: number[], period: number): number[] {
@@ -98,6 +109,68 @@ function volumeSMA(candles: Candle[], period = 20): number {
   return vols.reduce((a, b) => a + b, 0) / period;
 }
 
+// Calculate ATR for risk management
+function calculateATR(candles: Candle[], period = 14): number[] {
+  const tr: number[] = [];
+  
+  for (let i = 1; i < candles.length; i++) {
+    const high = candles[i].high;
+    const low = candles[i].low;
+    const prevClose = candles[i - 1].close;
+    
+    tr.push(Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose)));
+  }
+  
+  // Calculate ATR using EMA
+  const atr: number[] = [];
+  if (tr.length < period) return atr;
+  
+  let sum = 0;
+  for (let i = 0; i < period; i++) {
+    sum += tr[i];
+  }
+  atr.push(sum / period);
+  
+  for (let i = period; i < tr.length; i++) {
+    const ema = (atr[atr.length - 1] * (period - 1) + tr[i]) / period;
+    atr.push(ema);
+  }
+  
+  return [0, ...atr]; // Pad with 0 for first candle
+}
+
+// Calculate signal confidence based on confluence
+function calculateSignalConfidence(
+  rsi1: number, rsi5: number, rsi15: number,
+  macd1: number, macd5: number, macd15: number,
+  volumeRatio: number,
+  config: MTFMomentumConfig
+): number {
+  let confidence = 0;
+  
+  // RSI confluence (0-0.4)
+  const rsiScore = (
+    (rsi1 > config.rsi_entry_threshold! ? 1 : 0) +
+    (rsi5 > 50 ? 0.5 : 0) +
+    (rsi15 > 50 ? 0.5 : 0)
+  ) / 2;
+  confidence += rsiScore * 0.4;
+  
+  // MACD confluence (0-0.4)
+  const macdScore = (
+    (macd1 > 0 ? 1 : 0) +
+    (macd5 > 0 ? 0.5 : 0) +
+    (macd15 > 0 ? 0.5 : 0)
+  ) / 2;
+  confidence += macdScore * 0.4;
+  
+  // Volume confirmation (0-0.2)
+  const volumeScore = Math.min(volumeRatio / config.volume_multiplier!, 1);
+  confidence += volumeScore * 0.2;
+  
+  return Math.min(confidence, 1);
+}
+
 export function evaluateMTFMomentum(
   candles1m: Candle[],
   candles5m: Candle[],
@@ -105,15 +178,21 @@ export function evaluateMTFMomentum(
   config: MTFMomentumConfig,
   positionOpen: boolean
 ): MTFMomentumSignal {
+  // Optimized configuration for ETH scalping
   const cfg = {
     rsi_period: config.rsi_period ?? 14,
-    rsi_entry_threshold: config.rsi_entry_threshold ?? 55,
-    macd_fast: config.macd_fast ?? 12,
-    macd_slow: config.macd_slow ?? 26,
-    macd_signal: config.macd_signal ?? 9,
+    rsi_entry_threshold: config.rsi_entry_threshold ?? 50,  // Reduced from 55 for more signals
+    macd_fast: config.macd_fast ?? 8,                       // Faster for scalping
+    macd_slow: config.macd_slow ?? 21,                      // Faster for scalping
+    macd_signal: config.macd_signal ?? 5,                    // Faster for scalping
     supertrend_atr_period: config.supertrend_atr_period ?? 10,
     supertrend_multiplier: config.supertrend_multiplier ?? 3,
-    volume_multiplier: config.volume_multiplier ?? 1.2
+    volume_multiplier: config.volume_multiplier ?? 1.1,     // Reduced from 1.2 for more signals
+    atr_sl_multiplier: config.atr_sl_multiplier ?? 1.5,     // New: ATR-based stop loss
+    atr_tp_multiplier: config.atr_tp_multiplier ?? 2.0,      // New: ATR-based take profit
+    trailing_stop_percent: config.trailing_stop_percent ?? 0.5, // New: Fast trailing stop
+    max_position_time: config.max_position_time ?? 30,       // New: Max time in position
+    min_profit_percent: config.min_profit_percent ?? 0.2    // New: Min profit for trailing
   };
 
   if (candles1m.length < 100 || candles5m.length < 100 || candles15m.length < 100) {
@@ -132,21 +211,36 @@ export function evaluateMTFMomentum(
   const macd5 = macd(c5, cfg.macd_fast, cfg.macd_slow, cfg.macd_signal);
   const macd15 = macd(c15, cfg.macd_fast, cfg.macd_slow, cfg.macd_signal);
 
-  const volOk = candles1m[candles1m.length - 1].volume >= volumeSMA(candles1m, 20) * cfg.volume_multiplier;
+  // Calculate ATR for risk management
+  const atr1m = calculateATR(candles1m, 14);
+  const currentATR = atr1m[atr1m.length - 1] || 0;
+
+  // Enhanced volume analysis
+  const currentVolume = candles1m[candles1m.length - 1].volume;
+  const avgVolume = volumeSMA(candles1m, 20);
+  const volumeRatio = currentVolume / avgVolume;
+  const volOk = volumeRatio >= cfg.volume_multiplier;
 
   const last = (arr: number[]) => arr[arr.length - 1];
-  const condLong =
-    last(rsi1) > cfg.rsi_entry_threshold &&
-    last(rsi5) > cfg.rsi_entry_threshold &&
-    last(rsi15) > cfg.rsi_entry_threshold &&
-    last(macd1.histogram) > 0 && last(macd5.histogram) > 0 && last(macd15.histogram) > 0 &&
+  const currentRSI1 = last(rsi1);
+  const currentRSI5 = last(rsi5);
+  const currentRSI15 = last(rsi15);
+  const currentMACD1 = last(macd1.histogram);
+  const currentMACD5 = last(macd5.histogram);
+  const currentMACD15 = last(macd15.histogram);
+
+  // Relaxed MTF confluence for BUY - at least 1m bullish + one higher TF confirms
+  const condLong = !positionOpen && 
+    currentRSI1 > cfg.rsi_entry_threshold &&
+    (currentRSI5 > 50 || currentRSI15 > 50) && // At least one higher TF neutral/bullish
+    (currentMACD1 > 0 || currentMACD5 > 0) && // At least one MACD positive
     volOk;
 
-  const condShort =
-    last(rsi1) < 100 - cfg.rsi_entry_threshold &&
-    last(rsi5) < 100 - cfg.rsi_entry_threshold &&
-    last(rsi15) < 100 - cfg.rsi_entry_threshold &&
-    last(macd1.histogram) < 0 && last(macd5.histogram) < 0 && last(macd15.histogram) < 0 &&
+  // Relaxed MTF confluence for SELL - at least 1m bearish + one higher TF confirms
+  const condShort = !positionOpen &&
+    currentRSI1 < (100 - cfg.rsi_entry_threshold) &&
+    (currentRSI5 < 50 || currentRSI15 < 50) && // At least one higher TF neutral/bearish
+    (currentMACD1 < 0 || currentMACD5 < 0) && // At least one MACD negative
     volOk;
 
   if (positionOpen) {
@@ -154,23 +248,64 @@ export function evaluateMTFMomentum(
   }
 
   if (condLong) {
-    return { signal_type: 'BUY', reason: 'MTF confluence: RSI>threshold and MACD>0 on 1m/5m/15m with volume' };
+    const currentPrice = candles1m[candles1m.length - 1].close;
+    const stopLoss = currentPrice - (cfg.atr_sl_multiplier * currentATR);
+    const takeProfit = currentPrice + (cfg.atr_tp_multiplier * currentATR);
+    const confidence = calculateSignalConfidence(
+      currentRSI1, currentRSI5, currentRSI15,
+      currentMACD1, currentMACD5, currentMACD15,
+      volumeRatio,
+      cfg
+    );
+
+    return { 
+      signal_type: 'BUY', 
+      reason: `MTF BUY: RSI(${currentRSI1.toFixed(1)}/${currentRSI5.toFixed(1)}/${currentRSI15.toFixed(1)}), MACD+, Vol✓`,
+      stop_loss: stopLoss,
+      take_profit: takeProfit,
+      confidence: confidence,
+      time_to_expire: cfg.max_position_time
+    };
   }
+  
   if (condShort) {
-    return { signal_type: 'SELL', reason: 'MTF confluence: RSI<threshold and MACD<0 on 1m/5m/15m with volume' };
+    const currentPrice = candles1m[candles1m.length - 1].close;
+    const stopLoss = currentPrice + (cfg.atr_sl_multiplier * currentATR);
+    const takeProfit = currentPrice - (cfg.atr_tp_multiplier * currentATR);
+    const confidence = calculateSignalConfidence(
+      currentRSI1, currentRSI5, currentRSI15,
+      currentMACD1, currentMACD5, currentMACD15,
+      volumeRatio,
+      cfg
+    );
+
+    return { 
+      signal_type: 'SELL', 
+      reason: `MTF SELL: RSI(${currentRSI1.toFixed(1)}/${currentRSI5.toFixed(1)}/${currentRSI15.toFixed(1)}), MACD-, Vol✓`,
+      stop_loss: stopLoss,
+      take_profit: takeProfit,
+      confidence: confidence,
+      time_to_expire: cfg.max_position_time
+    };
   }
+  
   return { signal_type: null, reason: 'No MTF confluence' };
 }
 
 export const defaultMTFMomentumConfig: MTFMomentumConfig = {
   rsi_period: 14,
-  rsi_entry_threshold: 55,
-  macd_fast: 12,
-  macd_slow: 26,
-  macd_signal: 9,
+  rsi_entry_threshold: 50,        // Optimized for ETH scalping
+  macd_fast: 8,                   // Faster for scalping
+  macd_slow: 21,                  // Faster for scalping
+  macd_signal: 5,                 // Faster for scalping
   supertrend_atr_period: 10,
   supertrend_multiplier: 3,
-  volume_multiplier: 1.2
+  volume_multiplier: 1.1,         // Reduced for more signals
+  atr_sl_multiplier: 1.5,         // ATR-based stop loss
+  atr_tp_multiplier: 2.0,         // ATR-based take profit
+  trailing_stop_percent: 0.5,     // Fast trailing stop
+  max_position_time: 30,          // Max time in position (minutes)
+  min_profit_percent: 0.2         // Min profit for trailing activation
 };
 
 

@@ -21,15 +21,6 @@ interface ATHGuardConfig {
   atr_tp2_multiplier: number;
   ath_safety_distance: number;
   rsi_threshold: number;
-  // Новые параметры для улучшенной стратегии
-  adx_threshold: number;
-  bollinger_period: number;
-  bollinger_std: number;
-  trailing_stop_percent: number;
-  max_position_time: number;
-  min_volume_spike: number;
-  momentum_threshold: number;
-  support_resistance_lookback: number;
 }
 
 interface ATHGuardSignal {
@@ -38,13 +29,6 @@ interface ATHGuardSignal {
   stop_loss?: number;
   take_profit_1?: number;
   take_profit_2?: number;
-  // Новые поля для улучшенной стратегии
-  adx?: number;
-  bollinger_position?: number;
-  momentum_score?: number;
-  support_resistance_level?: number;
-  confidence?: number;
-  time_to_expire?: number;
 }
 
 // Calculate EMA
@@ -189,157 +173,6 @@ function calculateATR(candles: Candle[], period: number = 14): number[] {
   return [0, ...calculateEMA(tr, period)];
 }
 
-// Calculate ADX (Average Directional Index)
-function calculateADX(candles: Candle[], period: number = 14): number[] {
-  const result: number[] = [];
-  const dmPlus: number[] = [];
-  const dmMinus: number[] = [];
-  const tr: number[] = [];
-  
-  // Calculate DM+ and DM-
-  for (let i = 1; i < candles.length; i++) {
-    const highDiff = candles[i].high - candles[i-1].high;
-    const lowDiff = candles[i-1].low - candles[i].low;
-    
-    dmPlus.push(highDiff > lowDiff && highDiff > 0 ? highDiff : 0);
-    dmMinus.push(lowDiff > highDiff && lowDiff > 0 ? lowDiff : 0);
-    
-    // Calculate True Range
-    const high = candles[i].high;
-    const low = candles[i].low;
-    const prevClose = candles[i-1].close;
-    
-    const trueRange = Math.max(
-      high - low,
-      Math.abs(high - prevClose),
-      Math.abs(low - prevClose)
-    );
-    tr.push(trueRange);
-  }
-  
-  // Calculate smoothed values
-  const smoothedDMPlus = calculateEMA(dmPlus, period);
-  const smoothedDMMinus = calculateEMA(dmMinus, period);
-  const smoothedTR = calculateEMA(tr, period);
-  
-  // Calculate DI+ and DI-
-  for (let i = 0; i < smoothedDMPlus.length; i++) {
-    const diPlus = smoothedTR[i] === 0 ? 0 : (smoothedDMPlus[i] / smoothedTR[i]) * 100;
-    const diMinus = smoothedTR[i] === 0 ? 0 : (smoothedDMMinus[i] / smoothedTR[i]) * 100;
-    
-    const dx = diPlus + diMinus === 0 ? 0 : Math.abs(diPlus - diMinus) / (diPlus + diMinus) * 100;
-    result.push(dx);
-  }
-  
-  // Calculate ADX
-  const adx = calculateEMA(result, period);
-  return new Array(candles.length - adx.length).fill(0).concat(adx);
-}
-
-// Calculate Bollinger Bands
-function calculateBollingerBands(data: number[], period: number = 20, stdDev: number = 2): { upper: number[], middle: number[], lower: number[] } {
-  const result = { upper: [] as number[], middle: [] as number[], lower: [] as number[] };
-  
-  for (let i = 0; i < data.length; i++) {
-    if (i < period - 1) {
-      result.upper.push(data[i]);
-      result.middle.push(data[i]);
-      result.lower.push(data[i]);
-    } else {
-      const slice = data.slice(i - period + 1, i + 1);
-      const sma = slice.reduce((a, b) => a + b, 0) / period;
-      const variance = slice.reduce((a, b) => a + Math.pow(b - sma, 2), 0) / period;
-      const stdDeviation = Math.sqrt(variance);
-      
-      result.upper.push(sma + (stdDeviation * stdDev));
-      result.middle.push(sma);
-      result.lower.push(sma - (stdDeviation * stdDev));
-    }
-  }
-  
-  return result;
-}
-
-// Calculate Support/Resistance levels
-function calculateSupportResistance(candles: Candle[], lookback: number = 20): { support: number, resistance: number } {
-  if (candles.length < lookback) {
-    return { support: candles[candles.length - 1].low, resistance: candles[candles.length - 1].high };
-  }
-  
-  const recentCandles = candles.slice(-lookback);
-  const lows = recentCandles.map(c => c.low);
-  const highs = recentCandles.map(c => c.high);
-  
-  const support = Math.min(...lows);
-  const resistance = Math.max(...highs);
-  
-  return { support, resistance };
-}
-
-// Calculate Momentum Score
-function calculateMomentumScore(candles: Candle[], rsi: number[], macd: any, stoch: any): number {
-  const currentPrice = candles[candles.length - 1].close;
-  const prevPrice = candles[candles.length - 2].close;
-  const priceChange = ((currentPrice - prevPrice) / prevPrice) * 100;
-  
-  const rsiScore = rsi[rsi.length - 1] > 50 ? 1 : -1;
-  const macdScore = macd.histogram[macd.histogram.length - 1] > 0 ? 1 : -1;
-  const stochScore = stoch.k[stoch.k.length - 1] > 50 ? 1 : -1;
-  
-  const momentumScore = (priceChange * 0.4) + (rsiScore * 0.3) + (macdScore * 0.2) + (stochScore * 0.1);
-  
-  return Math.max(-100, Math.min(100, momentumScore));
-}
-
-// Calculate Bollinger Position
-function calculateBollingerPosition(price: number, upper: number, middle: number, lower: number): number {
-  if (upper === lower) return 0.5;
-  return (price - lower) / (upper - lower);
-}
-
-// Calculate Signal Confidence
-function calculateSignalConfidence(
-  rsi: number, 
-  adx: number, 
-  momentumScore: number, 
-  bollingerPosition: number,
-  volumeConfirmed: boolean,
-  athDistance: number
-): number {
-  let confidence = 0;
-  
-  // RSI contribution (0-25 points)
-  if (rsi > 30 && rsi < 70) confidence += 15;
-  else if (rsi > 20 && rsi < 80) confidence += 10;
-  else confidence += 5;
-  
-  // ADX contribution (0-25 points)
-  if (adx > 25) confidence += 25;
-  else if (adx > 20) confidence += 20;
-  else if (adx > 15) confidence += 15;
-  else confidence += 5;
-  
-  // Momentum contribution (0-25 points)
-  if (Math.abs(momentumScore) > 20) confidence += 25;
-  else if (Math.abs(momentumScore) > 10) confidence += 20;
-  else if (Math.abs(momentumScore) > 5) confidence += 15;
-  else confidence += 5;
-  
-  // Bollinger position contribution (0-15 points)
-  if (bollingerPosition > 0.2 && bollingerPosition < 0.8) confidence += 15;
-  else if (bollingerPosition > 0.1 && bollingerPosition < 0.9) confidence += 10;
-  else confidence += 5;
-  
-  // Volume confirmation (0-10 points)
-  if (volumeConfirmed) confidence += 10;
-  
-  // ATH distance bonus (0-10 points)
-  if (athDistance > 0.5) confidence += 10;
-  else if (athDistance > 0.3) confidence += 5;
-  
-  return Math.min(100, Math.max(0, confidence));
-}
-
 // Simplified Bias Filter (Step 1) - EMA alignment only
 function checkBiasFilter(
   price: number,
@@ -469,10 +302,9 @@ export function evaluateATHGuardStrategy(
 ): ATHGuardSignal {
   console.log('[ATH-GUARD] 🔍 Starting evaluation...');
   
-  // Need minimum candles for all indicators (increased to 200 for new indicators)
-  const minCandles = Math.max(200, config.bollinger_period + 50);
-  if (candles.length < minCandles) {
-    console.log(`[ATH-GUARD] ❌ Insufficient data: ${candles.length} candles (need ${minCandles})`);
+  // Need minimum candles for all indicators (reduced from 150 to 100 for better compatibility)
+  if (candles.length < 100) {
+    console.log(`[ATH-GUARD] ❌ Insufficient data: ${candles.length} candles (need 100)`);
     return { signal_type: null, reason: 'Insufficient candle data' };
   }
   
@@ -488,11 +320,6 @@ export function evaluateATHGuardStrategy(
   const rsi = calculateRSI(closes, 14);
   const atr = calculateATR(candles, 14);
   
-  // Calculate new indicators
-  const adx = calculateADX(candles, 14);
-  const bollinger = calculateBollingerBands(closes, config.bollinger_period, config.bollinger_std);
-  const supportResistance = calculateSupportResistance(candles, config.support_resistance_lookback);
-  
   const currentPrice = candles[candles.length - 1].close;
   const currentEMA50 = ema50[ema50.length - 1];
   const currentEMA100 = ema100[ema100.length - 1];
@@ -501,20 +328,7 @@ export function evaluateATHGuardStrategy(
   const currentRSI = rsi[rsi.length - 1];
   const currentATR = atr[atr.length - 1];
   
-  // New indicator values
-  const currentADX = adx[adx.length - 1];
-  const currentBollingerUpper = bollinger.upper[bollinger.upper.length - 1];
-  const currentBollingerMiddle = bollinger.middle[bollinger.middle.length - 1];
-  const currentBollingerLower = bollinger.lower[bollinger.lower.length - 1];
-  const bollingerPosition = calculateBollingerPosition(currentPrice, currentBollingerUpper, currentBollingerMiddle, currentBollingerLower);
-  
   const ema150Slope = calculateEMASlope(ema150);
-  
-  // Calculate momentum score
-  const momentumScore = calculateMomentumScore(candles, rsi, macd, stoch);
-  
-  // Calculate ATH distance
-  const athDistance = Math.abs(currentPrice - currentEMA150) / currentEMA150;
   
   console.log(`[ATH-GUARD] 📊 Current State:`, {
     price: currentPrice.toFixed(2),
@@ -541,29 +355,22 @@ export function evaluateATHGuardStrategy(
     return { signal_type: null, reason: 'No clear bias - EMA alignment not met' };
   }
   
-  // Step 2: Enhanced Volume Confirmation with ADX and Bollinger filters
+  // Step 2: Simplified Volume Confirmation
   const hasVolume = checkVolume(candles, config);
-  const adxConfirmed = currentADX >= config.adx_threshold;
-  const momentumConfirmed = Math.abs(momentumScore) >= config.momentum_threshold;
   
   const currentVolume = candles[candles.length - 1].volume;
   const last20Volumes = candles.slice(-21, -1).map(c => c.volume);
   const avgVolume = last20Volumes.reduce((a, b) => a + b, 0) / 20;
   const volumeRatio = currentVolume / avgVolume;
   
-  console.log(`[ATH-GUARD] 📈 Step 2 - Enhanced Confirmation:`, {
-    volume: hasVolume ? '✅ PASS' : '❌ FAIL',
-    adx: adxConfirmed ? '✅ PASS' : '❌ FAIL',
-    momentum: momentumConfirmed ? '✅ PASS' : '❌ FAIL',
+  console.log(`[ATH-GUARD] 📈 Step 2 - Volume Confirmation: ${hasVolume ? '✅ PASS' : '❌ FAIL'}`, {
     currentVolume: currentVolume.toFixed(0),
     avgVolume: avgVolume.toFixed(0),
-    ratio: `${volumeRatio.toFixed(2)}x`,
-    adx: currentADX.toFixed(2),
-    momentum: momentumScore.toFixed(2)
+    ratio: `${volumeRatio.toFixed(2)}x (need 1.2x)`
   });
   
-  if (!hasVolume || !adxConfirmed || !momentumConfirmed) {
-    return { signal_type: null, reason: 'Volume, ADX, or momentum conditions not met' };
+  if (!hasVolume) {
+    return { signal_type: null, reason: 'Volume too low (< 1.2x average)' };
   }
   
   // Step 3: Simplified Momentum Confirmation (RSI + MACD)
@@ -591,90 +398,50 @@ export function evaluateATHGuardStrategy(
   console.log('[ATH-GUARD] ✅ ALL CONDITIONS PASSED!');
   
   if (!positionOpen && bias === 'LONG') {
-    // Enhanced signal generation with new parameters
+    // Updated to 1:2 ratio: SL = 1.0x ATR, TP1 = 1.0x ATR (partial), TP2 = 2.0x ATR (full 1:2)
     const stopLoss = currentPrice - (config.atr_sl_multiplier * currentATR);
     const takeProfit1 = currentPrice + (config.atr_tp1_multiplier * currentATR);
     const takeProfit2 = currentPrice + (config.atr_tp2_multiplier * currentATR);
     
-    // Calculate confidence score
-    const confidence = calculateSignalConfidence(
-      currentRSI, 
-      currentADX, 
-      momentumScore, 
-      bollingerPosition,
-      hasVolume,
-      athDistance
-    );
-    
-    console.log('[ATH-GUARD] 🚀 GENERATING ENHANCED BUY SIGNAL', {
+    console.log('[ATH-GUARD] 🚀 GENERATING BUY SIGNAL', {
       entry: currentPrice.toFixed(2),
       stopLoss: stopLoss.toFixed(2),
       tp1: takeProfit1.toFixed(2),
       tp2: takeProfit2.toFixed(2),
       atr: currentATR.toFixed(2),
-      ratio: `1:2 (SL=${config.atr_sl_multiplier}x, TP2=${config.atr_tp2_multiplier}x ATR)`,
-      confidence: `${confidence.toFixed(1)}%`,
-      adx: currentADX.toFixed(2),
-      momentum: momentumScore.toFixed(2),
-      bollinger: bollingerPosition.toFixed(3)
+      ratio: `1:2 (SL=${config.atr_sl_multiplier}x, TP2=${config.atr_tp2_multiplier}x ATR)`
     });
     
     return {
       signal_type: 'BUY',
-      reason: 'ATH Guard LONG: Enhanced 4-step (Bias + Volume + ADX + Momentum)',
+      reason: 'ATH Guard LONG: Simplified 3-step (Bias + Volume + Momentum)',
       stop_loss: stopLoss,
       take_profit_1: takeProfit1,
       take_profit_2: takeProfit2,
-      adx: currentADX,
-      bollinger_position: bollingerPosition,
-      momentum_score: momentumScore,
-      support_resistance_level: supportResistance.resistance,
-      confidence: confidence,
-      time_to_expire: config.max_position_time
     };
   }
   
   if (!positionOpen && bias === 'SHORT') {
-    // Enhanced signal generation with new parameters
+    // Updated to 1:2 ratio: SL = 1.0x ATR, TP1 = 1.0x ATR (partial), TP2 = 2.0x ATR (full 1:2)
     const stopLoss = currentPrice + (config.atr_sl_multiplier * currentATR);
     const takeProfit1 = currentPrice - (config.atr_tp1_multiplier * currentATR);
     const takeProfit2 = currentPrice - (config.atr_tp2_multiplier * currentATR);
     
-    // Calculate confidence score
-    const confidence = calculateSignalConfidence(
-      currentRSI, 
-      currentADX, 
-      momentumScore, 
-      bollingerPosition,
-      hasVolume,
-      athDistance
-    );
-    
-    console.log('[ATH-GUARD] 🚀 GENERATING ENHANCED SELL SIGNAL', {
+    console.log('[ATH-GUARD] 🚀 GENERATING SELL SIGNAL', {
       entry: currentPrice.toFixed(2),
       stopLoss: stopLoss.toFixed(2),
       tp1: takeProfit1.toFixed(2),
       tp2: takeProfit2.toFixed(2),
       atr: currentATR.toFixed(2),
-      ratio: `1:2 (SL=${config.atr_sl_multiplier}x, TP2=${config.atr_tp2_multiplier}x ATR)`,
-      confidence: `${confidence.toFixed(1)}%`,
-      adx: currentADX.toFixed(2),
-      momentum: momentumScore.toFixed(2),
-      bollinger: bollingerPosition.toFixed(3)
+      ratio: `1:2 (SL=${config.atr_sl_multiplier}x, TP2=${config.atr_tp2_multiplier}x ATR)`
     });
     
     return {
       signal_type: 'SELL',
-      reason: 'ATH Guard SHORT: Enhanced 4-step (Bias + Volume + ADX + Momentum)',
+      reason: 'ATH Guard SHORT: Simplified 3-step (Bias + Volume + Momentum)',
       stop_loss: stopLoss,
       take_profit_1: takeProfit1,
       take_profit_2: takeProfit2,
-      adx: currentADX,
-      bollinger_position: bollingerPosition,
-      momentum_score: momentumScore,
-      support_resistance_level: supportResistance.support,
-      confidence: confidence,
-      time_to_expire: config.max_position_time
     };
   }
   
@@ -708,28 +475,3 @@ export function evaluateATHGuardStrategy(
   console.log('[ATH-GUARD] ⏸️ No signal generated (position already open or bias not aligned)');
   return { signal_type: null, reason: 'No signal' };
 }
-
-// Default configuration for ATH Guard strategy (1m timeframe)
-export const defaultATHGuardConfig: ATHGuardConfig = {
-  // Original parameters
-  ema_slope_threshold: 0.15,
-  pullback_tolerance: 0.15,
-  volume_multiplier: 1.8,
-  stoch_oversold: 25,
-  stoch_overbought: 75,
-  atr_sl_multiplier: 1.5,
-  atr_tp1_multiplier: 1.0,
-  atr_tp2_multiplier: 2.0,
-  ath_safety_distance: 0.2,
-  rsi_threshold: 70,
-  
-  // New enhanced parameters
-  adx_threshold: 20,
-  bollinger_period: 20,
-  bollinger_std: 2.0,
-  trailing_stop_percent: 0.5,
-  max_position_time: 60, // 60 minutes for 1m timeframe
-  min_volume_spike: 1.2,
-  momentum_threshold: 15,
-  support_resistance_lookback: 20
-};

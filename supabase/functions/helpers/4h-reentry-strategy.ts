@@ -28,6 +28,14 @@ interface ReentrySignal {
   range_low?: number;
   stop_loss?: number;
   take_profit?: number;
+  // Новые поля для улучшенной стратегии
+  adx?: number;
+  bollinger_position?: number;
+  momentum_score?: number;
+  volume_confirmation?: boolean;
+  session_strength?: number;
+  confidence?: number;
+  time_to_expire?: number;
 }
 
 // Timezone conversion utility for NY time with DST handling
@@ -71,6 +79,234 @@ function isInNYSession(timestamp: number, sessionStart: string, sessionEnd: stri
   return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
 }
 
+// Calculate EMA
+function calculateEMA(data: number[], period: number): number[] {
+  const result: number[] = [];
+  const multiplier = 2 / (period + 1);
+  
+  let sma = data.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  result.push(sma);
+  
+  for (let i = period; i < data.length; i++) {
+    const ema = (data[i] - result[result.length - 1]) * multiplier + result[result.length - 1];
+    result.push(ema);
+  }
+  
+  return result;
+}
+
+// Calculate RSI
+function calculateRSI(data: number[], period: number = 14): number[] {
+  const result: number[] = [];
+  const gains: number[] = [];
+  const losses: number[] = [];
+  
+  for (let i = 1; i < data.length; i++) {
+    const change = data[i] - data[i - 1];
+    gains.push(change > 0 ? change : 0);
+    losses.push(change < 0 ? -change : 0);
+  }
+  
+  if (gains.length < period) {
+    return new Array(data.length).fill(50);
+  }
+  
+  let avgGain = gains.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  let avgLoss = losses.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  
+  for (let i = 0; i < period; i++) {
+    result.push(50);
+  }
+  
+  for (let i = period; i < gains.length; i++) {
+    avgGain = (avgGain * (period - 1) + gains[i]) / period;
+    avgLoss = (avgLoss * (period - 1) + losses[i]) / period;
+    
+    const rs = avgGain / avgLoss;
+    const rsi = 100 - (100 / (1 + rs));
+    result.push(rsi);
+  }
+  
+  return [50, ...result];
+}
+
+// Calculate ADX (Average Directional Index)
+function calculateADX(candles: Candle[], period: number = 14): number[] {
+  const result: number[] = [];
+  const dmPlus: number[] = [];
+  const dmMinus: number[] = [];
+  const tr: number[] = [];
+  
+  // Calculate DM+ and DM-
+  for (let i = 1; i < candles.length; i++) {
+    const highDiff = candles[i].high - candles[i-1].high;
+    const lowDiff = candles[i-1].low - candles[i].low;
+    
+    dmPlus.push(highDiff > lowDiff && highDiff > 0 ? highDiff : 0);
+    dmMinus.push(lowDiff > highDiff && lowDiff > 0 ? lowDiff : 0);
+    
+    // Calculate True Range
+    const high = candles[i].high;
+    const low = candles[i].low;
+    const prevClose = candles[i-1].close;
+    
+    const trueRange = Math.max(
+      high - low,
+      Math.abs(high - prevClose),
+      Math.abs(low - prevClose)
+    );
+    tr.push(trueRange);
+  }
+  
+  // Calculate smoothed values
+  const smoothedDMPlus = calculateEMA(dmPlus, period);
+  const smoothedDMMinus = calculateEMA(dmMinus, period);
+  const smoothedTR = calculateEMA(tr, period);
+  
+  // Calculate DI+ and DI-
+  for (let i = 0; i < smoothedDMPlus.length; i++) {
+    const diPlus = smoothedTR[i] === 0 ? 0 : (smoothedDMPlus[i] / smoothedTR[i]) * 100;
+    const diMinus = smoothedTR[i] === 0 ? 0 : (smoothedDMMinus[i] / smoothedTR[i]) * 100;
+    
+    const dx = diPlus + diMinus === 0 ? 0 : Math.abs(diPlus - diMinus) / (diPlus + diMinus) * 100;
+    result.push(dx);
+  }
+  
+  // Calculate ADX
+  const adx = calculateEMA(result, period);
+  return new Array(candles.length - adx.length).fill(0).concat(adx);
+}
+
+// Calculate Bollinger Bands
+function calculateBollingerBands(data: number[], period: number = 20, stdDev: number = 2): { upper: number[], middle: number[], lower: number[] } {
+  const result = { upper: [] as number[], middle: [] as number[], lower: [] as number[] };
+  
+  for (let i = 0; i < data.length; i++) {
+    if (i < period - 1) {
+      result.upper.push(data[i]);
+      result.middle.push(data[i]);
+      result.lower.push(data[i]);
+    } else {
+      const slice = data.slice(i - period + 1, i + 1);
+      const sma = slice.reduce((a, b) => a + b, 0) / period;
+      const variance = slice.reduce((a, b) => a + Math.pow(b - sma, 2), 0) / period;
+      const stdDeviation = Math.sqrt(variance);
+      
+      result.upper.push(sma + (stdDeviation * stdDev));
+      result.middle.push(sma);
+      result.lower.push(sma - (stdDeviation * stdDev));
+    }
+  }
+  
+  return result;
+}
+
+// Calculate ATR
+function calculateATR(candles: Candle[], period: number = 14): number[] {
+  const tr: number[] = [];
+  
+  for (let i = 1; i < candles.length; i++) {
+    const high = candles[i].high;
+    const low = candles[i].low;
+    const prevClose = candles[i - 1].close;
+    
+    tr.push(Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose)));
+  }
+  
+  return [0, ...calculateEMA(tr, period)];
+}
+
+// Calculate Volume Confirmation
+function calculateVolumeConfirmation(candles: Candle[], lookback: number = 20): boolean {
+  if (candles.length < lookback + 1) return false;
+  
+  const currentVolume = candles[candles.length - 1].volume;
+  const avgVolume = candles.slice(-lookback - 1, -1).reduce((sum, c) => sum + c.volume, 0) / lookback;
+  
+  return currentVolume >= avgVolume * 1.2; // 20% above average
+}
+
+// Calculate Session Strength
+function calculateSessionStrength(candles: Candle[], sessionStart: string, sessionEnd: string): number {
+  const sessionCandles = candles.filter(candle => {
+    const timestamp = candle.timestamp || candle.open_time || 0;
+    return isInNYSession(timestamp, sessionStart, sessionEnd);
+  });
+  
+  if (sessionCandles.length < 2) return 0;
+  
+  const sessionHigh = Math.max(...sessionCandles.map(c => c.high));
+  const sessionLow = Math.min(...sessionCandles.map(c => c.low));
+  const sessionRange = sessionHigh - sessionLow;
+  
+  const currentPrice = candles[candles.length - 1].close;
+  const rangePosition = (currentPrice - sessionLow) / sessionRange;
+  
+  return Math.max(0, Math.min(1, rangePosition));
+}
+
+// Calculate Momentum Score
+function calculateMomentumScore(candles: Candle[], rsi: number[]): number {
+  const currentPrice = candles[candles.length - 1].close;
+  const prevPrice = candles[candles.length - 2].close;
+  const priceChange = ((currentPrice - prevPrice) / prevPrice) * 100;
+  
+  const rsiScore = rsi[rsi.length - 1] > 50 ? 1 : -1;
+  const momentumScore = (priceChange * 0.7) + (rsiScore * 0.3);
+  
+  return Math.max(-100, Math.min(100, momentumScore));
+}
+
+// Calculate Bollinger Position
+function calculateBollingerPosition(price: number, upper: number, middle: number, lower: number): number {
+  if (upper === lower) return 0.5;
+  return (price - lower) / (upper - lower);
+}
+
+// Calculate Signal Confidence
+function calculateSignalConfidence(
+  rsi: number,
+  adx: number,
+  momentumScore: number,
+  bollingerPosition: number,
+  volumeConfirmed: boolean,
+  sessionStrength: number
+): number {
+  let confidence = 0;
+  
+  // RSI contribution (0-20 points)
+  if (rsi > 40 && rsi < 60) confidence += 20;
+  else if (rsi > 30 && rsi < 70) confidence += 15;
+  else if (rsi > 20 && rsi < 80) confidence += 10;
+  else confidence += 5;
+  
+  // ADX contribution (0-25 points)
+  if (adx > 25) confidence += 25;
+  else if (adx > 20) confidence += 20;
+  else if (adx > 15) confidence += 15;
+  else confidence += 5;
+  
+  // Momentum contribution (0-20 points)
+  if (Math.abs(momentumScore) > 15) confidence += 20;
+  else if (Math.abs(momentumScore) > 10) confidence += 15;
+  else if (Math.abs(momentumScore) > 5) confidence += 10;
+  else confidence += 5;
+  
+  // Bollinger position contribution (0-15 points)
+  if (bollingerPosition > 0.2 && bollingerPosition < 0.8) confidence += 15;
+  else if (bollingerPosition > 0.1 && bollingerPosition < 0.9) confidence += 10;
+  else confidence += 5;
+  
+  // Volume confirmation (0-10 points)
+  if (volumeConfirmed) confidence += 10;
+  
+  // Session strength (0-10 points)
+  if (sessionStrength > 0.7) confidence += 10;
+  else if (sessionStrength > 0.5) confidence += 5;
+  
+  return Math.min(100, Math.max(0, confidence));
+}
+
 export function evaluate4hReentry(
   candles: Candle[],
   liveState: LiveState | null,
@@ -78,10 +314,12 @@ export function evaluate4hReentry(
   stopLossPercent?: number,
   takeProfitPercent?: number
 ): ReentrySignal {
-  console.log('[4H-REENTRY] Starting evaluation...');
+  console.log('[4H-REENTRY] Starting enhanced evaluation...');
   
-  if (!candles || candles.length < 2) {
-    console.log('[4H-REENTRY] Insufficient candle data (need at least 2 candles)');
+  // Need minimum candles for new indicators
+  const minCandles = 200;
+  if (!candles || candles.length < minCandles) {
+    console.log(`[4H-REENTRY] Insufficient candle data (need at least ${minCandles} candles, got ${candles?.length || 0})`);
     return { signal_type: null, reason: 'Insufficient candle data' };
   }
 
@@ -96,6 +334,40 @@ export function evaluate4hReentry(
     console.log('[4H-REENTRY] No timestamp available for current candle');
     return { signal_type: null, reason: 'No timestamp available' };
   }
+
+  // Calculate new indicators
+  const closes = candles.map(c => c.close);
+  const rsi = calculateRSI(closes, 14);
+  const adx = calculateADX(candles, 14);
+  const bollinger = calculateBollingerBands(closes, 20, 2.0);
+  const atr = calculateATR(candles, 14);
+  
+  // Current indicator values
+  const currentRSI = rsi[rsi.length - 1];
+  const currentADX = adx[adx.length - 1];
+  const currentBollingerUpper = bollinger.upper[bollinger.upper.length - 1];
+  const currentBollingerMiddle = bollinger.middle[bollinger.middle.length - 1];
+  const currentBollingerLower = bollinger.lower[bollinger.lower.length - 1];
+  const currentATR = atr[atr.length - 1];
+  
+  const bollingerPosition = calculateBollingerPosition(
+    currentCandle.close, 
+    currentBollingerUpper, 
+    currentBollingerMiddle, 
+    currentBollingerLower
+  );
+  
+  // Calculate enhanced metrics
+  const volumeConfirmed = calculateVolumeConfirmation(candles, 20);
+  const momentumScore = calculateMomentumScore(candles, rsi);
+  
+  console.log('[4H-REENTRY] Enhanced indicators calculated:', {
+    rsi: currentRSI.toFixed(2),
+    adx: currentADX.toFixed(2),
+    bollingerPosition: bollingerPosition.toFixed(3),
+    volumeConfirmed,
+    momentumScore: momentumScore.toFixed(2)
+  });
 
   // Get strategy config with defaults
   const sessionStart = strategy.reentry_session_start || "00:00";
@@ -222,45 +494,119 @@ export function evaluate4hReentry(
 
   // LONG setup: C_{t-1} < L_4h AND C_t >= L_4h
   if (C_prev < rangeLow && C_curr >= rangeLow) {
-    const entryPrice = C_curr;
-    // Use UI parameters for SL/TP
-    const stopLoss = entryPrice * (1 - slPercent / 100);  // Use UI SL%
-    const takeProfit = entryPrice * (1 + tpPercent / 100);  // Use UI TP%
+    // Enhanced confirmation filters
+    const adxConfirmed = currentADX >= 20;
+    const rsiConfirmed = currentRSI > 30 && currentRSI < 70;
+    const momentumConfirmed = Math.abs(momentumScore) >= 10;
+    const bollingerConfirmed = bollingerPosition > 0.1 && bollingerPosition < 0.9;
     
-    console.log(`[4H-REENTRY] 🟢 LONG reentry detected!`);
+    console.log('[4H-REENTRY] 🔍 LONG reentry filters:', {
+      adx: `${currentADX.toFixed(2)} (need ≥20): ${adxConfirmed ? '✅' : '❌'}`,
+      rsi: `${currentRSI.toFixed(2)} (need 30-70): ${rsiConfirmed ? '✅' : '❌'}`,
+      momentum: `${momentumScore.toFixed(2)} (need ≥10): ${momentumConfirmed ? '✅' : '❌'}`,
+      bollinger: `${bollingerPosition.toFixed(3)} (need 0.1-0.9): ${bollingerConfirmed ? '✅' : '❌'}`,
+      volume: volumeConfirmed ? '✅' : '❌'
+    });
+    
+    if (!adxConfirmed || !rsiConfirmed || !momentumConfirmed || !bollingerConfirmed || !volumeConfirmed) {
+      console.log('[4H-REENTRY] ❌ LONG reentry filters not met');
+      return { signal_type: null, reason: 'LONG reentry filters not met' };
+    }
+    
+    const entryPrice = C_curr;
+    const stopLoss = entryPrice * (1 - slPercent / 100);
+    const takeProfit = entryPrice * (1 + tpPercent / 100);
+    
+    // Calculate session strength and confidence
+    const sessionStrength = calculateSessionStrength(candles, sessionStart, sessionEnd);
+    const confidence = calculateSignalConfidence(
+      currentRSI, 
+      currentADX, 
+      momentumScore, 
+      bollingerPosition, 
+      volumeConfirmed, 
+      sessionStrength
+    );
+    
+    console.log(`[4H-REENTRY] 🟢 ENHANCED LONG reentry detected!`);
     console.log(`  - Previous close (${C_prev.toFixed(2)}) < L_4h (${rangeLow.toFixed(2)})`);
     console.log(`  - Current close (${C_curr.toFixed(2)}) >= L_4h (${rangeLow.toFixed(2)})`);
     console.log(`  - Entry: ${entryPrice.toFixed(2)}, SL: ${stopLoss.toFixed(2)} (-${slPercent}%), TP: ${takeProfit.toFixed(2)} (+${tpPercent}%)`);
+    console.log(`  - Confidence: ${confidence.toFixed(1)}%, Session Strength: ${sessionStrength.toFixed(3)}`);
     
     return {
       signal_type: 'BUY',
-      reason: `LONG reentry: Previous close ${C_prev.toFixed(2)} < L_4h ${rangeLow.toFixed(2)}, Current close ${C_curr.toFixed(2)} >= L_4h`,
+      reason: `ENHANCED LONG reentry: Previous close ${C_prev.toFixed(2)} < L_4h ${rangeLow.toFixed(2)}, Current close ${C_curr.toFixed(2)} >= L_4h`,
       range_high: rangeHigh,
       range_low: rangeLow,
       stop_loss: stopLoss,
-      take_profit: takeProfit
+      take_profit: takeProfit,
+      adx: currentADX,
+      bollinger_position: bollingerPosition,
+      momentum_score: momentumScore,
+      volume_confirmation: volumeConfirmed,
+      session_strength: sessionStrength,
+      confidence: confidence,
+      time_to_expire: 240 // 4 hours for 4h reentry
     };
   }
 
-  // SHORT setup: C_{t-1} > H_4h AND C_t <= H_4h
+  // Enhanced SHORT setup with additional filters
   if (C_prev > rangeHigh && C_curr <= rangeHigh) {
-    const entryPrice = C_curr;
-    // Use UI parameters for SL/TP
-    const stopLoss = entryPrice * (1 + slPercent / 100);  // Use UI SL% (higher price for SHORT)
-    const takeProfit = entryPrice * (1 - tpPercent / 100);  // Use UI TP% (lower price for SHORT)
+    // Enhanced confirmation filters
+    const adxConfirmed = currentADX >= 20;
+    const rsiConfirmed = currentRSI > 30 && currentRSI < 70;
+    const momentumConfirmed = Math.abs(momentumScore) >= 10;
+    const bollingerConfirmed = bollingerPosition > 0.1 && bollingerPosition < 0.9;
     
-    console.log(`[4H-REENTRY] 🔴 SHORT reentry detected!`);
+    console.log('[4H-REENTRY] 🔍 SHORT reentry filters:', {
+      adx: `${currentADX.toFixed(2)} (need ≥20): ${adxConfirmed ? '✅' : '❌'}`,
+      rsi: `${currentRSI.toFixed(2)} (need 30-70): ${rsiConfirmed ? '✅' : '❌'}`,
+      momentum: `${momentumScore.toFixed(2)} (need ≥10): ${momentumConfirmed ? '✅' : '❌'}`,
+      bollinger: `${bollingerPosition.toFixed(3)} (need 0.1-0.9): ${bollingerConfirmed ? '✅' : '❌'}`,
+      volume: volumeConfirmed ? '✅' : '❌'
+    });
+    
+    if (!adxConfirmed || !rsiConfirmed || !momentumConfirmed || !bollingerConfirmed || !volumeConfirmed) {
+      console.log('[4H-REENTRY] ❌ SHORT reentry filters not met');
+      return { signal_type: null, reason: 'SHORT reentry filters not met' };
+    }
+    
+    const entryPrice = C_curr;
+    const stopLoss = entryPrice * (1 + slPercent / 100);
+    const takeProfit = entryPrice * (1 - tpPercent / 100);
+    
+    // Calculate session strength and confidence
+    const sessionStrength = calculateSessionStrength(candles, sessionStart, sessionEnd);
+    const confidence = calculateSignalConfidence(
+      currentRSI, 
+      currentADX, 
+      momentumScore, 
+      bollingerPosition, 
+      volumeConfirmed, 
+      sessionStrength
+    );
+    
+    console.log(`[4H-REENTRY] 🔴 ENHANCED SHORT reentry detected!`);
     console.log(`  - Previous close (${C_prev.toFixed(2)}) > H_4h (${rangeHigh.toFixed(2)})`);
     console.log(`  - Current close (${C_curr.toFixed(2)}) <= H_4h (${rangeHigh.toFixed(2)})`);
     console.log(`  - Entry: ${entryPrice.toFixed(2)}, SL: ${stopLoss.toFixed(2)} (+${slPercent}%), TP: ${takeProfit.toFixed(2)} (-${tpPercent}%)`);
+    console.log(`  - Confidence: ${confidence.toFixed(1)}%, Session Strength: ${sessionStrength.toFixed(3)}`);
     
     return {
       signal_type: 'SELL',
-      reason: `SHORT reentry: Previous close ${C_prev.toFixed(2)} > H_4h ${rangeHigh.toFixed(2)}, Current close ${C_curr.toFixed(2)} <= H_4h`,
+      reason: `ENHANCED SHORT reentry: Previous close ${C_prev.toFixed(2)} > H_4h ${rangeHigh.toFixed(2)}, Current close ${C_curr.toFixed(2)} <= H_4h`,
       range_high: rangeHigh,
       range_low: rangeLow,
       stop_loss: stopLoss,
-      take_profit: takeProfit
+      take_profit: takeProfit,
+      adx: currentADX,
+      bollinger_position: bollingerPosition,
+      momentum_score: momentumScore,
+      volume_confirmation: volumeConfirmed,
+      session_strength: sessionStrength,
+      confidence: confidence,
+      time_to_expire: 240 // 4 hours for 4h reentry
     };
   }
 
