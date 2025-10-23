@@ -22,9 +22,6 @@ verify_jwt = true
 verify_jwt = true
 
 # MARKET DATA COLLECTION
-[functions.binance-market-data]
-verify_jwt = false
-
 [functions.bybit-market-data]
 verify_jwt = false
 
@@ -58,6 +55,18 @@ verify_jwt = true
 verify_jwt = false
 
 [functions.test-exchange]
+verify_jwt = true
+
+[functions.get-binance-pairs]
+verify_jwt = false
+
+[functions.health-check]
+verify_jwt = false
+
+[functions.monitor-strategies-realtime]
+verify_jwt = true
+
+[functions.test-telegram]
 verify_jwt = true
 
 # Removed unused Edge Functions (2025-01-21):
