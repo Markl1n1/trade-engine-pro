@@ -10,11 +10,6 @@ import { getBybitConstraints, getBinanceConstraints } from '../helpers/exchange-
 import { detectMarketRegime, isStrategySuitableForRegime, getRegimePositionAdjustment } from '../helpers/market-regime-detector.ts';
 import { calculateOptimalPositionSize, getDefaultPositionSizingConfig } from '../helpers/position-sizer.ts';
 import { getAdaptiveParameters, getDefaultAdaptiveConfig } from '../helpers/adaptive-parameters.ts';
-// Enhanced imports
-import { UnifiedBacktestEngine } from '../helpers/unified-backtest-engine.ts';
-import { AdaptiveStrategyManager, defaultAdaptiveParameters } from '../helpers/adaptive-strategy-manager.ts';
-import { EnhancedReporting } from '../helpers/enhanced-reporting.ts';
-import { BaseConfig, BacktestConfig, MarketRegime } from '../helpers/strategy-interfaces.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
