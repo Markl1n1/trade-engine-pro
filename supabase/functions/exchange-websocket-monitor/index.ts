@@ -386,7 +386,7 @@ async function evaluateStrategy(
 
       // Update strategy state
       if (signalType === 'BUY') {
-        await supabase
+        const { error: upsertError } = await supabase
           .from('strategy_live_states')
           .upsert({
             strategy_id: strategy.id,
@@ -396,9 +396,15 @@ async function evaluateStrategy(
             entry_time: new Date().toISOString(),
             last_signal_time: new Date().toISOString(),
             last_processed_candle_time: currentCandle.timestamp
+          }, {
+            onConflict: 'strategy_id'
           });
+        
+        if (upsertError) {
+          console.error(`[WEBSOCKET] Error updating strategy state for ${strategy.name}:`, upsertError);
+        }
       } else if (signalType === 'SELL') {
-        await supabase
+        const { error: updateError } = await supabase
           .from('strategy_live_states')
           .update({
             position_open: false,
@@ -408,6 +414,10 @@ async function evaluateStrategy(
             last_processed_candle_time: currentCandle.timestamp
           })
           .eq('strategy_id', strategy.id);
+        
+        if (updateError) {
+          console.error(`[WEBSOCKET] Error updating strategy state for ${strategy.name}:`, updateError);
+        }
       }
     }
   }
