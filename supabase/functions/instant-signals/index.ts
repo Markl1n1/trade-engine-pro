@@ -284,7 +284,6 @@ class PositionExecutionManager {
 
     if (credError || !credentials || credentials.length === 0) {
       // Fallback to plaintext during migration period
-      console.log(`[INSTANT-SIGNALS] No encrypted credentials, using plaintext fallback for ${credentialType}`);
       
       // ✅ ПРАВИЛЬНО: Поддержка всех типов учетных данных
       let apiKey: string | undefined;
