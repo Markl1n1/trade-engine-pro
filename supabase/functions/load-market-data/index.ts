@@ -83,8 +83,9 @@ serve(async (req) => {
           let fetchReason: string;
 
           if (!existingData || existingData.length === 0) {
-            // No data exists - fetch 3 months of data
-            startTime = Date.now() - (90 * 24 * 60 * 60 * 1000); // 90 days ago
+            // No data exists - fetch 3 months of HISTORICAL data (not future)
+            const now = Date.now();
+            startTime = now - (90 * 24 * 60 * 60 * 1000); // 90 days ago from NOW
             limit = 2000; // Large limit for initial fetch
             fetchReason = 'INITIAL_3_MONTHS';
           } else {
