@@ -149,13 +149,31 @@ export class JavaScriptStrategyExecutor {
       /os\./,
       /child_process/,
       /exec\s*\(/,
-      /spawn\s*\(/
+      /spawn\s*\(/,
+      /__proto__/,
+      /prototype\s*\[/,
+      /constructor\s*\[/,
+      /constructor\s*\./
     ];
     
     for (const pattern of dangerousPatterns) {
       if (pattern.test(code)) {
         errors.push(`Dangerous pattern detected: ${pattern.source}`);
       }
+    }
+    
+    // Check for prototype manipulation attempts
+    if (code.match(/\b__proto__|\.prototype\s*[=\[]|\.constructor\s*[=\[\.]/gi)) {
+      errors.push('Prototype manipulation not allowed');
+    }
+    
+    // Check for large array/object creation (memory attack prevention)
+    if (code.match(/new\s+Array\s*\(\s*\d{6,}\)/gi)) {
+      errors.push('Large array creation not allowed');
+    }
+    
+    if (code.match(/\{\s*\d{6,}\s*:/gi)) {
+      errors.push('Large object creation not allowed');
     }
     
     // Check for infinite loops
