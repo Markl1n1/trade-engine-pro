@@ -215,19 +215,12 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
 
   // Main backtest loop - now just evaluates conditions
   for (let i = 150; i < candles.length; i++) {
-    const signal = evaluateATHGuardStrategyOptimized(
-      candles, 
-      i, 
+    // Use the optimized strategy function
+    const recentCandles = candles.slice(0, i + 1);
+    const signal = evaluateATHGuardStrategy(
+      recentCandles, 
       athGuardConfig, 
-      position !== null,
-      ema50Array,
-      ema100Array,
-      ema150Array,
-      vwapArray,
-      macdData,
-      stochData,
-      rsiArray,
-      atrArray
+      position !== null
     );
     
     const currentCandle = candles[i];
@@ -516,188 +509,6 @@ function calculateATR(candles: Candle[], period: number = 14): number[] {
   return [0, ...calculateEMA(tr, period)];
 }
 
-// Optimized evaluation function that uses pre-calculated indicators
-function evaluateATHGuardStrategyOptimized(
-  candles: Candle[],
-  index: number,
-  config: any,
-  positionOpen: boolean,
-  ema50Array: number[],
-  ema100Array: number[],
-  ema150Array: number[],
-  vwapArray: number[],
-  macdData: { macd: number[], signal: number[], histogram: number[] },
-  stochData: { k: number[], d: number[] },
-  rsiArray: number[],
-  atrArray: number[]
-): { signal_type: 'BUY' | 'SELL' | null; reason: string; stop_loss?: number; take_profit_1?: number; take_profit_2?: number } {
-  
-  if (index < 150) {
-    return { signal_type: null, reason: 'Insufficient candle data' };
-  }
-  
-  const currentPrice = candles[index].close;
-  const currentEMA50 = ema50Array[index];
-  const currentEMA100 = ema100Array[index];
-  const currentEMA150 = ema150Array[index];
-  const currentVWAP = vwapArray[index];
-  const currentRSI = rsiArray[index];
-  const currentATR = atrArray[index];
-  
-  const prevEMA150 = ema150Array[index - 1];
-  const ema150Slope = ((currentEMA150 - prevEMA150) / prevEMA150) * 100;
-  
-  // Step 1: Check bias filter
-  let bias: 'LONG' | 'SHORT' | 'NEUTRAL' = 'NEUTRAL';
-  
-  if (
-    currentPrice > currentEMA150 &&
-    currentEMA50 > currentEMA100 &&
-    currentEMA100 > currentEMA150 &&
-    ema150Slope > config.ema_slope_threshold
-  ) {
-    bias = 'LONG';
-  } else if (
-    currentPrice < currentEMA150 &&
-    currentEMA50 < currentEMA100 &&
-    currentEMA100 < currentEMA150 &&
-    ema150Slope < -config.ema_slope_threshold
-  ) {
-    bias = 'SHORT';
-  }
-  
-  if (bias === 'NEUTRAL') {
-    return { signal_type: null, reason: 'No clear bias - EMA alignment not met' };
-  }
-  
-  // Step 2: Check pullback
-  const previousPrice = candles[index - 1].close;
-  const tolerance = config.pullback_tolerance / 100;
-  
-  let hasPullback = false;
-  if (bias === 'LONG') {
-    const distanceToVWAP = Math.abs(previousPrice - currentVWAP) / currentVWAP;
-    const distanceToEMA = Math.abs(previousPrice - currentEMA50) / currentEMA50;
-    const wasNearSupport = distanceToVWAP <= tolerance || distanceToEMA <= tolerance;
-    const reclaimedSupport = currentPrice > currentVWAP || currentPrice > currentEMA50;
-    hasPullback = wasNearSupport && reclaimedSupport;
-  } else {
-    const distanceToVWAP = Math.abs(previousPrice - currentVWAP) / currentVWAP;
-    const distanceToEMA = Math.abs(previousPrice - currentEMA50) / currentEMA50;
-    const wasNearResistance = distanceToVWAP <= tolerance || distanceToEMA <= tolerance;
-    const rejectedResistance = currentPrice < currentVWAP || currentPrice < currentEMA50;
-    hasPullback = wasNearResistance && rejectedResistance;
-  }
-  
-  if (!hasPullback) {
-    return { signal_type: null, reason: 'Waiting for pullback to VWAP/EMA50' };
-  }
-  
-  // Step 3: Check momentum triggers
-  const prevIdx = index - 1;
-  const currentMACD = macdData.macd[index];
-  const currentSignal = macdData.signal[index];
-  const currentHistogram = macdData.histogram[index];
-  const prevMACD = macdData.macd[prevIdx];
-  const prevSignal = macdData.signal[prevIdx];
-  const currentK = stochData.k[index];
-  const currentD = stochData.d[index];
-  const prevK = stochData.k[prevIdx];
-  const prevD = stochData.d[prevIdx];
-  
-  let hasMomentum = false;
-  if (bias === 'LONG') {
-    const macdCross = prevMACD <= prevSignal && currentMACD > currentSignal && currentHistogram > 0;
-    const stochCross = prevK <= prevD && currentK > currentD && prevK < config.stoch_oversold;
-    hasMomentum = macdCross && stochCross;
-  } else {
-    const macdCross = prevMACD >= prevSignal && currentMACD < currentSignal && currentHistogram < 0;
-    const stochCross = prevK >= prevD && currentK < currentD && prevK > config.stoch_overbought;
-    hasMomentum = macdCross && stochCross;
-  }
-  
-  if (!hasMomentum) {
-    return { signal_type: null, reason: 'Momentum triggers not aligned (MACD + Stochastic)' };
-  }
-  
-  // Step 4: Check volume
-  if (index < 21) {
-    return { signal_type: null, reason: 'Insufficient volume data' };
-  }
-  const currentVolume = candles[index].volume;
-  const last20Volumes = candles.slice(index - 20, index).map(c => c.volume);
-  const avgVolume = last20Volumes.reduce((a, b) => a + b, 0) / 20;
-  const hasVolume = currentVolume >= avgVolume * config.volume_multiplier;
-  
-  if (!hasVolume) {
-    return { signal_type: null, reason: `Volume too low (< ${config.volume_multiplier}x average)` };
-  }
-  
-  // Step 5: Check ATH safety
-  const lookback = Math.min(100, index);
-  const recentCandles = candles.slice(index - lookback, index + 1);
-  const recentHigh = Math.max(...recentCandles.map(c => c.high));
-  const distanceToATH = ((currentPrice - recentHigh) / recentHigh) * 100;
-  
-  let athSafe = true;
-  if (bias === 'LONG' && Math.abs(distanceToATH) < config.ath_safety_distance && currentRSI > config.rsi_threshold) {
-    athSafe = false;
-  }
-  
-  if (!athSafe) {
-    return { signal_type: null, reason: 'Near ATH with high RSI - skipping aggressive entry' };
-  }
-  
-  // All conditions met - generate signal
-  if (!positionOpen && bias === 'LONG') {
-    const stopLoss = currentPrice - (config.atr_sl_multiplier * currentATR);
-    const takeProfit1 = currentPrice + (config.atr_tp1_multiplier * currentATR);
-    const takeProfit2 = currentPrice + (config.atr_tp2_multiplier * currentATR);
-    
-    return {
-      signal_type: 'BUY',
-      reason: 'ATH Guard LONG: Bias filter + Pullback + MACD cross + Stoch cross + Volume spike',
-      stop_loss: stopLoss,
-      take_profit_1: takeProfit1,
-      take_profit_2: takeProfit2,
-    };
-  }
-  
-  if (!positionOpen && bias === 'SHORT') {
-    const stopLoss = currentPrice + (config.atr_sl_multiplier * currentATR);
-    const takeProfit1 = currentPrice - (config.atr_tp1_multiplier * currentATR);
-    const takeProfit2 = currentPrice - (config.atr_tp2_multiplier * currentATR);
-    
-    return {
-      signal_type: 'SELL',
-      reason: 'ATH Guard SHORT: Bias filter + Rejection + MACD cross + Stoch cross + Volume spike',
-      stop_loss: stopLoss,
-      take_profit_1: takeProfit1,
-      take_profit_2: takeProfit2,
-    };
-  }
-  
-  // Exit logic
-  if (positionOpen) {
-    const positionType = currentPrice > currentEMA50 ? 'LONG' : 'SHORT';
-    
-    if (positionType === 'LONG' && currentPrice < currentEMA50) {
-      return {
-        signal_type: 'SELL',
-        reason: 'Exit LONG: Price closed below EMA50',
-      };
-    }
-    
-    if (positionType === 'SHORT' && currentPrice > currentEMA50) {
-      return {
-        signal_type: 'BUY',
-        reason: 'Exit SHORT: Price closed above EMA50',
-      };
-    }
-  }
-  
-  return { signal_type: null, reason: 'No signal' };
-}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -1926,39 +1737,16 @@ async function runSMACrossoverBacktest(
     const currentRSI = rsi[i];
     const currentATR = atr[i];
     
-    // Detect crossovers directly
-    const goldenCross = prevSMAFast <= prevSMASlow && currentSMAFast > currentSMASlow; // Fast crosses above slow
-    const deathCross = prevSMAFast >= prevSMASlow && currentSMAFast < currentSMASlow;   // Fast crosses below slow
-    
-    // Enhanced Volume confirmation
-    const currentVolume = currentCandle.volume;
-    const last20Volumes = candles.slice(Math.max(0, i - 20), i).map(c => c.volume);
-    const avgVolume = last20Volumes.reduce((a, b) => a + b, 0) / last20Volumes.length;
-    
-    // Volume spike: 50% above average
-    const volumeSpike = currentVolume >= avgVolume * 1.5;
-    
-    // Volume trend: increasing volume
-    const volumeTrend = i > 0 ? currentVolume > candles[i-1].volume : true;
-    
-    // Enhanced volume confirmation
-    const volumeConfirmed = volumeSpike && volumeTrend && currentVolume >= avgVolume * config.volume_multiplier;
-    
-    // 🎯 PHASE 5: Adaptive Parameters for SMA Strategy
-    const adaptiveConfig = getAdaptiveParameters(
-      candles.slice(0, i + 1),
-      config,
-      marketRegime,
-      getDefaultAdaptiveConfig()
+    // Use the optimized strategy function
+    const recentCandles = candles.slice(0, i + 1);
+    const signal = evaluateSMACrossoverStrategy(
+      recentCandles, 
+      config, 
+      position !== null
     );
     
-    // Use adaptive RSI thresholds
-    const adaptiveRSIOverbought = adaptiveConfig.rsi_overbought;
-    const adaptiveRSIOversold = adaptiveConfig.rsi_oversold;
-    const adaptiveVolumeMultiplier = adaptiveConfig.volume_multiplier;
-    
-    // BUY signal: Golden cross + Adaptive RSI overbought (momentum) + Volume
-    if (goldenCross && currentRSI > adaptiveRSIOverbought && volumeConfirmed && !position) {
+    // BUY signal from optimized strategy
+    if (signal.signal_type === 'BUY' && !position) {
       const positionSize = Math.min(availableBalance * 0.95, balance * 0.1);
       const quantity = Math.floor(positionSize / currentPrice / stepSize) * stepSize;
       
@@ -1988,7 +1776,8 @@ async function runSMACrossoverBacktest(
     }
     
     // SHORT signal: Death cross + Adaptive RSI oversold (momentum reversal) + Volume
-    if (deathCross && currentRSI < adaptiveRSIOversold && volumeConfirmed && !position) {
+    // SELL signal from optimized strategy
+    if (signal.signal_type === 'SELL' && !position) {
       const positionSize = Math.min(availableBalance * 0.95, balance * 0.1);
       const quantity = Math.floor(positionSize / currentPrice / stepSize) * stepSize;
       
@@ -2339,47 +2128,13 @@ async function runMTFMomentumBacktest(
       }
     }
     
-    // Direct evaluation using pre-calculated indicators (index-based access)
-    const idx1m = i;
-    const idx5m = Math.floor(i / 5);
-    const idx15m = Math.floor(i / 15);
-    
-    // Skip if not enough data for higher timeframes
-    if (idx5m >= rsi5m.length || idx15m >= rsi15m.length) continue;
-    
-    const currentRSI1m = rsi1m[idx1m] || 50;
-    const currentRSI5m = rsi5m[idx5m] || 50;
-    const currentRSI15m = rsi15m[idx15m] || 50;
-    
-    const currentMACD1m = macd1m.histogram[idx1m] || 0;
-    const currentMACD5m = macd5m.histogram[idx5m] || 0;
-    const currentMACD15m = macd15m.histogram[idx15m] || 0;
-    
-    const currentVolume = currentCandle.volume;
-    const volumeConfirmed = currentVolume >= volumeSMA1m * config.mtf_volume_multiplier;
-    
-    // Relaxed MTF confluence for BUY - at least 1m bullish + one higher TF confirms
-    const longCondition = !position && 
-      currentRSI1m > config.mtf_rsi_entry_threshold &&
-      (currentRSI5m > 50 || currentRSI15m > 50) && // At least one higher TF neutral/bullish
-      (currentMACD1m > 0 || currentMACD5m > 0) && // At least one MACD positive
-      volumeConfirmed;
-    
-    // Relaxed MTF confluence for SELL - at least 1m bearish + one higher TF confirms
-    const shortCondition = !position &&
-      currentRSI1m < (100 - config.mtf_rsi_entry_threshold) &&
-      (currentRSI5m < 50 || currentRSI15m < 50) && // At least one higher TF neutral/bearish
-      (currentMACD1m < 0 || currentMACD5m < 0) && // At least one MACD negative
-      volumeConfirmed;
-    
-    const signal = {
-      signal_type: longCondition ? 'BUY' : (shortCondition ? 'SELL' : null),
-      reason: longCondition 
-        ? `MTF BUY: RSI(${currentRSI1m.toFixed(1)}/${currentRSI5m.toFixed(1)}/${currentRSI15m.toFixed(1)}), MACD+, Vol✓`
-        : shortCondition
-        ? `MTF SELL: RSI(${currentRSI1m.toFixed(1)}/${currentRSI5m.toFixed(1)}/${currentRSI15m.toFixed(1)}), MACD-, Vol✓`
-        : 'No signal'
-    };
+    // Use the optimized strategy function
+    const recentCandles = candles.slice(0, i + 1);
+    const signal = evaluateMTFMomentum(
+      recentCandles, 
+      config, 
+      position !== null
+    );
     
     if (signal.signal_type === 'BUY' && !position) {
       // Calculate position size with proper leverage
