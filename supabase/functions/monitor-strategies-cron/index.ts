@@ -134,15 +134,10 @@ const EXCHANGE_URLS = {
     mainnet: 'https://api.bybit.com',
     testnet: 'https://api-testnet.bybit.com',
   },
-  binance: {
-    mainnet: 'https://fapi.binance.com',
-    testnet: 'https://testnet.binancefuture.com',
-  },
 };
 
 const INTERVAL_MAPPING: Record<string, Record<string, string>> = {
   bybit: { '1m': '1', '5m': '5', '15m': '15', '1h': '60', '4h': '240', '1d': 'D' },
-  binance: { '1m': '1m', '5m': '5m', '15m': '15m', '1h': '1h', '4h': '4h', '1d': '1d' },
 };
 
 interface Candle {
@@ -215,9 +210,8 @@ async function fetchMarketData(
     return await fetchHybridMarketData(symbol, timeframe, limit);
   }
   
-  // Ensure exchange type is valid, default to bybit if not found
-  const validExchange = (exchangeType === 'binance' || exchangeType === 'bybit') ? exchangeType : 'bybit';
-  const exchange = validExchange as 'bybit' | 'binance';
+  // Ensure exchange type is valid, default to bybit
+  const exchange = 'bybit' as const;
   
   // Safety check
   if (!EXCHANGE_URLS[exchange]) {
@@ -439,57 +433,10 @@ async function checkExchangePosition(
   apiSecret: string, 
   useTestnet: boolean, 
   symbol: string,
-  exchangeType: string = 'binance'
+  exchangeType: string = 'bybit'
 ): Promise<boolean | null> {
   try {
-    if (exchangeType === 'binance') {
-      const baseUrl = useTestnet 
-        ? 'https://testnet.binancefuture.com'
-        : 'https://fapi.binance.com';
-      
-      const timestamp = Date.now();
-      const queryString = `symbol=${symbol}&timestamp=${timestamp}`;
-      
-      const encoder = new TextEncoder();
-      const keyData = encoder.encode(apiSecret);
-      const messageData = encoder.encode(queryString);
-      
-      const cryptoKey = await crypto.subtle.importKey(
-        'raw',
-        keyData,
-        { name: 'HMAC', hash: 'SHA-256' },
-        false,
-        ['sign']
-      );
-      
-      const signature = await crypto.subtle.sign('HMAC', cryptoKey, messageData);
-      const signatureHex = Array.from(new Uint8Array(signature))
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('');
-      
-      const response = await fetch(
-        `${baseUrl}/fapi/v2/positionRisk?${queryString}&signature=${signatureHex}`,
-        {
-          headers: {
-            'X-MBX-APIKEY': apiKey
-          }
-        }
-      );
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.warn(`[BINANCE] ⚠️ Position check failed (${response.status}): ${errorText.substring(0, 200)}`);
-        console.warn(`[BINANCE] API keys may be expired/invalid. Continuing with signal generation...`);
-        return null;
-      }
-      
-      const positions = await response.json();
-      const position = positions.find((p: any) => p.symbol === symbol);
-      const hasPosition = position && parseFloat(position.positionAmt) !== 0;
-      
-      console.log(`[BINANCE] ✅ Position check successful for ${symbol}: ${hasPosition ? 'OPEN' : 'CLOSED'}`);
-      return hasPosition;
-    } else if (exchangeType === 'bybit') {
+    if (exchangeType === 'bybit') {
       const baseUrl = useTestnet 
         ? 'https://api-testnet.bybit.com'
         : 'https://api.bybit.com';
@@ -889,10 +836,10 @@ Deno.serve(async (req) => {
               // Only skip if we CONFIRMED position exists (true)
               // If null (API error), continue with signal generation
               if (positionExists === true) {
-                console.log(`[CRON] ⚠️ Skipping entry signal for ${strategy.name} - position confirmed open on BYBIT`);
+                console.log(`[CRON] ⚠️ Skipping entry signal for ${strategy.name} - position confirmed open on Bybit`);
                 continue;
               } else if (positionExists === null) {
-                console.log(`[CRON] ⚠️ Could not verify BYBIT position for ${strategy.name} - continuing with signal generation`);
+                console.log(`[CRON] ⚠️ Could not verify Bybit position for ${strategy.name} - continuing with signal generation`);
               }
             }
           }

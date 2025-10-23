@@ -142,25 +142,6 @@ async function handleGetExchangeStatus(supabase: any, userId: string) {
 
     const exchanges: ExchangeStatus[] = [];
 
-    // Check Binance APIs
-    if (userSettings?.binance_mainnet_api_key) {
-      const binanceMainnet = await checkExchangeConnection('binance', 'mainnet');
-      exchanges.push({
-        name: 'Binance Mainnet API',
-        type: 'mainnet',
-        ...binanceMainnet
-      });
-    }
-
-    if (userSettings?.binance_testnet_api_key) {
-      const binanceTestnet = await checkExchangeConnection('binance', 'testnet');
-      exchanges.push({
-        name: 'Binance Testnet API',
-        type: 'testnet',
-        ...binanceTestnet
-      });
-    }
-
     // Check Bybit APIs
     if (userSettings?.bybit_mainnet_api_key) {
       const bybitMainnet = await checkExchangeConnection('bybit', 'mainnet');
@@ -236,13 +217,8 @@ async function checkExchangeConnection(exchange: string, type: 'mainnet' | 'test
   const startTime = Date.now();
   
   try {
-    const baseUrl = exchange === 'binance' 
-      ? (type === 'mainnet' ? 'https://fapi.binance.com' : 'https://testnet.binancefuture.com')
-      : (type === 'mainnet' ? 'https://api.bybit.com' : 'https://api-testnet.bybit.com');
-    
-    const endpoint = exchange === 'binance' 
-      ? '/fapi/v1/ping'
-      : '/v5/market/time';
+    const baseUrl = type === 'mainnet' ? 'https://api.bybit.com' : 'https://api-testnet.bybit.com';
+    const endpoint = '/v5/market/time';
     
     const response = await fetch(`${baseUrl}${endpoint}`, {
       method: 'GET',
@@ -298,13 +274,8 @@ async function checkExchangeConnection(exchange: string, type: 'mainnet' | 'test
 
 async function validateDataSource(exchange: string, type: 'mainnet' | 'testnet', symbol: string, timeframe: string) {
   try {
-    const baseUrl = exchange === 'binance' 
-      ? (type === 'mainnet' ? 'https://fapi.binance.com' : 'https://testnet.binancefuture.com')
-      : (type === 'mainnet' ? 'https://api.bybit.com' : 'https://api-testnet.bybit.com');
-    
-    const endpoint = exchange === 'binance' 
-      ? `/fapi/v1/klines?symbol=${symbol}&interval=${timeframe}&limit=100`
-      : `/v5/market/kline?category=linear&symbol=${symbol}&interval=${timeframe}&limit=100`;
+    const baseUrl = type === 'mainnet' ? 'https://api.bybit.com' : 'https://api-testnet.bybit.com';
+    const endpoint = `/v5/market/kline?category=linear&symbol=${symbol}&interval=${timeframe}&limit=100`;
     
     const response = await fetch(`${baseUrl}${endpoint}`);
     
@@ -314,8 +285,8 @@ async function validateDataSource(exchange: string, type: 'mainnet' | 'testnet',
     
     const data = await response.json();
     
-    // Analyze data quality
-    const candles = exchange === 'binance' ? data : data.result.list;
+    // Analyze data quality for Bybit
+    const candles = data.result?.list || [];
     const quality = analyzeDataQuality(candles);
     
     return {
@@ -391,12 +362,10 @@ async function generateNewQualityReport(supabase: any, userId: string, request?:
     
     for (const pair of userPairs.slice(0, 5)) { // Limit to 5 pairs for performance
       try {
-        const binanceQuality = await validateDataSource('binance', 'mainnet', pair.symbol, '1h');
         const bybitQuality = await validateDataSource('bybit', 'mainnet', pair.symbol, '1h');
         
         qualityResults.push({
           symbol: pair.symbol,
-          binance: binanceQuality,
           bybit: bybitQuality
         });
       } catch (error) {
@@ -404,8 +373,8 @@ async function generateNewQualityReport(supabase: any, userId: string, request?:
       }
     }
     
-    // Calculate overall metrics
-    const allQualities = qualityResults.flatMap(r => [r.binance.quality, r.bybit.quality]).filter(q => q > 0);
+    // Calculate overall metrics from Bybit data
+    const allQualities = qualityResults.map(r => r.bybit.quality).filter(q => q > 0);
     const overallQuality = allQualities.length > 0 ? allQualities.reduce((sum, q) => sum + q, 0) / allQualities.length : 85;
     
     const metrics = {

@@ -1,5 +1,4 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { BinanceAPIClient } from '../helpers/binance-api-client.ts';
 import { sanitizeError, handleError } from '../helpers/error-sanitizer.ts';
 
 const corsHeaders = {
@@ -9,7 +8,7 @@ const corsHeaders = {
 
 interface TestExchangeRequest {
   useTestnet: boolean;
-  exchangeType?: 'binance' | 'bybit';
+  exchangeType?: 'bybit';
 }
 
 interface TestExchangeResponse {
@@ -48,12 +47,12 @@ Deno.serve(async (req): Promise<Response> => {
     }
 
     const body: TestExchangeRequest = await req.json();
-    const { useTestnet, exchangeType = 'binance' } = body;
+    const { useTestnet, exchangeType = 'bybit' } = body;
 
     console.log(`[TEST-EXCHANGE] Testing ${exchangeType} ${useTestnet ? 'testnet' : 'mainnet'} connection`);
 
-    // Determine which exchange to test
-    const actualExchangeType = exchangeType || 'binance';
+    // Determine which exchange to test (default to Bybit)
+    const actualExchangeType = exchangeType || 'bybit';
     const isTestnet = useTestnet;
     
     // Determine credential type based on exchange and environment
@@ -84,21 +83,8 @@ Deno.serve(async (req): Promise<Response> => {
       throw new Error(`${actualExchangeType.toUpperCase()} ${useTestnet ? 'testnet' : 'mainnet'} API credentials not configured`);
     }
 
-    // Test the connection
-    if (actualExchangeType === 'binance') {
-      return await testBinanceConnection(apiKey, apiSecret, isTestnet);
-    } else if (actualExchangeType === 'bybit') {
-      return await testBybitConnection(apiKey, apiSecret, isTestnet);
-    }
-    
-    // Fallback (should never reach here due to earlier validation)
-    return new Response(JSON.stringify({ 
-      success: false, 
-      error: 'Unsupported exchange type' 
-    }), {
-      status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    // Test Bybit connection
+    return await testBybitConnection(apiKey, apiSecret, isTestnet);
 
   } catch (error: any) {
     const { handleError } = await import('../helpers/error-sanitizer.ts');
@@ -120,53 +106,6 @@ Deno.serve(async (req): Promise<Response> => {
     );
   }
 });
-
-async function testBinanceConnection(apiKey: string, apiSecret: string, isTestnet: boolean): Promise<Response> {
-  try {
-    console.log(`[TEST-EXCHANGE] Testing Binance ${isTestnet ? 'testnet' : 'mainnet'} connection`);
-    
-    const client = new BinanceAPIClient(apiKey, apiSecret, isTestnet);
-    
-    // Test connectivity
-    const isConnected = await client.testConnectivity();
-    if (!isConnected) {
-      throw new Error('Failed to connect to Binance API');
-    }
-    
-    // Get account info
-    const accountInfo = await client.getAccountInfo();
-    
-    const totalWalletBalance = parseFloat(accountInfo.totalWalletBalance || '0');
-    
-    const response: TestExchangeResponse = {
-      success: true,
-      data: {
-        environment: isTestnet ? 'testnet' : 'mainnet',
-        totalWalletBalance,
-        exchangeType: 'binance'
-      }
-    };
-    
-    return new Response(JSON.stringify(response), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-    
-  } catch (error) {
-    const { handleError } = await import('../helpers/error-sanitizer.ts');
-    const sanitizedMessage = handleError({
-      function: 'test-exchange/testBinanceConnection',
-      error,
-    });
-    
-    return new Response(JSON.stringify({ 
-      success: false, 
-      error: sanitizedMessage
-    }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-  }
-}
 
 async function testBybitConnection(apiKey: string, apiSecret: string, isTestnet: boolean): Promise<Response> {
   try {

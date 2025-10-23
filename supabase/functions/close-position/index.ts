@@ -50,8 +50,12 @@ Deno.serve(async (req) => {
 
     if (settingsError) throw settingsError;
 
-    // Retrieve API credentials from secure vault
-    const credentialType = settings.use_testnet ? 'binance_testnet' : 'binance_mainnet';
+    // Retrieve Bybit API credentials from secure vault
+    const exchangeType = settings.exchange_type || 'bybit';
+    const credentialType = exchangeType === 'bybit' 
+      ? (settings.use_testnet ? 'bybit_testnet' : 'bybit_mainnet')
+      : (settings.use_testnet ? 'bybit_testnet' : 'bybit_mainnet'); // Default to Bybit
+    
     const { data: credentials, error: credError } = await supabaseServiceClient
       .rpc('retrieve_credential', {
         p_user_id: user.id,
@@ -71,42 +75,52 @@ Deno.serve(async (req) => {
     apiSecret = credentials[0].api_secret;
 
     if (!apiKey || !apiSecret) {
-      throw new Error('Binance API credentials not configured');
+      throw new Error('Bybit API credentials not configured');
     }
 
     const baseUrl = settings.use_testnet
-      ? 'https://testnet.binancefuture.com'
-      : 'https://fapi.binance.com';
+      ? 'https://api-testnet.bybit.com'
+      : 'https://api.bybit.com';
 
     console.log(`Closing position(s) for user ${user.id.substring(0, 8)}...`);
 
-    // Helper function to create signature
-    const createSignature = (queryString: string) => {
+    // Helper function to create Bybit signature
+    const createBybitSignature = (params: string) => {
       return createHmac('sha256', apiSecret)
-        .update(queryString)
+        .update(params)
         .digest('hex');
     };
 
-    // Get current positions
+    // Get current positions from Bybit
     const timestamp = Date.now();
-    const positionsQuery = `timestamp=${timestamp}`;
-    const positionsSignature = createSignature(positionsQuery);
+    const recvWindow = '5000';
+    const signParams = `${timestamp}${apiKey}${recvWindow}category=linear`;
+    const signature = createBybitSignature(signParams);
     
     const positionsResponse = await fetch(
-      `${baseUrl}/fapi/v2/positionRisk?${positionsQuery}&signature=${positionsSignature}`,
+      `${baseUrl}/v5/position/list?category=linear`,
       {
         headers: {
-          'X-MBX-APIKEY': apiKey,
+          'X-BAPI-API-KEY': apiKey,
+          'X-BAPI-TIMESTAMP': timestamp.toString(),
+          'X-BAPI-SIGN': signature,
+          'X-BAPI-RECV-WINDOW': recvWindow,
+          'Content-Type': 'application/json'
         },
       }
     );
 
     if (!positionsResponse.ok) {
-      throw new Error('Failed to fetch positions from Binance');
+      const errorText = await positionsResponse.text();
+      throw new Error(`Failed to fetch positions from Bybit: ${errorText}`);
     }
 
-    const positions = await positionsResponse.json();
-    const openPositions = positions.filter((p: any) => parseFloat(p.positionAmt) !== 0);
+    const positionsData = await positionsResponse.json();
+    if (positionsData.retCode !== 0) {
+      throw new Error(`Bybit API error: ${positionsData.retMsg}`);
+    }
+    
+    const openPositions = (positionsData.result?.list || []).filter((p: any) => parseFloat(p.size) !== 0);
 
     console.log(`Found ${openPositions.length} open positions`);
 
@@ -118,34 +132,39 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      const positionAmt = parseFloat(position.positionAmt);
-      const side = positionAmt > 0 ? 'SELL' : 'BUY'; // Opposite side to close
-      const quantity = Math.abs(positionAmt);
+      const positionSize = parseFloat(position.size);
+      const side = position.side === 'Buy' ? 'Sell' : 'Buy'; // Opposite side to close
+      const quantity = Math.abs(positionSize);
 
       console.log(`Closing ${position.symbol}: ${side} ${quantity}`);
 
-      // Place market order to close position
+      // Place market order to close position via Bybit
       const orderTimestamp = Date.now();
-      const orderParams = new URLSearchParams({
+      const orderRecvWindow = '5000';
+      const orderBody = JSON.stringify({
+        category: 'linear',
         symbol: position.symbol,
         side: side,
-        type: 'MARKET',
-        quantity: quantity.toString(),
-        timestamp: orderTimestamp.toString(),
+        orderType: 'Market',
+        qty: quantity.toFixed(3),
+        reduceOnly: true
       });
-
-      const orderSignature = createSignature(orderParams.toString());
-      orderParams.append('signature', orderSignature);
+      
+      const orderSignParams = `${orderTimestamp}${apiKey}${orderRecvWindow}${orderBody}`;
+      const orderSignature = createBybitSignature(orderSignParams);
 
       const orderResponse = await fetch(
-        `${baseUrl}/fapi/v1/order`,
+        `${baseUrl}/v5/order/create`,
         {
           method: 'POST',
           headers: {
-            'X-MBX-APIKEY': apiKey,
-            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-BAPI-API-KEY': apiKey,
+            'X-BAPI-TIMESTAMP': orderTimestamp.toString(),
+            'X-BAPI-SIGN': orderSignature,
+            'X-BAPI-RECV-WINDOW': orderRecvWindow,
+            'Content-Type': 'application/json'
           },
-          body: orderParams.toString(),
+          body: orderBody,
         }
       );
 
@@ -155,7 +174,12 @@ Deno.serve(async (req) => {
         throw new Error(`Failed to close position for ${position.symbol}`);
       }
 
-      const orderData = await orderResponse.json();
+      const orderResult = await orderResponse.json();
+      if (orderResult.retCode !== 0) {
+        throw new Error(`Bybit order error: ${orderResult.retMsg}`);
+      }
+      
+      const orderData = orderResult.result;
       closedPositions.push({
         symbol: position.symbol,
         side: side,

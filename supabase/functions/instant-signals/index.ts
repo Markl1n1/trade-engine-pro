@@ -3,7 +3,6 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../helpers/cors.ts';
-import { BinanceAPIClient } from '../helpers/binance-api-client.ts';
 import { signalSchema, validateInput } from '../helpers/input-validation.ts';
 
 interface TradingSignal {
@@ -290,14 +289,6 @@ class PositionExecutionManager {
       let apiSecret: string | undefined;
       
       switch (credentialType) {
-        case 'binance_testnet':
-          apiKey = settings.binance_testnet_api_key;
-          apiSecret = settings.binance_testnet_api_secret;
-          break;
-        case 'binance_mainnet':
-          apiKey = settings.binance_mainnet_api_key;
-          apiSecret = settings.binance_mainnet_api_secret;
-          break;
         case 'bybit_testnet':
           apiKey = settings.bybit_testnet_api_key;
           apiSecret = settings.bybit_testnet_api_secret;
@@ -307,7 +298,7 @@ class PositionExecutionManager {
           apiSecret = settings.bybit_mainnet_api_secret;
           break;
         default:
-          throw new Error(`Unsupported credential type: ${credentialType}`);
+          throw new Error(`Unsupported credential type: ${credentialType}. Only Bybit is supported.`);
       }
       
       if (!apiKey || !apiSecret) {
@@ -377,13 +368,8 @@ class PositionExecutionManager {
     try {
       const exchangeType = settings.exchange_type || 'bybit';
       
-      // ✅ ПРАВИЛЬНО: Поддержка как Binance, так и Bybit
-      let credentials;
-      if (exchangeType === 'bybit') {
-        credentials = await this.getDecryptedCredentials(signal.userId, 'bybit_testnet', settings);
-      } else {
-        credentials = await this.getDecryptedCredentials(signal.userId, 'binance_testnet', settings);
-      }
+      // Get Bybit testnet credentials for hybrid live mode
+      const credentials = await this.getDecryptedCredentials(signal.userId, 'bybit_testnet', settings);
       
       if (!credentials.apiKey || !credentials.apiSecret) {
         throw new Error(`${exchangeType.toUpperCase()} testnet API keys required for hybrid live mode`);
@@ -418,8 +404,8 @@ class PositionExecutionManager {
     console.log(`[INSTANT-SIGNALS] Executing mainnet position for ${signal.symbol}`);
     
     try {
-      // Получаем зашифрованные mainnet ключи
-      const credentials = await this.getDecryptedCredentials(signal.userId, 'binance_mainnet', settings);
+      // Get Bybit mainnet credentials for mainnet trading
+      const credentials = await this.getDecryptedCredentials(signal.userId, 'bybit_mainnet', settings);
       
       if (!credentials.apiKey || !credentials.apiSecret) {
         throw new Error('Mainnet API keys required for mainnet trading');
@@ -459,63 +445,59 @@ class PositionExecutionManager {
         throw new Error(`API credentials not found for ${exchangeType.toUpperCase()} ${useTestnet ? 'testnet' : 'mainnet'}`);
       }
       
-      // ✅ ПРАВИЛЬНО: Поддержка как Binance, так и Bybit
-      let client;
-      if (exchangeType === 'bybit') {
-        // TODO: Implement BybitAPIClient when available
-        throw new Error('Bybit API client not implemented yet');
-      } else {
-        client = new BinanceAPIClient(apiKey, apiSecret, useTestnet);
-      }
-      
-      // Test connectivity first
-      const isConnected = await client.testConnectivity();
-      if (!isConnected) {
-        throw new Error(`Failed to connect to ${exchangeType.toUpperCase()} API`);
-      }
-      
-      // ✅ ПРАВИЛЬНО: Динамическое количество на основе баланса
-      const accountInfo = await client.getAccountInfo();
-      const availableBalance = accountInfo.availableBalance;
-      const riskAmount = availableBalance * 0.01; // 1% риска
-      const quantity = Math.max(0.001, riskAmount / signal.price); // Минимум 0.001
-      
-      // Place the order
-      const orderRequest = {
-        symbol: signal.symbol,
-        side: signal.signal.toUpperCase() as 'BUY' | 'SELL',
-        type: 'MARKET' as const,
-        quantity: quantity
+      // Use Bybit exchange-api for order execution
+      const { makeExchangeRequest } = await import('../helpers/exchange-api.ts');
+      const config = {
+        exchange: 'bybit' as const,
+        apiKey,
+        apiSecret,
+        testnet: useTestnet
       };
       
-      const orderResult = await client.placeOrder(orderRequest);
+      // Get account balance to calculate position size
+      const accountData = await makeExchangeRequest(config, 'getAccount');
+      const availableBalance = parseFloat(accountData.result.list?.[0]?.totalWalletBalance || '0');
+      const riskAmount = availableBalance * 0.01; // 1% risk
+      const quantity = Math.max(0.001, riskAmount / signal.price);
       
-      console.log(`[INSTANT-SIGNALS] Order placed successfully:`, orderResult);
+      // Place market order via Bybit
+      const orderParams = {
+        category: 'linear',
+        symbol: signal.symbol,
+        side: signal.signal === 'buy' ? 'Buy' : 'Sell',
+        orderType: 'Market',
+        qty: quantity.toFixed(3)
+      };
+      
+      const orderResult = await makeExchangeRequest(config, 'placeOrder', orderParams, 'POST');
+      
+      console.log(`[INSTANT-SIGNALS] Bybit order placed successfully:`, orderResult);
       
       // Initialize Trailing Stop for the position
-      const trailingStopPercent = signal.trailingStopPercent || 20; // Default 20%
+      const trailingStopPercent = signal.trailingStopPercent || 20;
       const trailingStopManager = new LiveTrailingStopManager(trailingStopPercent);
+      const orderData = orderResult.result;
       trailingStopManager.initialize(
-        parseFloat(orderResult.price),
-        orderResult.side.toLowerCase() as 'buy' | 'sell',
-        orderResult.orderId.toString()
+        parseFloat(orderData.avgPrice || signal.price),
+        signal.signal.toLowerCase() as 'buy' | 'sell',
+        orderData.orderId
       );
       
       // Store trailing stop manager in database for monitoring
-      await this.storeTrailingStopState(signal.userId, orderResult.orderId.toString(), signal, trailingStopManager);
+      await this.storeTrailingStopState(signal.userId, orderData.orderId, signal, trailingStopManager);
       
       // Start real-time WebSocket monitoring for this position
       await this.startRealtimeMonitoring(signal.symbol);
       
       return {
-        orderId: orderResult.orderId.toString(),
-        symbol: orderResult.symbol,
-        side: orderResult.side,
-        quantity: parseFloat(orderResult.origQty),
-        price: parseFloat(orderResult.price),
-        status: orderResult.status,
-        executedAt: new Date(orderResult.time).toISOString(),
-        clientOrderId: orderResult.clientOrderId,
+        orderId: orderData.orderId,
+        symbol: orderData.symbol,
+        side: orderData.side,
+        quantity: parseFloat(orderData.qty),
+        price: parseFloat(orderData.avgPrice || signal.price),
+        status: orderData.orderStatus,
+        executedAt: new Date().toISOString(),
+        clientOrderId: orderData.orderLinkId,
         trailingStopPercent: trailingStopPercent
       };
       
