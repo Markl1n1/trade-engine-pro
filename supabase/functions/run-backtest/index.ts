@@ -863,15 +863,15 @@ serve(async (req) => {
     // First, check what data exists for this symbol/timeframe
     const { data: dataCheck, error: checkError } = await supabaseClient
       .from('market_data')
-      .select('symbol, timeframe, exchange_type, COUNT(*) as count')
+      .select('*')
       .eq('symbol', strategy.symbol)
       .eq('timeframe', strategy.timeframe)
-      .group('symbol, timeframe, exchange_type');
+      .limit(1);
     
     log(`Data availability check`, { 
       symbol: strategy.symbol, 
       timeframe: strategy.timeframe, 
-      availableData: dataCheck,
+      hasData: dataCheck && dataCheck.length > 0,
       checkError: checkError?.message 
     });
 
