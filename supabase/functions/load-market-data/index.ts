@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1d'];
+const TIMEFRAMES = ['1m', '5m', '15m', '30m', '1h', '4h', '1d'];
 
 // Bybit interval mapping
 const BYBIT_INTERVALS: Record<string, string> = {

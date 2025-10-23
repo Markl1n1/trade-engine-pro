@@ -6,11 +6,11 @@ SELECT cron.unschedule('refresh-market-data') WHERE EXISTS (
   SELECT 1 FROM cron.job WHERE jobname = 'refresh-market-data'
 );
 
--- Schedule the load-market-data function to run every 30 minutes
+-- Schedule the load-market-data function to run every 15 minutes
 -- This will fetch data for all major symbols and timeframes
 SELECT cron.schedule(
   'load-market-data',
-  '*/30 * * * *',  -- Every 30 minutes
+  '*/15 * * * *',  -- Every 15 minutes
   $$
   SELECT net.http_post(
     url := 'https://wnkjtkigpyfnthnfmdlk.supabase.co/functions/v1/load-market-data',
@@ -24,4 +24,4 @@ SELECT cron.schedule(
 );
 
 -- Add comment
-COMMENT ON TABLE market_data IS 'Market data table with comprehensive refresh every 30 minutes - fetches data for all major symbols and timeframes';
+COMMENT ON TABLE market_data IS 'Market data table with comprehensive refresh every 15 minutes - fetches data for all major symbols and timeframes';
