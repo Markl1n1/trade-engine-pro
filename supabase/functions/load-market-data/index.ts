@@ -58,6 +58,7 @@ serve(async (req) => {
 
     // Process all symbol-timeframe combinations
     for (const symbol of SYMBOLS_TO_FETCH) {
+      console.log(`[LOAD-MARKET-DATA] Starting processing for symbol: ${symbol}`);
       for (const timeframe of TIMEFRAMES) {
         try {
           console.log(`[LOAD-MARKET-DATA] Processing ${symbol} ${timeframe}...`);
@@ -147,11 +148,20 @@ serve(async (req) => {
           
           console.log(`[LOAD-MARKET-DATA] Starting paginated fetch for ${symbol} ${timeframe}, max requests: ${maxRequests}`);
           
+          // Try different categories for different symbols
+          let category = 'linear';
+          if (symbol === 'XRPUSDT' || symbol === 'DOGEUSDT' || symbol === 'SOLUSDT') {
+            category = 'spot'; // Use spot for these symbols
+            console.log(`[LOAD-MARKET-DATA] Using spot category for ${symbol}`);
+          }
+          
           while (totalFetched < limit && requestCount < maxRequests) {
-            const bybitUrl = `https://api.bybit.com/v5/market/kline?category=linear&symbol=${symbol}&interval=${bybitInterval}&limit=${maxCandlesPerRequest}&start=${currentStartTime}`;
+            const bybitUrl = `https://api.bybit.com/v5/market/kline?category=${category}&symbol=${symbol}&interval=${bybitInterval}&limit=${maxCandlesPerRequest}&start=${currentStartTime}`;
             
             console.log(`[LOAD-MARKET-DATA] Request ${requestCount + 1}/${maxRequests}: ${bybitUrl}`);
             const response = await fetch(bybitUrl);
+            
+            console.log(`[LOAD-MARKET-DATA] Response status for ${symbol} ${timeframe}: ${response.status} ${response.statusText}`);
 
             if (!response.ok) {
               console.error(`[LOAD-MARKET-DATA] Failed to fetch ${symbol} ${timeframe} (request ${requestCount + 1}): ${response.statusText}`);
@@ -159,6 +169,8 @@ serve(async (req) => {
             }
 
             const data = await response.json();
+            
+            console.log(`[LOAD-MARKET-DATA] API response for ${symbol} ${timeframe}: retCode=${data.retCode}, retMsg=${data.retMsg}, listLength=${data.result?.list?.length || 0}`);
 
             if (data.retCode !== 0) {
               console.error(`[LOAD-MARKET-DATA] API error for ${symbol} ${timeframe} (request ${requestCount + 1}): ${data.retMsg}`);
@@ -207,7 +219,7 @@ serve(async (req) => {
             .map((k: any) => ({
               symbol: symbol.trim(), // Ensure no whitespace
               timeframe: timeframe.trim(), // Ensure no whitespace
-              exchange_type: 'bybit',
+              exchange_type: category === 'spot' ? 'bybit_spot' : 'bybit',
               open_time: parseInt(k[0]) || 0,
               open: parseFloat(k[1]) || 0,
               high: parseFloat(k[2]) || 0,

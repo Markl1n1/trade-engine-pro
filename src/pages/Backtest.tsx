@@ -50,6 +50,15 @@ const Backtest = () => {
     setStartDate(start.toISOString().split('T')[0]);
   }, []);
 
+  // Add effect to refresh data availability when user pairs change
+  useEffect(() => {
+    const interval = setInterval(() => {
+      checkDataAvailability();
+    }, 30000); // Check every 30 seconds for new pairs
+
+    return () => clearInterval(interval);
+  }, []);
+
   // Auto-populate backtest parameters from selected strategy
   useEffect(() => {
     if (selectedStrategy && strategies.length > 0) {
@@ -157,6 +166,19 @@ const Backtest = () => {
   const loadMarketData = async () => {
     setIsLoadingData(true);
     try {
+      console.log('[BACKTEST] Starting loadMarketData...');
+      
+      // First, let's check what user pairs we have
+      const { data: userPairs, error: pairsError } = await supabase
+        .from('user_trading_pairs')
+        .select('symbol');
+      
+      if (pairsError) {
+        console.error('[BACKTEST] Error fetching user pairs:', pairsError);
+      } else {
+        console.log('[BACKTEST] User trading pairs:', userPairs?.map(p => p.symbol) || []);
+      }
+
       const { data, error } = await supabase.functions.invoke('load-market-data', {
         body: { load: true }
       });
@@ -164,6 +186,8 @@ const Backtest = () => {
       if (error) {
         throw error;
       }
+
+      console.log('[BACKTEST] Load market data response:', data);
 
       toast({
         title: "Market Data Loading",
@@ -173,6 +197,7 @@ const Backtest = () => {
       // Refresh data availability check
       await checkDataAvailability();
     } catch (error: any) {
+      console.error('[BACKTEST] Error in loadMarketData:', error);
       toast({
         title: "Error Loading Data",
         description: error.message || "Failed to load market data",
@@ -314,24 +339,34 @@ const Backtest = () => {
                   Will load data for: {dataStats.userSymbols.join(', ')}
                 </p>
               )}
-              <Button 
-                onClick={loadMarketData} 
-                disabled={isLoadingData}
-                size="sm"
-                className="bg-blue-600 hover:bg-blue-700"
-              >
-                {isLoadingData ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Loading Data...
-                  </>
-                ) : (
-                  <>
-                    <Play className="w-4 h-4 mr-2" />
-                    Load Market Data
-                  </>
-                )}
-              </Button>
+              <div className="flex gap-2">
+                <Button 
+                  onClick={loadMarketData} 
+                  disabled={isLoadingData}
+                  size="sm"
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  {isLoadingData ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Loading Data...
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-4 h-4 mr-2" />
+                      Load Market Data
+                    </>
+                  )}
+                </Button>
+                <Button 
+                  onClick={checkDataAvailability} 
+                  size="sm"
+                  variant="outline"
+                  className="border-blue-500 text-blue-600 hover:bg-blue-500 hover:text-white"
+                >
+                  Check Pairs
+                </Button>
+              </div>
             </div>
           </div>
         </Card>
@@ -350,25 +385,50 @@ const Backtest = () => {
                   Monitoring: {dataStats.userSymbols.join(', ')}
                 </p>
               )}
-              <Button 
-                onClick={loadMarketData} 
-                disabled={isLoadingData}
-                size="sm"
-                variant="outline"
-                className="border-green-500 text-green-600 hover:bg-green-500 hover:text-white"
-              >
-                {isLoadingData ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Updating Data...
-                  </>
-                ) : (
-                  <>
-                    <Play className="w-4 h-4 mr-2" />
-                    Refresh Market Data
-                  </>
-                )}
-              </Button>
+              <div className="flex gap-2">
+                <Button 
+                  onClick={loadMarketData} 
+                  disabled={isLoadingData}
+                  size="sm"
+                  variant="outline"
+                  className="border-green-500 text-green-600 hover:bg-green-500 hover:text-white"
+                >
+                  {isLoadingData ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Updating Data...
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-4 h-4 mr-2" />
+                      Refresh Market Data
+                    </>
+                  )}
+                </Button>
+                <Button 
+                  onClick={checkDataAvailability} 
+                  size="sm"
+                  variant="outline"
+                  className="border-blue-500 text-blue-600 hover:bg-blue-500 hover:text-white"
+                >
+                  Check Pairs
+                </Button>
+                <Button 
+                  onClick={async () => {
+                    console.log('[BACKTEST] Testing dynamic pair detection...');
+                    await checkDataAvailability();
+                    toast({
+                      title: "Pairs Checked",
+                      description: "Checked for new trading pairs",
+                    });
+                  }} 
+                  size="sm"
+                  variant="outline"
+                  className="border-purple-500 text-purple-600 hover:bg-purple-500 hover:text-white"
+                >
+                  Test Dynamic
+                </Button>
+              </div>
             </div>
           </div>
         </Card>
