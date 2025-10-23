@@ -77,6 +77,12 @@ serve(async (req) => {
             continue;
           }
 
+          console.log(`[LOAD-MARKET-DATA] Existing data check for ${symbol} ${timeframe}:`, {
+            hasData: existingData && existingData.length > 0,
+            lastCandleTime: existingData?.[0]?.open_time,
+            lastCandleDate: existingData?.[0]?.open_time ? new Date(existingData[0].open_time).toISOString() : null
+          });
+
           // Determine what data to fetch
           let startTime: number;
           let limit: number;
@@ -88,20 +94,33 @@ serve(async (req) => {
             startTime = now - (90 * 24 * 60 * 60 * 1000); // 90 days ago from NOW
             limit = 2000; // Large limit for initial fetch
             fetchReason = 'INITIAL_3_MONTHS';
+            console.log(`[LOAD-MARKET-DATA] No existing data for ${symbol} ${timeframe}, fetching 3 months`);
           } else {
-            // Data exists - fetch only missing data (last 2 hours for 1m, last day for others)
+            // Data exists - check if we need to fetch missing data
             const lastCandleTime = existingData[0].open_time;
             const now = Date.now();
             const timeSinceLastCandle = now - lastCandleTime;
             
             // Calculate how much data we need based on timeframe
             const timeframeMs = getTimeframeMs(timeframe);
-            const maxGapMs = timeframeMs * 2; // Allow for 2 candles gap
+            const maxGapMs = timeframeMs * 10; // Allow for 10 candles gap (more conservative)
+            
+            console.log(`[LOAD-MARKET-DATA] Time gap analysis for ${symbol} ${timeframe}:`, {
+              lastCandleTime: lastCandleTime,
+              lastCandleDate: new Date(lastCandleTime).toISOString(),
+              now: now,
+              nowDate: new Date(now).toISOString(),
+              timeSinceLastCandle: timeSinceLastCandle,
+              timeframeMs: timeframeMs,
+              maxGapMs: maxGapMs,
+              needsUpdate: timeSinceLastCandle > maxGapMs
+            });
             
             if (timeSinceLastCandle > maxGapMs) {
               startTime = lastCandleTime;
-              limit = Math.min(1000, Math.ceil(timeSinceLastCandle / timeframeMs) + 10);
+              limit = Math.min(500, Math.ceil(timeSinceLastCandle / timeframeMs) + 5); // Smaller limit for updates
               fetchReason = 'MISSING_DATA';
+              console.log(`[LOAD-MARKET-DATA] ${symbol} ${timeframe} needs update, fetching ${limit} candles from ${new Date(startTime).toISOString()}`);
             } else {
               console.log(`[LOAD-MARKET-DATA] ${symbol} ${timeframe} is up to date, skipping`);
               results.push({
