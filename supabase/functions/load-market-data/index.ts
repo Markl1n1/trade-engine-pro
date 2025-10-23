@@ -136,53 +136,73 @@ serve(async (req) => {
 
           console.log(`[LOAD-MARKET-DATA] Fetching ${symbol} ${timeframe} (${fetchReason}): ${limit} candles from ${new Date(startTime).toISOString()}`);
           
-          // Fetch data from Bybit
+          // Fetch data from Bybit with pagination
           const bybitInterval = BYBIT_INTERVALS[timeframe] || timeframe;
-          const bybitUrl = `https://api.bybit.com/v5/market/kline?category=linear&symbol=${symbol}&interval=${bybitInterval}&limit=${limit}&start=${startTime}`;
+          const maxCandlesPerRequest = 1000; // Bybit API limit
+          let allKlines: any[] = [];
+          let currentStartTime = startTime;
+          let totalFetched = 0;
+          let requestCount = 0;
+          const maxRequests = Math.ceil(limit / maxCandlesPerRequest) + 2; // Safety buffer
           
-          console.log(`[LOAD-MARKET-DATA] Bybit URL: ${bybitUrl}`);
-          const response = await fetch(bybitUrl);
+          console.log(`[LOAD-MARKET-DATA] Starting paginated fetch for ${symbol} ${timeframe}, max requests: ${maxRequests}`);
+          
+          while (totalFetched < limit && requestCount < maxRequests) {
+            const bybitUrl = `https://api.bybit.com/v5/market/kline?category=linear&symbol=${symbol}&interval=${bybitInterval}&limit=${maxCandlesPerRequest}&start=${currentStartTime}`;
+            
+            console.log(`[LOAD-MARKET-DATA] Request ${requestCount + 1}/${maxRequests}: ${bybitUrl}`);
+            const response = await fetch(bybitUrl);
 
-          if (!response.ok) {
-            console.error(`[LOAD-MARKET-DATA] Failed to fetch ${symbol} ${timeframe}: ${response.statusText}`);
-            results.push({
-              symbol,
-              timeframe,
-              error: `HTTP ${response.status}`,
-              success: false
-            });
-            continue;
+            if (!response.ok) {
+              console.error(`[LOAD-MARKET-DATA] Failed to fetch ${symbol} ${timeframe} (request ${requestCount + 1}): ${response.statusText}`);
+              break; // Exit pagination loop on error
+            }
+
+            const data = await response.json();
+
+            if (data.retCode !== 0) {
+              console.error(`[LOAD-MARKET-DATA] API error for ${symbol} ${timeframe} (request ${requestCount + 1}): ${data.retMsg}`);
+              break; // Exit pagination loop on API error
+            }
+
+            const klines = data.result.list || [];
+            requestCount++;
+
+            if (klines.length === 0) {
+              console.log(`[LOAD-MARKET-DATA] No more data for ${symbol} ${timeframe} (request ${requestCount})`);
+              break; // No more data available
+            }
+
+            // Add klines to our collection
+            allKlines.push(...klines);
+            totalFetched += klines.length;
+            
+            console.log(`[LOAD-MARKET-DATA] Fetched ${klines.length} candles (total: ${totalFetched}/${limit}) for ${symbol} ${timeframe}`);
+            
+            // Update start time for next request (use the last candle's time + 1ms)
+            if (klines.length > 0) {
+              const lastKline = klines[klines.length - 1];
+              currentStartTime = parseInt(lastKline[0]) + 1; // Move to next millisecond
+            }
+            
+            // Small delay to avoid rate limiting
+            await new Promise(resolve => setTimeout(resolve, 100));
           }
 
-          const data = await response.json();
-
-          if (data.retCode !== 0) {
-            console.error(`[LOAD-MARKET-DATA] API error for ${symbol} ${timeframe}: ${data.retMsg}`);
-            results.push({
-              symbol,
-              timeframe,
-              error: data.retMsg,
-              success: false
-            });
-            continue;
-          }
-
-          const klines = data.result.list || [];
-
-          if (klines.length === 0) {
-            console.log(`[LOAD-MARKET-DATA] No new data for ${symbol} ${timeframe}`);
+          if (allKlines.length === 0) {
+            console.log(`[LOAD-MARKET-DATA] No data fetched for ${symbol} ${timeframe}`);
             results.push({
               symbol,
               timeframe,
               candles: 0,
-              reason: 'NO_NEW_DATA',
+              reason: 'NO_DATA_FETCHED',
               success: true
             });
             continue;
           }
 
           // Convert to database format with validation
-          const candles = klines
+          const candles = allKlines
             .filter((k: any) => k && k.length >= 7) // Ensure kline has all required fields
             .map((k: any) => ({
               symbol: symbol.trim(), // Ensure no whitespace
@@ -246,7 +266,7 @@ serve(async (req) => {
           const endDateTime = new Date(Math.max(...candles.map((c: any) => c.open_time))).toISOString();
 
           console.log(`[MONITOR] ${symbol} | ${timeframe} | ${startDateTime} - ${endDateTime}`);
-          console.log(`[LOAD-MARKET-DATA] ✅ Updated ${symbol} ${timeframe}: ${candles.length} candles (${fetchReason})`);
+          console.log(`[LOAD-MARKET-DATA] ✅ Updated ${symbol} ${timeframe}: ${candles.length} candles (${fetchReason}) - ${requestCount} requests made`);
 
         } catch (error) {
           console.error(`[LOAD-MARKET-DATA] Error processing ${symbol} ${timeframe}:`, error);
