@@ -224,14 +224,29 @@ async function processBybitKline(
     }
   }
 
-  if (!symbol || !timeframe) {
-    console.warn('[BYBIT-WS] Skipping kline insert due to missing symbol/timeframe', { topic: klineData?.topic, sample: klineData?.data?.[0] });
+  // Enhanced validation - ensure symbol and timeframe are valid strings
+  if (!symbol || !timeframe || 
+      typeof symbol !== 'string' || typeof timeframe !== 'string' ||
+      symbol.trim() === '' || timeframe.trim() === '') {
+    console.warn('[BYBIT-WS] Skipping kline insert due to invalid symbol/timeframe', { 
+      topic: klineData?.topic, 
+      symbol, 
+      timeframe,
+      sample: klineData?.data?.[0] 
+    });
     return;
   }
+
   const key = `${symbol}-${timeframe}-bybit`;
   
   const kline = klineData.data[0];
-  if (!kline.confirm) return; // Only process confirmed candles
+  if (!kline || !kline.confirm) return; // Only process confirmed candles
+
+  // Validate kline data before processing
+  if (!kline.open || !kline.high || !kline.low || !kline.close || !kline.start) {
+    console.warn('[BYBIT-WS] Skipping kline insert due to missing kline data', { kline });
+    return;
+  }
 
   const candle: Candle = {
     open: parseFloat(kline.open),
@@ -242,24 +257,34 @@ async function processBybitKline(
     timestamp: kline.start
   };
 
+  // Validate candle data before storing
+  if (isNaN(candle.open) || isNaN(candle.high) || isNaN(candle.low) || isNaN(candle.close) || isNaN(candle.timestamp)) {
+    console.warn('[BYBIT-WS] Skipping kline insert due to invalid numeric data', { candle });
+    return;
+  }
+
   let buffer = candleBuffers.get(key) || [];
   buffer.push(candle);
   if (buffer.length > MAX_CANDLES) buffer = buffer.slice(-MAX_CANDLES);
   candleBuffers.set(key, buffer);
 
-  // Store in database with exchange_type
-  await supabase.from('market_data').insert({
-    symbol,
-    timeframe,
-    exchange_type: 'bybit',
-    open_time: candle.timestamp,
-    open: candle.open,
-    high: candle.high,
-    low: candle.low,
-    close: candle.close,
-    volume: candle.volume,
-    close_time: kline.end
-  });
+  // Store in database with exchange_type - with additional validation
+  try {
+    await supabase.from('market_data').insert({
+      symbol: symbol.trim(), // Ensure no whitespace
+      timeframe: timeframe.trim(), // Ensure no whitespace
+      exchange_type: 'bybit',
+      open_time: candle.timestamp,
+      open: candle.open,
+      high: candle.high,
+      low: candle.low,
+      close: candle.close,
+      volume: candle.volume,
+      close_time: kline.end || candle.timestamp + 60000 // Fallback close_time
+    });
+  } catch (error) {
+    console.error('[BYBIT-WS] Database insert error:', error, { symbol, timeframe, candle });
+  }
 
   // Check strategies for this symbol/timeframe
   const relevantStrategies = strategies.filter(s => 
