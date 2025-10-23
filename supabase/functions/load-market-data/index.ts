@@ -155,6 +155,12 @@ serve(async (req) => {
             console.log(`[LOAD-MARKET-DATA] Using spot category for ${symbol}`);
           }
           
+          // Special handling for XRPUSDT - try both categories
+          let useFallback = false;
+          if (symbol === 'XRPUSDT') {
+            console.log(`[LOAD-MARKET-DATA] XRPUSDT detected - will try both linear and spot if needed`);
+          }
+          
           while (totalFetched < limit && requestCount < maxRequests) {
             const bybitUrl = `https://api.bybit.com/v5/market/kline?category=${category}&symbol=${symbol}&interval=${bybitInterval}&limit=${maxCandlesPerRequest}&start=${currentStartTime}`;
             
@@ -174,6 +180,12 @@ serve(async (req) => {
 
             if (data.retCode !== 0) {
               console.error(`[LOAD-MARKET-DATA] API error for ${symbol} ${timeframe} (request ${requestCount + 1}): ${data.retMsg}`);
+              // For XRPUSDT, try different category if linear fails
+              if (symbol === 'XRPUSDT' && category === 'linear' && data.retCode === 10001) {
+                console.log(`[LOAD-MARKET-DATA] XRPUSDT failed in linear, trying spot category...`);
+                category = 'spot';
+                continue; // Retry with spot category
+              }
               break; // Exit pagination loop on API error
             }
 
@@ -216,24 +228,51 @@ serve(async (req) => {
           // Convert to database format with validation
           const candles = allKlines
             .filter((k: any) => k && k.length >= 7) // Ensure kline has all required fields
-            .map((k: any) => ({
-              symbol: symbol.trim(), // Ensure no whitespace
-              timeframe: timeframe.trim(), // Ensure no whitespace
-              exchange_type: category === 'spot' ? 'bybit_spot' : 'bybit',
-              open_time: parseInt(k[0]) || 0,
-              open: parseFloat(k[1]) || 0,
-              high: parseFloat(k[2]) || 0,
-              low: parseFloat(k[3]) || 0,
-              close: parseFloat(k[4]) || 0,
-              volume: parseFloat(k[5]) || 0,
-              close_time: parseInt(k[6]) || (parseInt(k[0]) + 60000), // Fallback close_time
-            }))
-            .filter((candle: any) => 
-              candle.symbol && 
-              candle.timeframe &&
-              candle.open_time > 0 && 
-              candle.close > 0
-            ); // Filter out invalid candles
+            .map((k: any) => {
+              const openTime = parseInt(k[0]) || 0;
+              const close = parseFloat(k[4]) || 0;
+              const high = parseFloat(k[2]) || 0;
+              const low = parseFloat(k[3]) || 0;
+              
+              return {
+                symbol: symbol.trim(), // Ensure no whitespace
+                timeframe: timeframe.trim(), // Ensure no whitespace
+                exchange_type: category === 'spot' ? 'bybit_spot' : 'bybit',
+                open_time: openTime,
+                open: parseFloat(k[1]) || 0,
+                high: high,
+                low: low,
+                close: close,
+                volume: parseFloat(k[5]) || 0,
+                close_time: parseInt(k[6]) || (openTime + 60000), // Fallback close_time
+              };
+            })
+            .filter((candle: any) => {
+              // More strict validation
+              const isValid = candle.symbol && 
+                candle.timeframe &&
+                candle.open_time > 0 && 
+                candle.close > 0 &&
+                candle.high > 0 &&
+                candle.low > 0 &&
+                candle.high >= candle.low &&
+                candle.high >= candle.close &&
+                candle.high >= candle.open &&
+                candle.low <= candle.close &&
+                candle.low <= candle.open;
+              
+              if (!isValid) {
+                console.warn(`[LOAD-MARKET-DATA] Invalid candle filtered out for ${symbol} ${timeframe}:`, {
+                  open_time: candle.open_time,
+                  open: candle.open,
+                  high: candle.high,
+                  low: candle.low,
+                  close: candle.close
+                });
+              }
+              
+              return isValid;
+            }); // Filter out invalid candles
 
           // Validate candles before storing
           if (candles.length === 0) {
@@ -278,6 +317,8 @@ serve(async (req) => {
           }
           
           try {
+            console.log(`[LOAD-MARKET-DATA] Attempting to insert ${uniqueCandles.length} candles for ${symbol} ${timeframe} (category: ${category})`);
+            
             // Use batch upsert to avoid individual conflict issues
             const { data: upsertData, error: upsertError } = await supabase
               .from('market_data')
@@ -287,13 +328,29 @@ serve(async (req) => {
               });
             
             if (upsertError) {
-              console.warn(`[LOAD-MARKET-DATA] Batch upsert error for ${symbol} ${timeframe}:`, upsertError.message);
+              console.error(`[LOAD-MARKET-DATA] Batch upsert error for ${symbol} ${timeframe}:`, {
+                error: upsertError.message,
+                code: upsertError.code,
+                details: upsertError.details,
+                hint: upsertError.hint,
+                symbol,
+                timeframe,
+                category,
+                candleCount: uniqueCandles.length
+              });
               errorCount = uniqueCandles.length;
             } else {
+              console.log(`[LOAD-MARKET-DATA] Successfully inserted ${uniqueCandles.length} candles for ${symbol} ${timeframe}`);
               insertCount = uniqueCandles.length;
             }
           } catch (err) {
-            console.warn(`[LOAD-MARKET-DATA] Batch upsert exception for ${symbol} ${timeframe}:`, err);
+            console.error(`[LOAD-MARKET-DATA] Batch upsert exception for ${symbol} ${timeframe}:`, {
+              error: err,
+              symbol,
+              timeframe,
+              category,
+              candleCount: uniqueCandles.length
+            });
             errorCount = uniqueCandles.length;
           }
 
