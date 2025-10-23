@@ -43,6 +43,9 @@ verify_jwt = false
 [functions.load-market-data]
 verify_jwt = false
 
+[functions.cron-market-data]
+verify_jwt = false
+
 # MONITORING AND QUALITY
 [functions.data-quality-monitor]
 verify_jwt = true
