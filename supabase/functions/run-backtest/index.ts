@@ -125,7 +125,6 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
     atr_tp2_multiplier: 2.0, 
     ath_safety_distance: 0.2, 
     rsi_threshold: 70,
-    // New enhanced parameters
     adx_threshold: 20,
     bollinger_period: 20,
     bollinger_std: 2.0,
@@ -136,7 +135,7 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
     support_resistance_lookback: 20
   };
 
-  // Pre-calculate all indicators once
+  // Pre-calculate all indicators once (CPU optimization)
   console.log(`[ATH-GUARD] Pre-calculating indicators...`);
   const closes = candles.map(c => c.close);
   
@@ -149,7 +148,7 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
   const rsiArray = calculateRSI(closes, 14);
   const atrArray = calculateATR(candles, 14);
   
-  console.log(`[ATH-GUARD] Indicators calculated, starting simulation...`);
+  console.log(`[ATH-GUARD] Indicators ready, processing ${candles.length} candles`);
 
   // Initialize Trailing Stop Manager if configured
   let trailingStopManager: any = null;
@@ -166,7 +165,7 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
         this.positionType = positionType;
         this.maxProfitPercent = 0;
         this.isActive = false;
-        console.log(`[ATH-GUARD TRAILING] Initialized for ${positionType} at ${entryPrice.toFixed(2)}`);
+        // Reduced logging for CPU optimization
       },
       
       checkTrailingStop(currentPrice: number): { shouldClose: boolean; reason: string } {
@@ -175,7 +174,6 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
           if (currentProfitPercent > 0) {
             this.isActive = true;
             this.maxProfitPercent = currentProfitPercent;
-            console.log(`[ATH-GUARD TRAILING] Activated at ${currentProfitPercent.toFixed(2)}% profit`);
             return { shouldClose: false, reason: 'TRAILING_ACTIVATED' };
           }
           return { shouldClose: false, reason: 'NO_PROFIT_YET' };
@@ -184,13 +182,12 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
         const currentProfitPercent = this.calculateProfitPercent(currentPrice);
         if (currentProfitPercent > this.maxProfitPercent) {
           this.maxProfitPercent = currentProfitPercent;
-          console.log(`[ATH-GUARD TRAILING] New max profit: ${currentProfitPercent.toFixed(2)}%`);
+          // Reduced logging for CPU optimization
         }
         
         const trailingThreshold = this.maxProfitPercent - this.trailingPercent;
         
         if (currentProfitPercent < trailingThreshold) {
-          console.log(`[ATH-GUARD TRAILING] Triggered: ${currentProfitPercent.toFixed(2)}% < ${trailingThreshold.toFixed(2)}% (max: ${this.maxProfitPercent.toFixed(2)}%)`);
           return { shouldClose: true, reason: 'TRAILING_STOP_TRIGGERED' };
         }
         
@@ -244,7 +241,7 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
         position = null;
         trailingStopManager.reset();
         
-        console.log(`[${i}] ATH TRAILING STOP at ${exitPrice.toFixed(2)} - P&L: ${netProfit.toFixed(2)}, Balance: ${balance.toFixed(2)}`);
+        // Reduced logging for CPU optimization
         continue;
       }
     }
@@ -272,7 +269,7 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
             trailingStopManager.initialize(entryPrice, 'buy');
           }
           
-          console.log(`[${i}] ATH BUY at ${entryPrice.toFixed(2)} - Qty: ${quantity.toFixed(6)}, Margin: ${marginRequired.toFixed(2)}`);
+          // Reduced logging for CPU optimization
         }
       }
     } else if (signal.signal_type === 'SELL' && !position) {
@@ -298,7 +295,7 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
             trailingStopManager.initialize(entryPrice, 'sell');
           }
           
-          console.log(`[${i}] ATH SHORT at ${entryPrice.toFixed(2)} - Qty: ${quantity.toFixed(6)}, Margin: ${marginRequired.toFixed(2)}`);
+          // Reduced logging for CPU optimization
         }
       }
     } else if (signal.signal_type === 'BUY' && position && position.type === 'sell') {
@@ -321,7 +318,7 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
         trailingStopManager.reset();
       }
       
-      console.log(`[${i}] ATH CLOSE SHORT at ${exitPrice.toFixed(2)} - P&L: ${netProfit.toFixed(2)}, Balance: ${balance.toFixed(2)}`);
+      // Reduced logging for CPU optimization
     }
     if (balance > maxBalance) maxBalance = balance;
     maxDrawdown = Math.max(maxDrawdown, ((maxBalance - balance) / maxBalance) * 100);
@@ -702,6 +699,54 @@ serve(async (req) => {
       hasData: dataCheck && dataCheck.length > 0,
       checkError: checkError?.message 
     });
+
+    // Pre-load benchmark data for MSTG strategy to avoid DB queries in backtest loop
+    let benchmarkCandles: Candle[] | null = null;
+    const isMSTG = strategy.strategy_type === 'mstg';
+    if (isMSTG) {
+      const benchmarkSymbol = strategy.mstg_benchmark_symbol || 'BTCUSDT';
+      log(`[MSTG-OPTIMIZE] Pre-loading benchmark data for ${benchmarkSymbol}`);
+      
+      let allBenchmarkData: any[] = [];
+      let benchmarkFrom = 0;
+      let hasBenchmarkMore = true;
+      
+      while (hasBenchmarkMore) {
+        const { data: batch, error: batchError } = await supabaseClient
+          .from('market_data')
+          .select('*')
+          .eq('symbol', benchmarkSymbol)
+          .eq('timeframe', strategy.timeframe)
+          .eq('exchange_type', 'bybit')
+          .gte('open_time', new Date(startDate).getTime())
+          .lte('open_time', new Date(endDate).getTime())
+          .order('open_time', { ascending: true })
+          .range(benchmarkFrom, benchmarkFrom + batchSize - 1);
+
+        if (batchError || !batch || batch.length === 0) {
+          hasBenchmarkMore = false;
+        } else {
+          allBenchmarkData = allBenchmarkData.concat(batch);
+          if (batch.length < batchSize) {
+            hasBenchmarkMore = false;
+          } else {
+            benchmarkFrom += batchSize;
+          }
+        }
+      }
+      
+      benchmarkCandles = allBenchmarkData.map((d: any) => ({
+        open: parseFloat(d.open),
+        high: parseFloat(d.high),
+        low: parseFloat(d.low),
+        close: parseFloat(d.close),
+        volume: parseFloat(d.volume),
+        open_time: d.open_time,
+        close_time: d.close_time,
+      }));
+      
+      log(`[MSTG-OPTIMIZE] Benchmark data loaded: ${benchmarkCandles.length} candles`);
+    }
 
     while (hasMore) {
       const { data: batch, error: batchError } = await supabaseClient
@@ -1093,6 +1138,29 @@ serve(async (req) => {
         endDate,
         corsHeaders,
         trailingStopPercent
+      );
+    }
+
+    // Check if this is MSTG strategy
+    if (isMSTG) {
+      console.log('Running MSTG strategy backtest...');
+      return await runMSTGBacktest(
+        strategy,
+        candles,
+        initialBalance,
+        productType,
+        leverage,
+        makerFee,
+        takerFee,
+        slippage,
+        executionTiming,
+        supabaseClient,
+        strategyId,
+        startDate,
+        endDate,
+        corsHeaders,
+        trailingStopPercent,
+        benchmarkCandles
       );
     }
 
@@ -2423,81 +2491,32 @@ async function runMSTGBacktest(
   startDate: string,
   endDate: string,
   corsHeaders: any,
-  trailingStopPercent?: number
+  trailingStopPercent?: number,
+  preloadedBenchmarkCandles?: Candle[] | null
 ) {
   const benchmarkSymbol = strategy.mstg_benchmark_symbol || 'BTCUSDT';
   console.log(`[MSTG] Starting MSTG backtest for ${strategy.symbol} vs ${benchmarkSymbol}`);
   
-  // Fetch benchmark data from Bybit only (fetch ALL candles)
-  let allBenchmarkData: any[] = [];
-  let from = 0;
-  const batchSize = 1000;
-  let hasMore = true;
-
-  while (hasMore) {
-    const { data: batch, error: batchError } = await supabaseClient
-      .from('market_data')
-      .select('*')
-      .eq('symbol', benchmarkSymbol)
-      .eq('timeframe', strategy.timeframe)
-      .eq('exchange_type', 'bybit')
-      .gte('open_time', new Date(startDate).getTime())
-      .lte('open_time', new Date(endDate).getTime())
-      .order('open_time', { ascending: true })
-      .range(from, from + batchSize - 1);
-
-    if (batchError) {
-      console.warn('Error fetching Bybit benchmark batch:', batchError);
-      break;
-    }
-
-    if (!batch || batch.length === 0) {
-      hasMore = false;
-    } else {
-      allBenchmarkData = allBenchmarkData.concat(batch);
-      if (batch.length < batchSize) {
-        hasMore = false;
-      } else {
-        from += batchSize;
-      }
-    }
-  }
-
-  const benchmarkData = allBenchmarkData;
-
-  if (!benchmarkData || benchmarkData.length === 0) {
-    console.warn('No benchmark data found, using asset itself as benchmark');
+  // Use pre-loaded benchmark candles if available (CPU optimization)
+  const benchmarkCandles: Candle[] = preloadedBenchmarkCandles || candles;
+  
+  if (!preloadedBenchmarkCandles) {
+    console.warn('[MSTG] No pre-loaded benchmark data, using asset itself as benchmark');
   } else {
-    console.log(`Fetched ${benchmarkData.length} benchmark candles`);
+    console.log(`[MSTG] Using ${benchmarkCandles.length} pre-loaded benchmark candles`);
   }
 
-  const benchmarkCandles: Candle[] = benchmarkData ? benchmarkData.map((d: any) => ({
-    open: parseFloat(d.open),
-    high: parseFloat(d.high),
-    low: parseFloat(d.low),
-    close: parseFloat(d.close),
-    volume: parseFloat(d.volume),
-    open_time: d.open_time,
-    close_time: d.close_time,
-  })) : candles;
-
-  // Calculate MSTG components
+  // Calculate MSTG components (optimized: reduced logging)
   const closes = candles.map(c => c.close);
   
-  console.log(`[MSTG Debug] Starting indicator calculations for ${closes.length} candles`);
-  console.log(`[MSTG Debug] Asset: ${strategy.symbol}, Benchmark: ${benchmarkSymbol}`);
-  console.log(`[MSTG Debug] Price range: ${Math.min(...closes).toFixed(2)} to ${Math.max(...closes).toFixed(2)}`);
+  console.log(`[MSTG] Calculating indicators for ${closes.length} candles`);
   
   // 1. Momentum Score (M) - Normalized RSI
   const rsi = indicators.calculateRSI(closes, 14);
   const momentum = indicators.normalizeRSI(rsi);
-  const validMomentum = momentum.filter(v => !isNaN(v));
-  console.log(`[MSTG Debug] Momentum: ${validMomentum.length} valid values, range: ${validMomentum.length > 0 ? `${Math.min(...validMomentum).toFixed(2)} to ${Math.max(...validMomentum).toFixed(2)}` : 'N/A'}`);
   
   // 2. Trend Direction Score (T) - EMA10 vs EMA21
   const trendScore = indicators.calculateTrendScore(closes);
-  const validTrend = trendScore.filter(v => !isNaN(v));
-  console.log(`[MSTG Debug] Trend Score: ${validTrend.length} valid values, range: ${validTrend.length > 0 ? `${Math.min(...validTrend).toFixed(2)} to ${Math.max(...validTrend).toFixed(2)}` : 'N/A'}`);
   
   // 3. Volatility Position Score (V) - Bollinger Band position
   const bbPosition = indicators.calculateBollingerPosition(candles, 20);
