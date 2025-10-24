@@ -105,7 +105,7 @@ function getIntervalMs(timeframe: string): number {
   }
 }
 
-async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBalance: number, productType: string, leverage: number, makerFee: number, takerFee: number, slippage: number, executionTiming: string, supabaseClient: any, strategyId: string, startDate: string, endDate: string, corsHeaders: any, trailingStopPercent?: number) {
+async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBalance: number, productType: string, leverage: number, makerFee: number, takerFee: number, slippage: number, executionTiming: string, supabaseClient: any, strategyId: string, startDate: string, endDate: string, corsHeaders: any, trailingStopPercent?: number, stopLossPercent?: number, takeProfitPercent?: number) {
   console.log(`[ATH-GUARD] Starting optimized backtest for ${candles.length} candles`);
   
   let balance = initialBalance;
@@ -239,26 +239,119 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
     // Momentum confirmation
     const momentumConfirmed = currentMACD !== 0 && ((bias === 'LONG' && currentMACD > 0) || (bias === 'SHORT' && currentMACD < 0));
     
-    // Check trailing stop first (if position is open)
-    if (position && trailingStopManager) {
-      const trailingResult = trailingStopManager.checkTrailingStop(executionPrice);
-      if (trailingResult.shouldClose) {
-        const exitPrice = executionPrice * (1 - slippage);
-        const profit = (exitPrice - position.entry_price) * position.quantity;
-        const entryFee = (position.entry_price * position.quantity * makerFee) / 100;
-        const exitFee = (exitPrice * position.quantity * takerFee) / 100;
-        const netProfit = profit - entryFee - exitFee;
+    // Check SL/TP first (priority over trailing stop)
+    if (position) {
+      const stopLossPrice = (position as any).stopLossPrice;
+      const takeProfitPrice = (position as any).takeProfitPrice;
+      
+      let exitPrice: number | null = null;
+      let exitReason = '';
+      
+      if (position.type === 'buy') {
+        const slHit = currentCandle.low <= stopLossPrice;
+        const tpHit = currentCandle.high >= takeProfitPrice;
         
-        position.exit_price = exitPrice;
+        if (slHit && tpHit) {
+          const distToSL = Math.abs(executionPrice - stopLossPrice);
+          const distToTP = Math.abs(executionPrice - takeProfitPrice);
+          if (distToSL <= distToTP) {
+            exitPrice = stopLossPrice; exitReason = 'STOP_LOSS';
+          } else {
+            exitPrice = takeProfitPrice; exitReason = 'TAKE_PROFIT';
+          }
+        } else if (slHit) {
+          exitPrice = stopLossPrice; exitReason = 'STOP_LOSS';
+        } else if (tpHit) {
+          exitPrice = takeProfitPrice; exitReason = 'TAKE_PROFIT';
+        }
+      } else {
+        const slHit = currentCandle.high >= stopLossPrice;
+        const tpHit = currentCandle.low <= takeProfitPrice;
+        
+        if (slHit && tpHit) {
+          const distToSL = Math.abs(executionPrice - stopLossPrice);
+          const distToTP = Math.abs(executionPrice - takeProfitPrice);
+          if (distToSL <= distToTP) {
+            exitPrice = stopLossPrice; exitReason = 'STOP_LOSS';
+          } else {
+            exitPrice = takeProfitPrice; exitReason = 'TAKE_PROFIT';
+          }
+        } else if (slHit) {
+          exitPrice = stopLossPrice; exitReason = 'STOP_LOSS';
+        } else if (tpHit) {
+          exitPrice = takeProfitPrice; exitReason = 'TAKE_PROFIT';
+        }
+      }
+      
+      if (exitPrice) {
+        const exitPriceWithSlippage = position.type === 'buy'
+          ? exitPrice * (1 - slippage)
+          : exitPrice * (1 + slippage);
+        
+        const pnl = position.type === 'buy'
+          ? position.quantity * (exitPriceWithSlippage - position.entry_price)
+          : position.quantity * (position.entry_price - exitPriceWithSlippage);
+        
+        const exitNotional = position.quantity * exitPriceWithSlippage;
+        const exitFee = (exitNotional * takerFee) / 100;
+        const entryFee = (position as any).entryFee || 0;
+        const netProfit = pnl - entryFee - exitFee;
+        
+        position.exit_price = exitPriceWithSlippage;
         position.exit_time = currentCandle.open_time;
         position.profit = netProfit;
-        balance += (position.entry_price * position.quantity) + netProfit;
-      trades.push(position);
-        position = null;
-        trailingStopManager.reset();
         
-        // Reduced logging for CPU optimization
+        if (productType === 'futures') {
+          const marginLocked = (position as any).marginLocked || 0;
+          balance += marginLocked + netProfit;
+        } else {
+          balance += netProfit;
+        }
+        
+        trades.push(position);
+        position = null;
+        
+        if (trailingStopManager) {
+          trailingStopManager.reset();
+        }
+        
         continue;
+      }
+      
+      // Check trailing stop (secondary)
+      if (trailingStopManager) {
+        const trailingResult = trailingStopManager.checkTrailingStop(executionPrice);
+        if (trailingResult.shouldClose) {
+          const exitPriceWithSlippage = position.type === 'buy'
+            ? executionPrice * (1 - slippage)
+            : executionPrice * (1 + slippage);
+          
+          const pnl = position.type === 'buy'
+            ? position.quantity * (exitPriceWithSlippage - position.entry_price)
+            : position.quantity * (position.entry_price - exitPriceWithSlippage);
+          
+          const exitNotional = position.quantity * exitPriceWithSlippage;
+          const exitFee = (exitNotional * takerFee) / 100;
+          const entryFee = (position as any).entryFee || 0;
+          const netProfit = pnl - entryFee - exitFee;
+          
+          position.exit_price = exitPriceWithSlippage;
+          position.exit_time = currentCandle.open_time;
+          position.profit = netProfit;
+          
+          if (productType === 'futures') {
+            const marginLocked = (position as any).marginLocked || 0;
+            balance += marginLocked + netProfit;
+          } else {
+            balance += netProfit;
+          }
+          
+          trades.push(position);
+          position = null;
+          trailingStopManager.reset();
+          
+          continue;
+        }
       }
     }
 
@@ -276,20 +369,36 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
         const marginRequired = (entryPrice * quantity) / leverage;
         
         if (marginRequired <= balance) {
+          // Calculate SL/TP based on user parameters
+          const slPercent = stopLossPercent || strategy.stop_loss_percent || 2.0;
+          const tpPercent = takeProfitPercent || strategy.take_profit_percent || 4.0;
+          
+          const stopLossPrice = entryPrice * (1 - slPercent / 100);
+          const takeProfitPrice = entryPrice * (1 + tpPercent / 100);
+          
+          const entryNotional = entryPrice * quantity;
+          const entryFee = (entryNotional * makerFee) / 100;
+          
           position = { 
             entry_price: entryPrice, 
             entry_time: currentCandle.open_time, 
             type: 'buy', 
             quantity 
           };
-          balance -= marginRequired; // Lock margin
+          
+          // Store SL/TP and fees in position metadata
+          (position as any).stopLossPrice = stopLossPrice;
+          (position as any).takeProfitPrice = takeProfitPrice;
+          (position as any).entryFee = entryFee;
+          (position as any).entryNotional = entryNotional;
+          (position as any).marginLocked = marginRequired;
+          
+          balance -= marginRequired; // Lock margin (don't deduct fee)
           
           // Initialize trailing stop for LONG position
           if (trailingStopManager) {
             trailingStopManager.initialize(entryPrice, 'buy');
           }
-          
-          // Reduced logging for CPU optimization
         }
       }
     }
@@ -308,47 +417,41 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
         const marginRequired = (entryPrice * quantity) / leverage;
         
         if (marginRequired <= balance) {
+          // Calculate SL/TP based on user parameters
+          const slPercent = stopLossPercent || strategy.stop_loss_percent || 2.0;
+          const tpPercent = takeProfitPercent || strategy.take_profit_percent || 4.0;
+          
+          const stopLossPrice = entryPrice * (1 + slPercent / 100);
+          const takeProfitPrice = entryPrice * (1 - tpPercent / 100);
+          
+          const entryNotional = entryPrice * quantity;
+          const entryFee = (entryNotional * makerFee) / 100;
+          
           position = { 
             entry_price: entryPrice, 
             entry_time: currentCandle.open_time, 
             type: 'sell', // SHORT position
             quantity 
           };
-          balance -= marginRequired; // Lock margin
+          
+          // Store SL/TP and fees in position metadata
+          (position as any).stopLossPrice = stopLossPrice;
+          (position as any).takeProfitPrice = takeProfitPrice;
+          (position as any).entryFee = entryFee;
+          (position as any).entryNotional = entryNotional;
+          (position as any).marginLocked = marginRequired;
+          
+          balance -= marginRequired; // Lock margin (don't deduct fee)
           
           // Initialize trailing stop for SHORT position
           if (trailingStopManager) {
             trailingStopManager.initialize(entryPrice, 'sell');
           }
-          
-          // Reduced logging for CPU optimization
         }
       }
     }
     
-    // Close SHORT on BUY signal
-    if (buySignal && position && position.type === 'sell') {
-      // Close SHORT position
-      const exitPrice = executionPrice * (1 + slippage);
-      const profit = (position.entry_price - exitPrice) * position.quantity; // SHORT profit calculation
-      const entryFee = (position.entry_price * position.quantity * makerFee) / 100;
-      const exitFee = (exitPrice * position.quantity * takerFee) / 100;
-      const netProfit = profit - entryFee - exitFee;
-      
-      position.exit_price = exitPrice;
-      position.exit_time = currentCandle.open_time;
-      position.profit = netProfit;
-      balance += (position.entry_price * position.quantity) + netProfit; // Return margin + P&L
-      trades.push(position);
-      position = null;
-      
-      // Reset trailing stop
-      if (trailingStopManager) {
-        trailingStopManager.reset();
-      }
-      
-      // Reduced logging for CPU optimization
-    }
+    // Close SHORT on BUY signal (removed - now only exits via SL/TP/Trailing)
     if (balance > maxBalance) maxBalance = balance;
     maxDrawdown = Math.max(maxDrawdown, ((maxBalance - balance) / maxBalance) * 100);
   }
@@ -1097,7 +1200,9 @@ serve(async (req) => {
         startDate,
         endDate,
         corsHeaders,
-        trailingStopPercent
+        trailingStopPercent,
+        stopLossPercent,
+        takeProfitPercent
       );
     }
 
@@ -1121,7 +1226,9 @@ serve(async (req) => {
         startDate,
         endDate,
         corsHeaders,
-        trailingStopPercent
+        trailingStopPercent,
+        stopLossPercent,
+        takeProfitPercent
       );
     }
 
@@ -1145,7 +1252,9 @@ serve(async (req) => {
         startDate,
         endDate,
         corsHeaders,
-        trailingStopPercent
+        trailingStopPercent,
+        stopLossPercent,
+        takeProfitPercent
       );
     }
 
@@ -1169,7 +1278,9 @@ serve(async (req) => {
         startDate,
         endDate,
         corsHeaders,
-        trailingStopPercent
+        trailingStopPercent,
+        stopLossPercent,
+        takeProfitPercent
       );
     }
 
@@ -1804,29 +1915,115 @@ async function runSMACrossoverBacktest(
     const currentPrice = executionTiming === 'open' ? currentCandle.open : currentCandle.close;
     const currentTime = currentCandle.open_time;
     
-    // Check trailing stop first (if position is open)
-    if (position && trailingStopManager) {
-      const trailingResult = trailingStopManager.checkTrailingStop(currentPrice);
-      if (trailingResult.shouldClose) {
-        const exitPrice = currentPrice * (1 - slippage);
-        const profit = (exitPrice - position.entry_price) * position.quantity;
-        const fees = (position.entry_price * position.quantity * makerFee) + (exitPrice * position.quantity * takerFee);
-        const netProfit = profit - fees;
+    // Check SL/TP first (priority over trailing stop)
+    if (position) {
+      const stopLossPrice = (position as any).stopLossPrice;
+      const takeProfitPrice = (position as any).takeProfitPrice;
+      
+      let exitPrice: number | null = null;
+      let exitReason = '';
+      
+      if (position.type === 'buy') {
+        const slHit = currentCandle.low <= stopLossPrice;
+        const tpHit = currentCandle.high >= takeProfitPrice;
+        
+        if (slHit && tpHit) {
+          const distToSL = Math.abs(currentPrice - stopLossPrice);
+          const distToTP = Math.abs(currentPrice - takeProfitPrice);
+          if (distToSL <= distToTP) {
+            exitPrice = stopLossPrice; exitReason = 'STOP_LOSS';
+          } else {
+            exitPrice = takeProfitPrice; exitReason = 'TAKE_PROFIT';
+          }
+        } else if (slHit) {
+          exitPrice = stopLossPrice; exitReason = 'STOP_LOSS';
+        } else if (tpHit) {
+          exitPrice = takeProfitPrice; exitReason = 'TAKE_PROFIT';
+        }
+      } else {
+        const slHit = currentCandle.high >= stopLossPrice;
+        const tpHit = currentCandle.low <= takeProfitPrice;
+        
+        if (slHit && tpHit) {
+          const distToSL = Math.abs(currentPrice - stopLossPrice);
+          const distToTP = Math.abs(currentPrice - takeProfitPrice);
+          if (distToSL <= distToTP) {
+            exitPrice = stopLossPrice; exitReason = 'STOP_LOSS';
+          } else {
+            exitPrice = takeProfitPrice; exitReason = 'TAKE_PROFIT';
+          }
+        } else if (slHit) {
+          exitPrice = stopLossPrice; exitReason = 'STOP_LOSS';
+        } else if (tpHit) {
+          exitPrice = takeProfitPrice; exitReason = 'TAKE_PROFIT';
+        }
+      }
+      
+      if (exitPrice) {
+        const exitPriceWithSlippage = position.type === 'buy'
+          ? exitPrice * (1 - slippage)
+          : exitPrice * (1 + slippage);
+        
+        const pnl = position.type === 'buy'
+          ? position.quantity * (exitPriceWithSlippage - position.entry_price)
+          : position.quantity * (position.entry_price - exitPriceWithSlippage);
+        
+        const exitNotional = position.quantity * exitPriceWithSlippage;
+        const exitFee = (exitNotional * takerFee) / 100;
+        const entryFee = (position as any).entryFee || 0;
+        const netProfit = pnl - entryFee - exitFee;
+        
+        position.exit_price = exitPriceWithSlippage;
+        position.exit_time = currentTime;
+        position.profit = netProfit;
         
         balance += netProfit;
         availableBalance += lockedMargin + netProfit;
         lockedMargin = 0;
         
-        position.exit_price = exitPrice;
-        position.exit_time = currentTime;
-        position.profit = netProfit;
-        
         trades.push(position);
         position = null;
-        trailingStopManager.reset();
         
-        console.log(`[${i}] SMA TRAILING STOP at ${exitPrice.toFixed(2)} - P&L: ${netProfit.toFixed(2)}, Balance: ${balance.toFixed(2)}`);
+        if (trailingStopManager) {
+          trailingStopManager.reset();
+        }
+        
+        console.log(`[${i}] SMA ${exitReason} at ${exitPriceWithSlippage.toFixed(2)} - P&L: ${netProfit.toFixed(2)}, Balance: ${balance.toFixed(2)}`);
         continue;
+      }
+      
+      // Check trailing stop (secondary)
+      if (trailingStopManager) {
+        const trailingResult = trailingStopManager.checkTrailingStop(currentPrice);
+        if (trailingResult.shouldClose) {
+          const exitPriceWithSlippage = position.type === 'buy'
+            ? currentPrice * (1 - slippage)
+            : currentPrice * (1 + slippage);
+          
+          const pnl = position.type === 'buy'
+            ? position.quantity * (exitPriceWithSlippage - position.entry_price)
+            : position.quantity * (position.entry_price - exitPriceWithSlippage);
+          
+          const exitNotional = position.quantity * exitPriceWithSlippage;
+          const exitFee = (exitNotional * takerFee) / 100;
+          const entryFee = (position as any).entryFee || 0;
+          const netProfit = pnl - entryFee - exitFee;
+          
+          position.exit_price = exitPriceWithSlippage;
+          position.exit_time = currentTime;
+          position.profit = netProfit;
+          
+          balance += netProfit;
+          availableBalance += lockedMargin + netProfit;
+          lockedMargin = 0;
+          
+          trades.push(position);
+          position = null;
+          trailingStopManager.reset();
+          
+          console.log(`[${i}] SMA TRAILING STOP at ${exitPriceWithSlippage.toFixed(2)} - P&L: ${netProfit.toFixed(2)}, Balance: ${balance.toFixed(2)}`);
+          continue;
+        }
       }
     }
     
@@ -1861,12 +2058,28 @@ async function runSMACrossoverBacktest(
         const marginRequired = (entryPrice * quantity) / leverage;
         
         if (marginRequired <= availableBalance) {
+          // Calculate SL/TP based on user parameters
+          const stopLossPct = slPercent;
+          const takeProfitPct = tpPercent;
+          
+          const stopLossPrice = entryPrice * (1 - stopLossPct / 100);
+          const takeProfitPrice = entryPrice * (1 + takeProfitPct / 100);
+          
+          const entryNotional = entryPrice * quantity;
+          const entryFee = (entryNotional * makerFee) / 100;
+          
           position = {
             entry_price: entryPrice,
             entry_time: currentTime,
             type: 'buy',
             quantity: quantity
           };
+          
+          // Store SL/TP and fees in position metadata
+          (position as any).stopLossPrice = stopLossPrice;
+          (position as any).takeProfitPrice = takeProfitPrice;
+          (position as any).entryFee = entryFee;
+          (position as any).entryNotional = entryNotional;
           
           availableBalance -= marginRequired;
           lockedMargin += marginRequired;
@@ -1876,7 +2089,7 @@ async function runSMACrossoverBacktest(
             trailingStopManager.initialize(entryPrice, 'buy');
           }
           
-          console.log(`[${i}] 🟢 BUY at ${entryPrice.toFixed(2)} - SMA(${currentSMAFast.toFixed(2)}/${currentSMASlow.toFixed(2)}), RSI=${currentRSI.toFixed(1)}`);
+          console.log(`[${i}] 🟢 BUY at ${entryPrice.toFixed(2)} - SL: ${stopLossPrice.toFixed(2)}, TP: ${takeProfitPrice.toFixed(2)}`);
         }
       } else {
         warnings.push(`[${new Date(currentTime).toISOString()}] SMA Crossover BUY rejected: quantity=${quantity.toFixed(5)} (min=${minQty}) | notional=${(quantity * currentPrice).toFixed(2)} (min=${minNotional})`);
@@ -1893,12 +2106,28 @@ async function runSMACrossoverBacktest(
         const marginRequired = (entryPrice * quantity) / leverage;
         
         if (marginRequired <= availableBalance) {
+          // Calculate SL/TP based on user parameters
+          const stopLossPct = slPercent;
+          const takeProfitPct = tpPercent;
+          
+          const stopLossPrice = entryPrice * (1 + stopLossPct / 100);
+          const takeProfitPrice = entryPrice * (1 - takeProfitPct / 100);
+          
+          const entryNotional = entryPrice * quantity;
+          const entryFee = (entryNotional * makerFee) / 100;
+          
           position = {
             entry_price: entryPrice,
             entry_time: currentTime,
             type: 'sell', // SHORT position
             quantity: quantity
           };
+          
+          // Store SL/TP and fees in position metadata
+          (position as any).stopLossPrice = stopLossPrice;
+          (position as any).takeProfitPrice = takeProfitPrice;
+          (position as any).entryFee = entryFee;
+          (position as any).entryNotional = entryNotional;
           
           availableBalance -= marginRequired;
           lockedMargin += marginRequired;
@@ -1908,64 +2137,14 @@ async function runSMACrossoverBacktest(
             trailingStopManager.initialize(entryPrice, 'sell');
           }
           
-          console.log(`[${i}] 🔴 SHORT at ${entryPrice.toFixed(2)} - SMA(${currentSMAFast.toFixed(2)}/${currentSMASlow.toFixed(2)}), RSI=${currentRSI.toFixed(1)}`);
+          console.log(`[${i}] 🔴 SHORT at ${entryPrice.toFixed(2)} - SL: ${stopLossPrice.toFixed(2)}, TP: ${takeProfitPrice.toFixed(2)}`);
         }
       } else {
         warnings.push(`[${new Date(currentTime).toISOString()}] SMA Crossover SHORT rejected: quantity=${quantity.toFixed(5)} (min=${minQty}) | notional=${(quantity * currentPrice).toFixed(2)} (min=${minNotional})`);
       }
     }
     
-    // Exit LONG position: Death cross OR RSI overbought
-    if (position && position.type === 'buy' && (deathCross || currentRSI > config.rsi_overbought)) {
-      const exitPrice = currentPrice * (1 - slippage);
-      const profit = (exitPrice - position.entry_price) * position.quantity;
-      const fees = (position.entry_price * position.quantity * makerFee) + (exitPrice * position.quantity * takerFee);
-      const netProfit = profit - fees;
-      
-      balance += netProfit;
-      availableBalance += lockedMargin + netProfit;
-      lockedMargin = 0;
-      
-      position.exit_price = exitPrice;
-      position.exit_time = currentTime;
-      position.profit = netProfit;
-      
-      trades.push(position);
-      position = null;
-      
-      // Reset trailing stop
-      if (trailingStopManager) {
-        trailingStopManager.reset();
-      }
-      
-      console.log(`[${i}] 🔴 CLOSE LONG at ${exitPrice.toFixed(2)} - P&L: ${netProfit.toFixed(2)}, Balance: ${balance.toFixed(2)}`);
-    }
-    
-    // Exit SHORT position: Golden cross OR RSI oversold
-    if (position && position.type === 'sell' && (goldenCross || currentRSI < config.rsi_oversold)) {
-      const exitPrice = currentPrice * (1 + slippage);
-      const profit = (position.entry_price - exitPrice) * position.quantity; // SHORT profit calculation
-      const fees = (position.entry_price * position.quantity * makerFee) + (exitPrice * position.quantity * takerFee);
-      const netProfit = profit - fees;
-      
-      balance += netProfit;
-      availableBalance += lockedMargin + netProfit;
-      lockedMargin = 0;
-      
-      position.exit_price = exitPrice;
-      position.exit_time = currentTime;
-      position.profit = netProfit;
-      
-      trades.push(position);
-      position = null;
-      
-      // Reset trailing stop
-      if (trailingStopManager) {
-        trailingStopManager.reset();
-      }
-      
-      console.log(`[${i}] 🟢 CLOSE SHORT at ${exitPrice.toFixed(2)} - P&L: ${netProfit.toFixed(2)}, Balance: ${balance.toFixed(2)}`);
-    }
+    // Removed opposite signal exits - now only exits via SL/TP/Trailing
     
     // Update balance history
     const currentBalance = balance + (position ? (currentPrice - position.entry_price) * position.quantity : 0);
@@ -2208,30 +2387,115 @@ async function runMTFMomentumBacktest(
     const currentPrice = executionTiming === 'open' ? currentCandle.open : currentCandle.close;
     const currentTime = currentCandle.open_time;
     
-    // Check trailing stop first (if position is open)
-    if (position && trailingStopManager) {
-      const trailingResult = trailingStopManager.checkTrailingStop(currentPrice);
-      if (trailingResult.shouldClose) {
-        const exitPrice = currentPrice * (1 - slippage);
-        const profit = (exitPrice - position.entry_price) * position.quantity;
-        const entryFee = (position.entry_price * position.quantity * makerFee) / 100;
-        const exitFee = (exitPrice * position.quantity * takerFee) / 100;
-        const netProfit = profit - entryFee - exitFee;
+    // Check SL/TP first (priority over trailing stop)
+    if (position) {
+      const stopLossPrice = (position as any).stopLossPrice;
+      const takeProfitPrice = (position as any).takeProfitPrice;
+      
+      let exitPrice: number | null = null;
+      let exitReason = '';
+      
+      if (position.type === 'buy') {
+        const slHit = currentCandle.low <= stopLossPrice;
+        const tpHit = currentCandle.high >= takeProfitPrice;
+        
+        if (slHit && tpHit) {
+          const distToSL = Math.abs(currentPrice - stopLossPrice);
+          const distToTP = Math.abs(currentPrice - takeProfitPrice);
+          if (distToSL <= distToTP) {
+            exitPrice = stopLossPrice; exitReason = 'STOP_LOSS';
+          } else {
+            exitPrice = takeProfitPrice; exitReason = 'TAKE_PROFIT';
+          }
+        } else if (slHit) {
+          exitPrice = stopLossPrice; exitReason = 'STOP_LOSS';
+        } else if (tpHit) {
+          exitPrice = takeProfitPrice; exitReason = 'TAKE_PROFIT';
+        }
+      } else {
+        const slHit = currentCandle.high >= stopLossPrice;
+        const tpHit = currentCandle.low <= takeProfitPrice;
+        
+        if (slHit && tpHit) {
+          const distToSL = Math.abs(currentPrice - stopLossPrice);
+          const distToTP = Math.abs(currentPrice - takeProfitPrice);
+          if (distToSL <= distToTP) {
+            exitPrice = stopLossPrice; exitReason = 'STOP_LOSS';
+          } else {
+            exitPrice = takeProfitPrice; exitReason = 'TAKE_PROFIT';
+          }
+        } else if (slHit) {
+          exitPrice = stopLossPrice; exitReason = 'STOP_LOSS';
+        } else if (tpHit) {
+          exitPrice = takeProfitPrice; exitReason = 'TAKE_PROFIT';
+        }
+      }
+      
+      if (exitPrice) {
+        const exitPriceWithSlippage = position.type === 'buy'
+          ? exitPrice * (1 - slippage)
+          : exitPrice * (1 + slippage);
+        
+        const pnl = position.type === 'buy'
+          ? position.quantity * (exitPriceWithSlippage - position.entry_price)
+          : position.quantity * (position.entry_price - exitPriceWithSlippage);
+        
+        const exitNotional = position.quantity * exitPriceWithSlippage;
+        const exitFee = (exitNotional * takerFee) / 100;
+        const entryFee = (position as any).entryFee || 0;
+        const netProfit = pnl - entryFee - exitFee;
+        
+        position.exit_price = exitPriceWithSlippage;
+        position.exit_time = currentTime;
+        position.profit = netProfit;
         
         balance += netProfit;
         availableBalance += lockedMargin + netProfit;
         lockedMargin = 0;
         
-        position.exit_price = exitPrice;
-        position.exit_time = currentTime;
-        position.profit = netProfit;
-        
         trades.push(position);
         position = null;
-        trailingStopManager.reset();
         
-        console.log(`[${i}] MTF TRAILING STOP at ${exitPrice.toFixed(2)} - P&L: ${netProfit.toFixed(2)}, Balance: ${balance.toFixed(2)}`);
+        if (trailingStopManager) {
+          trailingStopManager.reset();
+        }
+        
+        console.log(`[${i}] MTF ${exitReason} at ${exitPriceWithSlippage.toFixed(2)} - P&L: ${netProfit.toFixed(2)}, Balance: ${balance.toFixed(2)}`);
         continue;
+      }
+      
+      // Check trailing stop (secondary)
+      if (trailingStopManager) {
+        const trailingResult = trailingStopManager.checkTrailingStop(currentPrice);
+        if (trailingResult.shouldClose) {
+          const exitPriceWithSlippage = position.type === 'buy'
+            ? currentPrice * (1 - slippage)
+            : currentPrice * (1 + slippage);
+          
+          const pnl = position.type === 'buy'
+            ? position.quantity * (exitPriceWithSlippage - position.entry_price)
+            : position.quantity * (position.entry_price - exitPriceWithSlippage);
+          
+          const exitNotional = position.quantity * exitPriceWithSlippage;
+          const exitFee = (exitNotional * takerFee) / 100;
+          const entryFee = (position as any).entryFee || 0;
+          const netProfit = pnl - entryFee - exitFee;
+          
+          position.exit_price = exitPriceWithSlippage;
+          position.exit_time = currentTime;
+          position.profit = netProfit;
+          
+          balance += netProfit;
+          availableBalance += lockedMargin + netProfit;
+          lockedMargin = 0;
+          
+          trades.push(position);
+          position = null;
+          trailingStopManager.reset();
+          
+          console.log(`[${i}] MTF TRAILING STOP at ${exitPriceWithSlippage.toFixed(2)} - P&L: ${netProfit.toFixed(2)}, Balance: ${balance.toFixed(2)}`);
+          continue;
+        }
       }
     }
     
@@ -2275,12 +2539,28 @@ async function runMTFMomentumBacktest(
         const marginRequired = (entryPrice * quantity) / leverage;
         
         if (marginRequired <= availableBalance) {
+          // Calculate SL/TP based on user parameters
+          const stopLossPct = slPercent;
+          const takeProfitPct = tpPercent;
+          
+          const stopLossPrice = entryPrice * (1 - stopLossPct / 100);
+          const takeProfitPrice = entryPrice * (1 + takeProfitPct / 100);
+          
+          const entryNotional = entryPrice * quantity;
+          const entryFee = (entryNotional * makerFee) / 100;
+          
           position = {
             entry_price: entryPrice,
             entry_time: currentTime,
             type: 'buy',
             quantity: quantity
           };
+          
+          // Store SL/TP and fees in position metadata
+          (position as any).stopLossPrice = stopLossPrice;
+          (position as any).takeProfitPrice = takeProfitPrice;
+          (position as any).entryFee = entryFee;
+          (position as any).entryNotional = entryNotional;
           
           availableBalance -= marginRequired;
           lockedMargin += marginRequired;
@@ -2290,7 +2570,7 @@ async function runMTFMomentumBacktest(
             trailingStopManager.initialize(entryPrice, 'buy');
           }
           
-          console.log(`[${i}] MTF BUY at ${entryPrice.toFixed(2)} - Qty: ${quantity.toFixed(6)}, Margin: ${marginRequired.toFixed(2)}`);
+          console.log(`[${i}] MTF BUY at ${entryPrice.toFixed(2)} - SL: ${stopLossPrice.toFixed(2)}, TP: ${takeProfitPrice.toFixed(2)}`);
         }
       } else {
         warnings.push(`[${new Date(currentTime).toISOString()}] MTF Momentum LONG rejected: quantity=${quantity.toFixed(5)} (min=${minQty}) | notional=${(quantity * currentPrice).toFixed(2)} (min=${minNotional})`);
@@ -2308,12 +2588,28 @@ async function runMTFMomentumBacktest(
         const marginRequired = (entryPrice * quantity) / leverage;
         
         if (marginRequired <= availableBalance) {
+          // Calculate SL/TP based on user parameters
+          const stopLossPct = slPercent;
+          const takeProfitPct = tpPercent;
+          
+          const stopLossPrice = entryPrice * (1 + stopLossPct / 100);
+          const takeProfitPrice = entryPrice * (1 - takeProfitPct / 100);
+          
+          const entryNotional = entryPrice * quantity;
+          const entryFee = (entryNotional * makerFee) / 100;
+          
           position = {
             entry_price: entryPrice,
             entry_time: currentTime,
             type: 'sell',  // SHORT position
             quantity: quantity
           };
+          
+          // Store SL/TP and fees in position metadata
+          (position as any).stopLossPrice = stopLossPrice;
+          (position as any).takeProfitPrice = takeProfitPrice;
+          (position as any).entryFee = entryFee;
+          (position as any).entryNotional = entryNotional;
           
           availableBalance -= marginRequired;
           lockedMargin += marginRequired;
@@ -2323,82 +2619,14 @@ async function runMTFMomentumBacktest(
             trailingStopManager.initialize(entryPrice, 'sell');
           }
           
-          console.log(`[${i}] MTF SHORT at ${entryPrice.toFixed(2)} - Qty: ${quantity.toFixed(6)}, Margin: ${marginRequired.toFixed(2)}`);
+          console.log(`[${i}] MTF SHORT at ${entryPrice.toFixed(2)} - SL: ${stopLossPrice.toFixed(2)}, TP: ${takeProfitPrice.toFixed(2)}`);
         }
       } else {
         warnings.push(`[${new Date(currentTime).toISOString()}] MTF Momentum SHORT rejected: quantity=${quantity.toFixed(5)} (min=${minQty}) | notional=${(quantity * currentPrice).toFixed(2)} (min=${minNotional})`);
       }
     }
     
-    // Handle exit for LONG position (RSI-based exit or opposite signal)
-    if (position && position.type === 'buy') {
-      // Exit on RSI momentum loss (RSI drops below 40) using 1m RSI
-      const currentRSI1m = rsi1m[i];
-      const exitOnMomentumLoss = currentRSI1m < 40;
-      
-      // Exit on opposite signal
-      const exitOnSignal = mtfShortCondition;
-      
-      if (exitOnMomentumLoss || exitOnSignal) {
-        const exitPrice = currentPrice * (1 - slippage);
-        const pnl = position.quantity * (exitPrice - position.entry_price);
-        const exitFee = (exitPrice * position.quantity * takerFee) / 100;
-        const netProfit = pnl - exitFee;
-        
-        balance += netProfit;
-        availableBalance += lockedMargin + netProfit;
-        lockedMargin = 0;
-        
-        position.exit_price = exitPrice;
-        position.exit_time = currentTime;
-        position.profit = netProfit;
-        
-        trades.push(position);
-        position = null;
-        
-        // Reset trailing stop
-        if (trailingStopManager) {
-          trailingStopManager.reset();
-        }
-        
-        console.log(`[${i}] CLOSE LONG at ${exitPrice.toFixed(2)} - Reason: ${exitOnMomentumLoss ? 'RSI<40' : 'SELL signal'} - P&L: ${netProfit.toFixed(2)}, Balance: ${balance.toFixed(2)}`);
-      }
-    }
-    
-    // Handle exit for SHORT position (RSI-based exit or opposite signal)
-    if (position && position.type === 'sell') {
-      // Exit on RSI momentum reversal (RSI rises above 60) using 1m RSI
-      const currentRSI1m = rsi1m[i];
-      const exitOnMomentumReversal = currentRSI1m > 60;
-      
-      // Exit on opposite signal
-      const exitOnSignal = mtfLongCondition;
-      
-      if (exitOnMomentumReversal || exitOnSignal) {
-        const exitPrice = currentPrice * (1 + slippage);
-        const pnl = position.quantity * (position.entry_price - exitPrice);
-        const exitFee = (exitPrice * position.quantity * takerFee) / 100;
-        const netProfit = pnl - exitFee;
-        
-        balance += netProfit;
-        availableBalance += lockedMargin + netProfit;
-        lockedMargin = 0;
-        
-        position.exit_price = exitPrice;
-        position.exit_time = currentTime;
-        position.profit = netProfit;
-        
-        trades.push(position);
-        position = null;
-        
-        // Reset trailing stop
-        if (trailingStopManager) {
-          trailingStopManager.reset();
-        }
-        
-        console.log(`[${i}] COVER SHORT at ${exitPrice.toFixed(2)} - Reason: ${exitOnMomentumReversal ? 'RSI>60' : 'BUY signal'} - P&L: ${netProfit.toFixed(2)}, Balance: ${balance.toFixed(2)}`);
-      }
-    }
+    // Removed RSI-based exits and opposite signal exits - now only exits via SL/TP/Trailing
 
     // Update balance tracking
     balance = availableBalance + lockedMargin;
