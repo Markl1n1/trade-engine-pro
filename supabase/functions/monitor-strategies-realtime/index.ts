@@ -187,8 +187,8 @@ serve(async (req) => {
             price: currentPrice,
             reason: signal.reason || 'Strategy conditions met',
             confidence: signal.confidence,
-            stop_loss: signal.stop_loss,
-            take_profit: signal.take_profit
+            stop_loss: (signal as any).stop_loss,
+            take_profit: (signal as any).take_profit
           });
         } else {
           console.log(`[REALTIME-MONITOR] No signal for ${strategy.name}: ${signal?.reason || 'No reason provided'}`);

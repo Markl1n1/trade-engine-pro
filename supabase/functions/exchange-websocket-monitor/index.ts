@@ -268,22 +268,31 @@ async function processBybitKline(
   if (buffer.length > MAX_CANDLES) buffer = buffer.slice(-MAX_CANDLES);
   candleBuffers.set(key, buffer);
 
-  // Store in database with exchange_type - with additional validation
+  // Store in database with exchange_type - using upsert to handle duplicate keys
   try {
-    await supabase.from('market_data').insert({
-      symbol: symbol.trim(), // Ensure no whitespace
-      timeframe: timeframe.trim(), // Ensure no whitespace
-      exchange_type: 'bybit',
-      open_time: candle.timestamp,
-      open: candle.open,
-      high: candle.high,
-      low: candle.low,
-      close: candle.close,
-      volume: candle.volume,
-      close_time: kline.end || candle.timestamp + 60000 // Fallback close_time
-    });
+    const { error } = await supabase
+      .from('market_data')
+      .upsert({
+        symbol: symbol.trim(), // Ensure no whitespace
+        timeframe: timeframe.trim(), // Ensure no whitespace
+        exchange_type: 'bybit',
+        open_time: candle.timestamp,
+        open: candle.open,
+        high: candle.high,
+        low: candle.low,
+        close: candle.close,
+        volume: candle.volume,
+        close_time: kline.end || candle.timestamp + 60000 // Fallback close_time
+      }, {
+        onConflict: 'symbol,timeframe,open_time',
+        ignoreDuplicates: false // Update existing records with new data
+      });
+    
+    if (error) {
+      console.error('[BYBIT-WS] Database upsert error:', error, { symbol, timeframe, candle });
+    }
   } catch (error) {
-    console.error('[BYBIT-WS] Database insert error:', error, { symbol, timeframe, candle });
+    console.error('[BYBIT-WS] Database operation error:', error, { symbol, timeframe, candle });
   }
 
   // Check strategies for this symbol/timeframe

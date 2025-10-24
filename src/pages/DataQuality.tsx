@@ -358,80 +358,11 @@ const DataQuality = () => {
         </Button>
       </div>
 
-      <Tabs defaultValue="overview" className="space-y-4">
+      <Tabs defaultValue="sources" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="sources">Data Sources</TabsTrigger>
           <TabsTrigger value="exchanges">Exchanges</TabsTrigger>
         </TabsList>
-
-        <TabsContent value="overview" className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Overall Quality</CardTitle>
-                <Shield className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{overallQuality.toFixed(1)}%</div>
-                <Progress value={overallQuality} className="mt-2" />
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Data Sources</CardTitle>
-                <Database className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{dataSources.length}</div>
-                <p className="text-xs text-muted-foreground">
-                  {dataSources.filter(ds => ds.status === 'connected').length} connected
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Exchange APIs</CardTitle>
-                <Server className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{exchanges.length}</div>
-                <p className="text-xs text-muted-foreground">
-                  {exchanges.filter(ex => ex.status === 'connected').length} active
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Last Update</CardTitle>
-                <Clock className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  {dataSources.length > 0 ? 
-                    new Date(dataSources[0].lastUpdate).toLocaleTimeString() : 
-                    'N/A'
-                  }
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {refreshing ? 'Updating...' : 'Auto-refresh: 30s'}
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-
-          {dataSources.some(ds => ds.status !== 'connected') && (
-            <Alert>
-              <AlertTriangle className="h-4 w-4" />
-              <AlertDescription>
-                Some data sources are experiencing issues. Check the Data Sources tab for details.
-              </AlertDescription>
-            </Alert>
-          )}
-        </TabsContent>
 
         <TabsContent value="sources" className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
