@@ -27,23 +27,7 @@ serve(async (req) => {
     const result = await response.json();
     
     console.log('[CRON-MARKET-DATA] Market data refresh completed:', result);
-
-    // Log the result to system health
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
-
-    await supabase.from('system_health_logs').insert({
-      service_name: 'cron-market-data',
-      status: response.ok ? 'healthy' : 'error',
-      message: `Market data refresh ${response.ok ? 'completed' : 'failed'}`,
-      metrics: {
-        success: response.ok,
-        timestamp: new Date().toISOString(),
-        result: result
-      }
-    });
+    console.log('[CRON-MARKET-DATA] Status:', response.ok ? 'healthy' : 'error');
 
     return new Response(
       JSON.stringify({
