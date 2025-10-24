@@ -260,19 +260,75 @@ const Backtest = () => {
 
       if (data.success && data.results) {
         setResults(data.results);
-        toast({
-          title: `Backtest completed (${engine})`,
-          description: `Processed ${data.results.total_trades || 0} trades`,
-        });
+        
+        // Build detailed success message
+        const totalTrades = data.results.total_trades || 0;
+        const winRate = data.results.win_rate || 0;
+        const returnPct = data.results.total_return || 0;
+        
+        let description = `✅ ${totalTrades} trades executed | Win Rate: ${winRate.toFixed(1)}% | Return: ${returnPct >= 0 ? '+' : ''}${returnPct.toFixed(2)}%`;
+        
+        // Add warnings if present
+        if (data.results.warnings && data.results.warnings.length > 0) {
+          const warningCount = data.results.warnings.length;
+          description += `\n\n⚠️ ${warningCount} warning${warningCount > 1 ? 's' : ''} detected:\n${data.results.warnings.slice(0, 2).join('\n')}`;
+          if (warningCount > 2) {
+            description += `\n... and ${warningCount - 2} more (check console)`;
+          }
+          console.warn('[BACKTEST] Warnings:', data.results.warnings);
+        }
+        
+        // Special case: zero trades
+        if (totalTrades === 0) {
+          toast({
+            title: "⚠️ Zero Trades Executed",
+            description: data.results.warnings?.length 
+              ? `Potential issues:\n${data.results.warnings.slice(0, 2).join('\n')}`
+              : 'No trades matched entry criteria. Check:\n• Date range has sufficient data\n• Strategy conditions are not too strict\n• Exchange constraints (minQty, minNotional)',
+            variant: "destructive",
+            duration: 10000,
+          });
+        } else {
+          toast({
+            title: `✅ Backtest Completed (${engine})`,
+            description,
+            duration: data.results.warnings?.length ? 10000 : 5000,
+          });
+        }
+        
+        // Debug mode notification
+        if (debugMode && data.debug) {
+          console.log('[BACKTEST-DEBUG] Full debug logs:', data.debug);
+          toast({
+            title: "🔍 Debug Mode Active",
+            description: `${data.debug.length} debug entries logged to console`,
+            duration: 3000,
+          });
+        }
+        
         return data.results;
       } else {
         throw new Error(data.error || 'Backtest failed: Invalid response structure');
       }
     } catch (error: any) {
+      let description = error.message;
+      
+      // Enhanced error messages
+      if (error.message.includes('CPU Time exceeded')) {
+        description = '⏱️ Backtest took too long. Try:\n• Shorter date range\n• Larger timeframe (15m → 1h)\n• Simpler strategy';
+      } else if (error.message.includes('not found')) {
+        description = '❌ Strategy or data not found. Load market data first.';
+      } else if (error.message.includes('no conditions')) {
+        description = '⚙️ Strategy has no conditions. Add entry/exit rules first.';
+      } else if (error.message.includes('Edge Function')) {
+        description = `${error.message}\n\nCheck console for details or enable Debug Mode for more info.`;
+      }
+      
       toast({
-        title: "Backtest failed",
-        description: error.message,
+        title: "❌ Backtest Failed",
+        description,
         variant: "destructive",
+        duration: 8000,
       });
       throw error;
     } finally {

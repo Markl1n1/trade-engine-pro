@@ -535,6 +535,8 @@ function calculateATR(candles: Candle[], period: number = 14): number[] {
   return [0, ...calculateEMA(tr, period)];
 }
 
+// Module-level warnings array for tracking issues across backtest execution
+let warnings: string[] = [];
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -545,6 +547,7 @@ serve(async (req) => {
     const body = await req.json();
     const debug: boolean = !!body.debug;
     const debugLogs: any[] = [];
+    warnings = []; // Reset warnings for each request
     const log = (message: string, meta?: Record<string, unknown>) => {
       const entry = { ts: new Date().toISOString(), message, ...(meta ? { meta } : {}) };
       if (debug) debugLogs.push(entry);
@@ -1258,6 +1261,7 @@ serve(async (req) => {
           avg_loss: results.avg_loss,
           balance_history: results.balance_history,
           trades: results.trades,
+          warnings: warnings.length > 0 ? warnings : undefined,
           config: {
             product_type: productType,
             leverage,
@@ -1268,6 +1272,7 @@ serve(async (req) => {
             trailing_stop_percent: trailingStopPercent // New trailing stop info
           }
         },
+        debug: debug ? debugLogs : undefined
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
@@ -1275,7 +1280,11 @@ serve(async (req) => {
     console.error('Error running backtest:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     return new Response(
-      JSON.stringify({ success: false, error: errorMessage }),
+      JSON.stringify({ 
+        success: false, 
+        error: errorMessage,
+        warnings: warnings.length > 0 ? warnings : undefined 
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
     );
   }
@@ -1869,6 +1878,8 @@ async function runSMACrossoverBacktest(
           
           console.log(`[${i}] 🟢 BUY at ${entryPrice.toFixed(2)} - SMA(${currentSMAFast.toFixed(2)}/${currentSMASlow.toFixed(2)}), RSI=${currentRSI.toFixed(1)}`);
         }
+      } else {
+        warnings.push(`[${new Date(currentTime).toISOString()}] SMA Crossover BUY rejected: quantity=${quantity.toFixed(5)} (min=${minQty}) | notional=${(quantity * currentPrice).toFixed(2)} (min=${minNotional})`);
       }
     }
     
@@ -1899,6 +1910,8 @@ async function runSMACrossoverBacktest(
           
           console.log(`[${i}] 🔴 SHORT at ${entryPrice.toFixed(2)} - SMA(${currentSMAFast.toFixed(2)}/${currentSMASlow.toFixed(2)}), RSI=${currentRSI.toFixed(1)}`);
         }
+      } else {
+        warnings.push(`[${new Date(currentTime).toISOString()}] SMA Crossover SHORT rejected: quantity=${quantity.toFixed(5)} (min=${minQty}) | notional=${(quantity * currentPrice).toFixed(2)} (min=${minNotional})`);
       }
     }
     
@@ -2279,6 +2292,8 @@ async function runMTFMomentumBacktest(
           
           console.log(`[${i}] MTF BUY at ${entryPrice.toFixed(2)} - Qty: ${quantity.toFixed(6)}, Margin: ${marginRequired.toFixed(2)}`);
         }
+      } else {
+        warnings.push(`[${new Date(currentTime).toISOString()}] MTF Momentum LONG rejected: quantity=${quantity.toFixed(5)} (min=${minQty}) | notional=${(quantity * currentPrice).toFixed(2)} (min=${minNotional})`);
       }
     }
     
@@ -2310,6 +2325,8 @@ async function runMTFMomentumBacktest(
           
           console.log(`[${i}] MTF SHORT at ${entryPrice.toFixed(2)} - Qty: ${quantity.toFixed(6)}, Margin: ${marginRequired.toFixed(2)}`);
         }
+      } else {
+        warnings.push(`[${new Date(currentTime).toISOString()}] MTF Momentum SHORT rejected: quantity=${quantity.toFixed(5)} (min=${minQty}) | notional=${(quantity * currentPrice).toFixed(2)} (min=${minNotional})`);
       }
     }
     
@@ -2845,6 +2862,7 @@ async function runMSTGBacktest(
         notional = quantity * priceWithSlippage;
         
         if (quantity < minQty || notional < minNotional) {
+          warnings.push(`[${new Date(currentCandle.open_time).toISOString()}] MSTG entry rejected: quantity=${quantity.toFixed(5)} (min=${minQty}) | notional=${notional.toFixed(2)} (min=${minNotional})`);
           continue;
         }
 
@@ -3222,15 +3240,9 @@ async function run4hReentryBacktest(
         const canEnter = quantity >= minQty && actualNotional >= minNotional && margin <= availableBalance;
         
         if (!canEnter) {
-          console.log(`[${i}] ${nyTimeStr} ❌ ENTRY REJECTED (${shouldEnterLong ? 'LONG' : 'SHORT'}):`);
-          console.log(`  - positionSizeUSD: ${positionSizeUSD.toFixed(2)}`);
-          console.log(`  - executionPrice: ${priceWithSlippage.toFixed(2)}`);
-          console.log(`  - quantity: ${quantity.toFixed(5)} (minQty: ${minQty})`);
-          console.log(`  - actualNotional: ${actualNotional.toFixed(2)} (minNotional: ${minNotional})`);
-          console.log(`  - margin: ${margin.toFixed(2)}`);
-          console.log(`  - availableBalance: ${availableBalance.toFixed(2)}`);
-          console.log(`  - leverage: ${leverage}x`);
-          console.log(`  - Reason: ${quantity < minQty ? 'quantity < minQty' : actualNotional < minNotional ? 'actualNotional < minNotional' : 'margin > availableBalance'}`);
+          const reason = quantity < minQty ? 'quantity < minQty' : actualNotional < minNotional ? 'notional < minNotional' : 'margin > availableBalance';
+          warnings.push(`[${new Date(currentCandle.open_time).toISOString()}] 4h Reentry ${shouldEnterLong ? 'LONG' : 'SHORT'} rejected: quantity=${quantity.toFixed(5)} (min=${minQty}) | notional=${actualNotional.toFixed(2)} (min=${minNotional}) | ${reason}`);
+          console.log(`[${i}] ${nyTimeStr} ❌ ENTRY REJECTED (${shouldEnterLong ? 'LONG' : 'SHORT'}): ${reason}`);
         }
         
         if (canEnter) {
