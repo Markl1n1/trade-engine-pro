@@ -1788,10 +1788,16 @@ async function runSMACrossoverBacktest(
   startDate: string,
   endDate: string,
   corsHeaders: any,
-  trailingStopPercent?: number
+  trailingStopPercent?: number,
+  stopLossPercent?: number,
+  takeProfitPercent?: number
 ) {
   const startTime = Date.now();
   console.log('[SMA-BACKTEST] Starting optimization...');
+  
+  // Extract SL/TP parameters for use throughout the function
+  const slPercent = stopLossPercent || strategy.stop_loss_percent || 2.0;
+  const tpPercent = takeProfitPercent || strategy.take_profit_percent || 4.0;
   
   let balance = initialBalance || strategy.initial_capital || 10000;
   let availableBalance = balance;
@@ -2255,9 +2261,15 @@ async function runMTFMomentumBacktest(
   startDate: string,
   endDate: string,
   corsHeaders: any,
-  trailingStopPercent?: number
+  trailingStopPercent?: number,
+  stopLossPercent?: number,
+  takeProfitPercent?: number
 ) {
   console.log('Initializing MTF Momentum backtest...');
+  
+  // Extract SL/TP parameters for use throughout the function
+  const slPercent = stopLossPercent || strategy.stop_loss_percent || 2.0;
+  const tpPercent = takeProfitPercent || strategy.take_profit_percent || 4.0;
   
   let balance = initialBalance || strategy.initial_capital || 10000;
   let availableBalance = balance;
