@@ -653,9 +653,25 @@ Deno.serve(async (req) => {
   if (req.method === 'POST') {
     try {
       const body = await req.json();
+      console.log('[INSTANT-SIGNALS] Received request body:', JSON.stringify(body).substring(0, 300));
       
-      // Validate input
-      const validated = validateInput(signalSchema, body) as any;
+      // Validate input with better error handling
+      let validated: any;
+      try {
+        validated = validateInput(signalSchema, body);
+      } catch (validationError: any) {
+        console.error('[INSTANT-SIGNALS] Validation failed:', validationError.message);
+        console.error('[INSTANT-SIGNALS] Request data:', JSON.stringify(body, null, 2));
+        return new Response(
+          JSON.stringify({ 
+            error: 'Invalid signal data', 
+            details: validationError.message,
+            received: body 
+          }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
       const signal: TradingSignal = ('type' in validated && validated.type === 'signal') ? validated.signal : validated;
       
       // Get user settings

@@ -114,7 +114,10 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
   let maxBalance = balance;
   let maxDrawdown = 0;
 
-  const athGuardConfig = { 
+  // Exchange constraints
+  const { stepSize, minQty, minNotional } = getBybitConstraints(strategy.symbol);
+
+  const athGuardConfig = {
     ema_slope_threshold: strategy.ath_guard_ema_slope_threshold || 0.15, 
     pullback_tolerance: strategy.ath_guard_pullback_tolerance || 0.15, 
     volume_multiplier: strategy.ath_guard_volume_multiplier || 1.8, 
@@ -360,27 +363,35 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
                       currentRSI < athGuardConfig.rsi_threshold;
     
     if (buySignal && !position) {
-      // Calculate position size with proper leverage and constraints
-      const positionSize = Math.min(balance * 0.1, balance * 0.95); // Max 10% of balance
-      const quantity = Math.floor(positionSize / executionPrice / 0.00001) * 0.00001; // Apply step size
+      // Position sizing (simplified like 4h Reentry)
+      const positionSizePercent = strategy.position_size_percent || 100;
+      const positionSize = balance * (positionSizePercent / 100);
       
-      if (quantity >= 0.001 && quantity * executionPrice >= 10) { // Min quantity and notional
-        const entryPrice = executionPrice * (1 + slippage);
-        const marginRequired = (entryPrice * quantity) / leverage;
+      // Calculate entry price with slippage
+      const entryPriceWithSlippage = executionPrice * (1 + slippage);
+      
+      // Simple quantity: positionSize / entryPrice / leverage
+      let quantity = (positionSize / entryPriceWithSlippage) / leverage;
+      quantity = Math.floor(quantity / stepSize) * stepSize;
+      
+      // Validate exchange constraints
+      const entryNotional = quantity * entryPriceWithSlippage;
+      
+      if (quantity >= minQty && entryNotional >= minNotional) {
+        const marginRequired = (entryNotional) / leverage;
         
         if (marginRequired <= balance) {
           // Calculate SL/TP based on user parameters
           const slPercent = stopLossPercent || strategy.stop_loss_percent || 2.0;
           const tpPercent = takeProfitPercent || strategy.take_profit_percent || 4.0;
           
-          const stopLossPrice = entryPrice * (1 - slPercent / 100);
-          const takeProfitPrice = entryPrice * (1 + tpPercent / 100);
+          const stopLossPrice = entryPriceWithSlippage * (1 - slPercent / 100);
+          const takeProfitPrice = entryPriceWithSlippage * (1 + tpPercent / 100);
           
-          const entryNotional = entryPrice * quantity;
           const entryFee = (entryNotional * makerFee) / 100;
           
           position = { 
-            entry_price: entryPrice, 
+            entry_price: entryPriceWithSlippage, 
             entry_time: currentCandle.open_time, 
             type: 'buy', 
             quantity 
@@ -2115,13 +2126,18 @@ async function runSMACrossoverBacktest(
         volumeRejections++;
         console.log(`[${i}] ❌ BUY rejected: Volume too low (${currentCandle.volume.toFixed(0)} < ${(volumeAvg * config.volume_multiplier).toFixed(0)})`);
       } else {
-        // All filters passed, attempt entry
-        const positionSize = Math.min(availableBalance * 0.95, balance * 0.1);
-        const quantity = Math.floor(positionSize / currentPrice / stepSize) * stepSize;
+        // Position sizing (simplified like 4h Reentry)
+        const positionSizePercent = strategy.position_size_percent || 100;
+        const positionSize = availableBalance * (positionSizePercent / 100);
         
-        if (quantity >= minQty && quantity * currentPrice >= minNotional) {
         const entryPrice = currentPrice * (1 + slippage);
-        const marginRequired = (entryPrice * quantity) / leverage;
+        let quantity = (positionSize / entryPrice) / leverage;
+        quantity = Math.floor(quantity / stepSize) * stepSize;
+        
+        const entryNotional = quantity * entryPrice;
+        
+        if (quantity >= minQty && entryNotional >= minNotional) {
+        const marginRequired = (entryNotional) / leverage;
         
         if (marginRequired <= availableBalance) {
           // Calculate SL/TP based on user parameters
@@ -2131,7 +2147,6 @@ async function runSMACrossoverBacktest(
           const stopLossPrice = entryPrice * (1 - stopLossPct / 100);
           const takeProfitPrice = entryPrice * (1 + takeProfitPct / 100);
           
-          const entryNotional = entryPrice * quantity;
           const entryFee = (entryNotional * makerFee) / 100;
           
           position = {
@@ -2159,8 +2174,7 @@ async function runSMACrossoverBacktest(
         }
         } else {
           constraintRejections++;
-          console.log(`[${i}] ❌ BUY rejected: Exchange constraints - qty=${quantity.toFixed(5)} (min=${minQty}), notional=${(quantity * currentPrice).toFixed(2)} (min=${minNotional})`);
-          warnings.push(`[${new Date(currentTime).toISOString()}] SMA Crossover BUY rejected: quantity=${quantity.toFixed(5)} (min=${minQty}) | notional=${(quantity * currentPrice).toFixed(2)} (min=${minNotional})`);
+          console.log(`[${i}] ❌ BUY rejected: Exchange constraints - qty=${quantity.toFixed(5)} (min=${minQty}), notional=${entryNotional.toFixed(2)} (min=${minNotional})`);
         }
       }
     }
@@ -2174,13 +2188,18 @@ async function runSMACrossoverBacktest(
         volumeRejections++;
         console.log(`[${i}] ❌ SHORT rejected: Volume too low (${currentCandle.volume.toFixed(0)} < ${(volumeAvg * config.volume_multiplier).toFixed(0)})`);
       } else {
-        // All filters passed, attempt entry
-        const positionSize = Math.min(availableBalance * 0.95, balance * 0.1);
-        const quantity = Math.floor(positionSize / currentPrice / stepSize) * stepSize;
+        // Position sizing (simplified like 4h Reentry)
+        const positionSizePercent = strategy.position_size_percent || 100;
+        const positionSize = availableBalance * (positionSizePercent / 100);
         
-        if (quantity >= minQty && quantity * currentPrice >= minNotional) {
         const entryPrice = currentPrice * (1 - slippage); // Better price for SHORT
-        const marginRequired = (entryPrice * quantity) / leverage;
+        let quantity = (positionSize / entryPrice) / leverage;
+        quantity = Math.floor(quantity / stepSize) * stepSize;
+        
+        const entryNotional = quantity * entryPrice;
+        
+        if (quantity >= minQty && entryNotional >= minNotional) {
+        const marginRequired = (entryNotional) / leverage;
         
         if (marginRequired <= availableBalance) {
           // Calculate SL/TP based on user parameters
@@ -2190,7 +2209,6 @@ async function runSMACrossoverBacktest(
           const stopLossPrice = entryPrice * (1 + stopLossPct / 100);
           const takeProfitPrice = entryPrice * (1 - takeProfitPct / 100);
           
-          const entryNotional = entryPrice * quantity;
           const entryFee = (entryNotional * makerFee) / 100;
           
           position = {
@@ -2218,8 +2236,7 @@ async function runSMACrossoverBacktest(
         }
         } else {
           constraintRejections++;
-          console.log(`[${i}] ❌ SHORT rejected: Exchange constraints - qty=${quantity.toFixed(5)} (min=${minQty}), notional=${(quantity * currentPrice).toFixed(2)} (min=${minNotional})`);
-          warnings.push(`[${new Date(currentTime).toISOString()}] SMA Crossover SHORT rejected: quantity=${quantity.toFixed(5)} (min=${minQty}) | notional=${(quantity * currentPrice).toFixed(2)} (min=${minNotional})`);
+          console.log(`[${i}] ❌ SHORT rejected: Exchange constraints - qty=${quantity.toFixed(5)} (min=${minQty}), notional=${entryNotional.toFixed(2)} (min=${minNotional})`);
         }
       }
     }
@@ -2629,13 +2646,18 @@ async function runMTFMomentumBacktest(
       volumeRatio >= config.mtf_volume_multiplier;
     
     if (mtfLongCondition) {
-      // Calculate position size with proper leverage
-      const positionSize = Math.min(availableBalance * 0.95, balance * 0.1); // Max 10% of balance
-      const quantity = Math.floor(positionSize / currentPrice / stepSize) * stepSize;
+      // Position sizing (simplified like 4h Reentry)
+      const positionSizePercent = strategy.position_size_percent || 100;
+      const positionSize = availableBalance * (positionSizePercent / 100);
       
-      if (quantity >= minQty && quantity * currentPrice >= minNotional) {
-        const entryPrice = currentPrice * (1 + slippage);
-        const marginRequired = (entryPrice * quantity) / leverage;
+      const entryPrice = currentPrice * (1 + slippage);
+      let quantity = (positionSize / entryPrice) / leverage;
+      quantity = Math.floor(quantity / stepSize) * stepSize;
+      
+      const entryNotional = quantity * entryPrice;
+      
+      if (quantity >= minQty && entryNotional >= minNotional) {
+        const marginRequired = (entryNotional) / leverage;
         
         if (marginRequired <= availableBalance) {
           // Calculate SL/TP based on user parameters
@@ -2645,7 +2667,6 @@ async function runMTFMomentumBacktest(
           const stopLossPrice = entryPrice * (1 - stopLossPct / 100);
           const takeProfitPrice = entryPrice * (1 + takeProfitPct / 100);
           
-          const entryNotional = entryPrice * quantity;
           const entryFee = (entryNotional * makerFee) / 100;
           
           position = {
@@ -2672,19 +2693,24 @@ async function runMTFMomentumBacktest(
           console.log(`[${i}] MTF BUY at ${entryPrice.toFixed(2)} - SL: ${stopLossPrice.toFixed(2)}, TP: ${takeProfitPrice.toFixed(2)}`);
         }
       } else {
-        warnings.push(`[${new Date(currentTime).toISOString()}] MTF Momentum LONG rejected: quantity=${quantity.toFixed(5)} (min=${minQty}) | notional=${(quantity * currentPrice).toFixed(2)} (min=${minNotional})`);
+        console.log(`[${i}] ❌ MTF LONG rejected: qty=${quantity.toFixed(5)} (min=${minQty}), notional=${entryNotional.toFixed(2)} (min=${minNotional})`);
       }
     }
     
     // Handle SHORT entry (new SELL position)
     if (mtfShortCondition) {
-      // Calculate position size
-      const positionSize = Math.min(availableBalance * 0.95, balance * 0.1); // Max 10% of balance
-      const quantity = Math.floor(positionSize / currentPrice / stepSize) * stepSize;
+      // Position sizing (simplified like 4h Reentry)
+      const positionSizePercent = strategy.position_size_percent || 100;
+      const positionSize = availableBalance * (positionSizePercent / 100);
       
-      if (quantity >= minQty && quantity * currentPrice >= minNotional) {
-        const entryPrice = currentPrice * (1 - slippage); // Better price for SHORT
-        const marginRequired = (entryPrice * quantity) / leverage;
+      const entryPrice = currentPrice * (1 - slippage); // Better price for SHORT
+      let quantity = (positionSize / entryPrice) / leverage;
+      quantity = Math.floor(quantity / stepSize) * stepSize;
+      
+      const entryNotional = quantity * entryPrice;
+      
+      if (quantity >= minQty && entryNotional >= minNotional) {
+        const marginRequired = (entryNotional) / leverage;
         
         if (marginRequired <= availableBalance) {
           // Calculate SL/TP based on user parameters
@@ -2694,7 +2720,6 @@ async function runMTFMomentumBacktest(
           const stopLossPrice = entryPrice * (1 + stopLossPct / 100);
           const takeProfitPrice = entryPrice * (1 - takeProfitPct / 100);
           
-          const entryNotional = entryPrice * quantity;
           const entryFee = (entryNotional * makerFee) / 100;
           
           position = {

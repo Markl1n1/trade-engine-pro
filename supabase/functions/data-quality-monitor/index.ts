@@ -66,17 +66,19 @@ serve(async (req): Promise<Response> => {
       }
     }
 
-    const request = await req.json();
-    const { action } = request;
+    // Handle empty or invalid request body gracefully
+    let request: any = {};
+    try {
+      request = await req.json();
+    } catch (e) {
+      console.warn('[DATA-QUALITY-MONITOR] Empty or invalid request body, using defaults');
+    }
+    
+    // Make action parameter optional with default
+    const { action = 'get_quality_report' } = request;
 
     // Log incoming request for debugging
     console.log('[DATA-QUALITY-MONITOR] Received request:', { action, hasUserId: !!userId });
-
-    // Validate action parameter
-    if (!action) {
-      console.error('[DATA-QUALITY-MONITOR] Missing action parameter in request');
-      throw new Error('Missing required parameter: action. Please specify one of: get_quality_report, get_exchange_status, validate_data_source, generate_quality_report');
-    }
 
     // Actions that require authentication
     const protectedActions = ['generate_quality_report'];
