@@ -101,13 +101,16 @@ export function MonitoringStatus() {
   };
   const loadSystemHealth = async () => {
     try {
-      // Get system health from health logs
-      const {
-        data: healthLogs
-      } = await supabase.from('system_health_logs').select('*').order('created_at', {
-        ascending: false
-      }).limit(5);
-      setSystemHealth(healthLogs);
+      // System health logs table was removed - using strategy status instead
+      const { data: strategies } = await supabase
+        .from('strategies')
+        .select('status')
+        .eq('status', 'active');
+      
+      setSystemHealth({
+        activeStrategies: strategies?.length || 0,
+        status: 'healthy'
+      });
     } catch (error) {
       console.error('[MONITOR] Error loading system health:', error);
     }
