@@ -1915,6 +1915,13 @@ async function runSMACrossoverBacktest(
   const marketRegime = detectMarketRegime(candles);
   console.log(`[SMA-BACKTEST] Market regime: ${marketRegime.regime} (${marketRegime.strength}% strength)`);
 
+  // Debug tracking
+  let goldenCrossCount = 0;
+  let deathCrossCount = 0;
+  let rsiRejections = 0;
+  let volumeRejections = 0;
+  let constraintRejections = 0;
+
   const startIdx = Math.max(config.sma_slow_period, config.rsi_period);
   for (let i = startIdx; i < candles.length; i++) {
     const currentCandle = candles[i];
@@ -1982,6 +1989,7 @@ async function runSMACrossoverBacktest(
         position.exit_price = exitPriceWithSlippage;
         position.exit_time = currentTime;
         position.profit = netProfit;
+        (position as any).exit_reason = exitReason;
         
         balance += netProfit;
         availableBalance += lockedMargin + netProfit;
@@ -2018,6 +2026,7 @@ async function runSMACrossoverBacktest(
           position.exit_price = exitPriceWithSlippage;
           position.exit_time = currentTime;
           position.profit = netProfit;
+          (position as any).exit_reason = 'TRAILING_STOP_TRIGGERED';
           
           balance += netProfit;
           availableBalance += lockedMargin + netProfit;
@@ -2054,12 +2063,30 @@ async function runSMACrossoverBacktest(
     const volumeAvg = candles.slice(Math.max(0, i - 20), i).reduce((sum, c) => sum + c.volume, 0) / Math.min(20, i);
     const volumeConfirmed = currentCandle.volume >= volumeAvg * config.volume_multiplier;
     
+    // Debug: Log all crossover detections
+    if (goldenCross) {
+      goldenCrossCount++;
+      console.log(`[${i}] 🔍 GOLDEN CROSS detected at ${currentPrice.toFixed(2)} - RSI: ${currentRSI.toFixed(2)}, Volume: ${currentCandle.volume.toFixed(0)} (avg: ${volumeAvg.toFixed(0)}, confirmed: ${volumeConfirmed})`);
+    }
+    if (deathCross) {
+      deathCrossCount++;
+      console.log(`[${i}] 🔍 DEATH CROSS detected at ${currentPrice.toFixed(2)} - RSI: ${currentRSI.toFixed(2)}, Volume: ${currentCandle.volume.toFixed(0)} (avg: ${volumeAvg.toFixed(0)}, confirmed: ${volumeConfirmed})`);
+    }
+    
     // BUY signal: Golden cross + RSI not overbought + Volume
-    if (goldenCross && currentRSI < config.rsi_overbought && volumeConfirmed && !position) {
-      const positionSize = Math.min(availableBalance * 0.95, balance * 0.1);
-      const quantity = Math.floor(positionSize / currentPrice / stepSize) * stepSize;
-      
-      if (quantity >= minQty && quantity * currentPrice >= minNotional) {
+    if (goldenCross && !position) {
+      if (currentRSI >= config.rsi_overbought) {
+        rsiRejections++;
+        console.log(`[${i}] ❌ BUY rejected: RSI too high (${currentRSI.toFixed(2)} >= ${config.rsi_overbought})`);
+      } else if (!volumeConfirmed) {
+        volumeRejections++;
+        console.log(`[${i}] ❌ BUY rejected: Volume too low (${currentCandle.volume.toFixed(0)} < ${(volumeAvg * config.volume_multiplier).toFixed(0)})`);
+      } else {
+        // All filters passed, attempt entry
+        const positionSize = Math.min(availableBalance * 0.95, balance * 0.1);
+        const quantity = Math.floor(positionSize / currentPrice / stepSize) * stepSize;
+        
+        if (quantity >= minQty && quantity * currentPrice >= minNotional) {
         const entryPrice = currentPrice * (1 + slippage);
         const marginRequired = (entryPrice * quantity) / leverage;
         
@@ -2097,17 +2124,28 @@ async function runSMACrossoverBacktest(
           
           console.log(`[${i}] 🟢 BUY at ${entryPrice.toFixed(2)} - SL: ${stopLossPrice.toFixed(2)}, TP: ${takeProfitPrice.toFixed(2)}`);
         }
-      } else {
-        warnings.push(`[${new Date(currentTime).toISOString()}] SMA Crossover BUY rejected: quantity=${quantity.toFixed(5)} (min=${minQty}) | notional=${(quantity * currentPrice).toFixed(2)} (min=${minNotional})`);
+        } else {
+          constraintRejections++;
+          console.log(`[${i}] ❌ BUY rejected: Exchange constraints - qty=${quantity.toFixed(5)} (min=${minQty}), notional=${(quantity * currentPrice).toFixed(2)} (min=${minNotional})`);
+          warnings.push(`[${new Date(currentTime).toISOString()}] SMA Crossover BUY rejected: quantity=${quantity.toFixed(5)} (min=${minQty}) | notional=${(quantity * currentPrice).toFixed(2)} (min=${minNotional})`);
+        }
       }
     }
     
     // SHORT signal: Death cross + RSI not oversold + Volume
-    if (deathCross && currentRSI > config.rsi_oversold && volumeConfirmed && !position) {
-      const positionSize = Math.min(availableBalance * 0.95, balance * 0.1);
-      const quantity = Math.floor(positionSize / currentPrice / stepSize) * stepSize;
-      
-      if (quantity >= minQty && quantity * currentPrice >= minNotional) {
+    if (deathCross && !position) {
+      if (currentRSI <= config.rsi_oversold) {
+        rsiRejections++;
+        console.log(`[${i}] ❌ SHORT rejected: RSI too low (${currentRSI.toFixed(2)} <= ${config.rsi_oversold})`);
+      } else if (!volumeConfirmed) {
+        volumeRejections++;
+        console.log(`[${i}] ❌ SHORT rejected: Volume too low (${currentCandle.volume.toFixed(0)} < ${(volumeAvg * config.volume_multiplier).toFixed(0)})`);
+      } else {
+        // All filters passed, attempt entry
+        const positionSize = Math.min(availableBalance * 0.95, balance * 0.1);
+        const quantity = Math.floor(positionSize / currentPrice / stepSize) * stepSize;
+        
+        if (quantity >= minQty && quantity * currentPrice >= minNotional) {
         const entryPrice = currentPrice * (1 - slippage); // Better price for SHORT
         const marginRequired = (entryPrice * quantity) / leverage;
         
@@ -2145,8 +2183,11 @@ async function runSMACrossoverBacktest(
           
           console.log(`[${i}] 🔴 SHORT at ${entryPrice.toFixed(2)} - SL: ${stopLossPrice.toFixed(2)}, TP: ${takeProfitPrice.toFixed(2)}`);
         }
-      } else {
-        warnings.push(`[${new Date(currentTime).toISOString()}] SMA Crossover SHORT rejected: quantity=${quantity.toFixed(5)} (min=${minQty}) | notional=${(quantity * currentPrice).toFixed(2)} (min=${minNotional})`);
+        } else {
+          constraintRejections++;
+          console.log(`[${i}] ❌ SHORT rejected: Exchange constraints - qty=${quantity.toFixed(5)} (min=${minQty}), notional=${(quantity * currentPrice).toFixed(2)} (min=${minNotional})`);
+          warnings.push(`[${new Date(currentTime).toISOString()}] SMA Crossover SHORT rejected: quantity=${quantity.toFixed(5)} (min=${minQty}) | notional=${(quantity * currentPrice).toFixed(2)} (min=${minNotional})`);
+        }
       }
     }
     
@@ -2165,6 +2206,18 @@ async function runSMACrossoverBacktest(
       maxDrawdown = currentDrawdown;
     }
   }
+
+  // Debug summary
+  console.log(`[SMA-BACKTEST] Summary:
+    - Total candles: ${candles.length}
+    - Golden crosses detected: ${goldenCrossCount}
+    - Death crosses detected: ${deathCrossCount}
+    - Total crossovers: ${goldenCrossCount + deathCrossCount}
+    - RSI rejections: ${rsiRejections}
+    - Volume rejections: ${volumeRejections}
+    - Exchange constraint rejections: ${constraintRejections}
+    - Trades executed: ${trades.length}
+    - Filter pass rate: ${((trades.length / (goldenCrossCount + deathCrossCount)) * 100).toFixed(2)}%`);
 
   // Close any remaining position
   if (position) {
