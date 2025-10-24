@@ -237,7 +237,7 @@ serve(async (req) => {
               return {
                 symbol: symbol.trim(), // Ensure no whitespace
                 timeframe: timeframe.trim(), // Ensure no whitespace
-                exchange_type: category === 'spot' ? 'bybit_spot' : 'bybit',
+                exchange_type: 'bybit',
                 open_time: openTime,
                 open: parseFloat(k[1]) || 0,
                 high: high,
