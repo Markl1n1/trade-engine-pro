@@ -408,7 +408,7 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
           
           // Initialize trailing stop for LONG position
           if (trailingStopManager) {
-            trailingStopManager.initialize(entryPrice, 'buy');
+            trailingStopManager.initialize(entryPriceWithSlippage, 'buy');
           }
         }
       }
