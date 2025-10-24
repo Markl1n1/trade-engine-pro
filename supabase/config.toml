@@ -57,11 +57,6 @@ verify_jwt = false
 [functions.test-exchange]
 verify_jwt = true
 
-[functions.get-binance-pairs]
-verify_jwt = false
-
-[functions.health-check]
-verify_jwt = false
 
 [functions.monitor-strategies-realtime]
 verify_jwt = true
@@ -69,14 +64,17 @@ verify_jwt = true
 [functions.test-telegram]
 verify_jwt = true
 
-# Removed unused Edge Functions (2025-01-21):
+# =====================================================
+# EDGE FUNCTION CLEANUP LOG
+# =====================================================
+# Removed Edge Functions (2025-01-24):
+# - health-check (not integrated, removed from codebase)
+# - get-binance-pairs (replaced with direct API calls)
 # - migrate-credentials (one-time migration, completed)
-# - health-check (not integrated)
-# - process-buffered-signals (signal_buffer unused)
+# - process-buffered-signals (signal_buffer table unused)
 # - retry-failed-signals (retry mechanism unused)
-# - get-binance-pairs (not used in frontend)
-# - generate-strategy (AI Strategy Generator)
-# - performance-dashboard (mock data only)
-# - data-quality (not integrated)
-# - risk-management (mock data only)
+# - generate-strategy (AI Strategy Generator, not implemented)
+# - performance-dashboard (mock data only, not used)
+# - data-quality (not integrated in frontend)
+# - risk-management (mock data only, not used)
 # - execute-javascript-strategy (not called from frontend)
