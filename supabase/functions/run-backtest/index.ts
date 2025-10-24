@@ -456,6 +456,39 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
     maxDrawdown = Math.max(maxDrawdown, ((maxBalance - balance) / maxBalance) * 100);
   }
 
+  // Close any remaining position at end of backtest
+  if (position) {
+    const finalCandle = candles[candles.length - 1];
+    const exitPriceWithSlippage = position.type === 'buy'
+      ? finalCandle.close * (1 - slippage)
+      : finalCandle.close * (1 + slippage);
+    
+    const pnl = position.type === 'buy'
+      ? position.quantity * (exitPriceWithSlippage - position.entry_price)
+      : position.quantity * (position.entry_price - exitPriceWithSlippage);
+    
+    const exitNotional = position.quantity * exitPriceWithSlippage;
+    const exitFee = (exitNotional * takerFee) / 100;
+    const entryFee = (position as any).entryFee || 0;
+    const netProfit = pnl - entryFee - exitFee;
+    
+    position.exit_price = exitPriceWithSlippage;
+    position.exit_time = finalCandle.open_time;
+    position.profit = netProfit;
+    (position as any).exit_reason = 'END_OF_BACKTEST';
+    
+    if (productType === 'futures') {
+      const marginLocked = (position as any).marginLocked || 0;
+      balance += marginLocked + netProfit;
+    } else {
+      balance += netProfit;
+    }
+    
+    trades.push(position);
+    
+    console.log(`[ATH-GUARD] Final position closed at ${exitPriceWithSlippage.toFixed(2)} - P&L: ${netProfit.toFixed(2)}`);
+  }
+
   const totalReturn = ((balance - initialBalance) / initialBalance) * 100;
   const winningTrades = trades.filter(t => t.profit && t.profit > 0).length;
   const losingTrades = trades.length - winningTrades;
@@ -2231,8 +2264,9 @@ async function runSMACrossoverBacktest(
     availableBalance += lockedMargin + netProfit;
     
     position.exit_price = exitPrice;
-    position.exit_time = finalCandle.close_time;
+    position.exit_time = finalCandle.open_time;
     position.profit = netProfit;
+    (position as any).exit_reason = 'END_OF_BACKTEST';
     
     trades.push(position);
     
@@ -2713,8 +2747,9 @@ async function runMTFMomentumBacktest(
     availableBalance += lockedMargin + netProfit;
     
     position.exit_price = exitPrice;
-    position.exit_time = finalCandle.close_time;
+    position.exit_time = finalCandle.open_time;
     position.profit = netProfit;
+    (position as any).exit_reason = 'END_OF_BACKTEST';
     
     trades.push(position);
     

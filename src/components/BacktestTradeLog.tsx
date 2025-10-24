@@ -69,13 +69,16 @@ export function BacktestTradeLog({ trades }: BacktestTradeLogProps) {
   return (
     <div className="space-y-2">
       <h4 className="text-sm font-semibold mb-3">Trade Log ({trades.length} trades)</h4>
-      <div className="space-y-2 max-h-[400px] overflow-y-auto">
+      <div className="space-y-2 max-h-[600px] overflow-y-auto">
         {trades.map((trade, index) => (
           <Card key={`trade-${index}-${trade.entry_time}`} className="p-3">
             <div className="flex items-start justify-between">
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-2 flex-wrap">
-                  <Badge variant={trade.type === 'buy' ? 'default' : 'secondary'}>
+                  <Badge 
+                    variant={trade.type === 'buy' ? 'default' : 'destructive'} 
+                    className={trade.type === 'sell' ? 'bg-red-500 text-white' : ''}
+                  >
                     {trade.type.toUpperCase()}
                   </Badge>
                   {trade.profit !== undefined && (
