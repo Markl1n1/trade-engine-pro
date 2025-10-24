@@ -116,7 +116,7 @@ serve(async (req) => {
           // Store batch in database
           const { error: dbError } = await supabaseClient
             .from('market_data')
-            .upsert(candles, { onConflict: 'symbol,timeframe,open_time' });
+            .upsert(candles, { onConflict: 'symbol,timeframe,open_time,exchange_type' });
 
           if (dbError) {
             console.error(`[BYBIT-MARKET-DATA] Database error for batch ${i + 1}:`, dbError);
@@ -184,7 +184,7 @@ serve(async (req) => {
     // Store in database
     const { error: dbError } = await supabaseClient
       .from('market_data')
-      .upsert(candles, { onConflict: 'symbol,timeframe,open_time' });
+      .upsert(candles, { onConflict: 'symbol,timeframe,open_time,exchange_type' });
 
     if (dbError) {
       console.error('[BYBIT-MARKET-DATA] Database error:', dbError);

@@ -323,7 +323,7 @@ serve(async (req) => {
             const { data: upsertData, error: upsertError } = await supabase
               .from('market_data')
               .upsert(uniqueCandles, { 
-                onConflict: 'symbol,timeframe,open_time',
+                onConflict: 'symbol,timeframe,open_time,exchange_type',
                 ignoreDuplicates: false 
               });
             

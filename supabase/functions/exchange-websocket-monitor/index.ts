@@ -284,7 +284,7 @@ async function processBybitKline(
         volume: candle.volume,
         close_time: kline.end || candle.timestamp + 60000 // Fallback close_time
       }, {
-        onConflict: 'symbol,timeframe,open_time',
+        onConflict: 'symbol,timeframe,open_time,exchange_type',
         ignoreDuplicates: false // Update existing records with new data
       });
     
