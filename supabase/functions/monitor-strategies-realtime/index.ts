@@ -71,7 +71,7 @@ serve(async (req) => {
           .select('*')
           .eq('symbol', strategy.symbol)
           .eq('timeframe', strategy.timeframe)
-          .order('timestamp', { ascending: false })
+          .order('open_time', { ascending: false })
           .limit(500);
 
         if (candlesError) {
@@ -85,7 +85,7 @@ serve(async (req) => {
         }
 
         // Sort candles by timestamp ascending for strategy evaluation
-        const sortedCandles = candles.sort((a, b) => a.timestamp - b.timestamp);
+        const sortedCandles = candles.sort((a, b) => a.open_time - b.open_time);
         
         // Convert database candles to strategy format
         const formattedCandles = sortedCandles.map(c => ({
@@ -94,7 +94,7 @@ serve(async (req) => {
           low: parseFloat(c.low),
           close: parseFloat(c.close),
           volume: parseFloat(c.volume),
-          timestamp: c.timestamp
+          timestamp: c.open_time
         }));
 
         // Evaluate strategy based on type
