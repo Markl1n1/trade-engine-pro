@@ -212,16 +212,32 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
 
   // Main backtest loop - now just evaluates conditions
   for (let i = 150; i < candles.length; i++) {
-    // Use the optimized strategy function
-    const recentCandles = candles.slice(0, i + 1);
-    const signal = evaluateATHGuardStrategy(
-      recentCandles.map(c => ({ ...c, timestamp: c.open_time || c.close_time || 0 })), 
-      athGuardConfig, 
-      position !== null
-    );
-    
+    // ✅ Direct indicator access (O(1) instead of O(n))
     const currentCandle = candles[i];
     const executionPrice = executionTiming === 'open' ? currentCandle.open : currentCandle.close;
+    
+    const currentEMA50 = ema50Array[i];
+    const currentEMA100 = ema100Array[i];
+    const currentEMA150 = ema150Array[i];
+    const currentVWAP = vwapArray[i];
+    const currentMACD = macdData.histogram[i];
+    const currentStoch = stochData.k[i];
+    const currentRSI = rsiArray[i];
+    const currentATR = atrArray[i];
+    
+    // Simplified bias filter
+    const bias = executionPrice > currentEMA150 ? 'LONG' : 
+                  executionPrice < currentEMA150 ? 'SHORT' : 'NEUTRAL';
+    
+    // Volume confirmation
+    const volumeAvg = candles.slice(Math.max(0, i - 20), i).reduce((sum, c) => sum + c.volume, 0) / Math.min(20, i);
+    const volumeConfirmed = currentCandle.volume >= volumeAvg * athGuardConfig.volume_multiplier;
+    
+    // ADX confirmation (simple approximation)
+    const adxConfirmed = Math.abs(currentEMA50 - currentEMA100) / currentEMA100 * 100 > 1;
+    
+    // Momentum confirmation
+    const momentumConfirmed = currentMACD !== 0 && ((bias === 'LONG' && currentMACD > 0) || (bias === 'SHORT' && currentMACD < 0));
     
     // Check trailing stop first (if position is open)
     if (position && trailingStopManager) {
@@ -246,7 +262,11 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
       }
     }
 
-    if (signal.signal_type === 'BUY' && !position) {
+    // BUY signal: LONG bias + confirmations
+    const buySignal = bias === 'LONG' && volumeConfirmed && adxConfirmed && momentumConfirmed && 
+                      currentRSI < athGuardConfig.rsi_threshold;
+    
+    if (buySignal && !position) {
       // Calculate position size with proper leverage and constraints
       const positionSize = Math.min(balance * 0.1, balance * 0.95); // Max 10% of balance
       const quantity = Math.floor(positionSize / executionPrice / 0.00001) * 0.00001; // Apply step size
@@ -272,7 +292,13 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
           // Reduced logging for CPU optimization
         }
       }
-    } else if (signal.signal_type === 'SELL' && !position) {
+    }
+    
+    // SELL signal: SHORT bias + confirmations
+    const sellSignal = bias === 'SHORT' && volumeConfirmed && adxConfirmed && momentumConfirmed &&
+                       currentRSI > (100 - athGuardConfig.rsi_threshold);
+    
+    if (sellSignal && !position) {
       // SHORT entry (new SELL position)
       const positionSize = Math.min(balance * 0.1, balance * 0.95); // Max 10% of balance
       const quantity = Math.floor(positionSize / executionPrice / 0.00001) * 0.00001; // Apply step size
@@ -298,7 +324,10 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
           // Reduced logging for CPU optimization
         }
       }
-    } else if (signal.signal_type === 'BUY' && position && position.type === 'sell') {
+    }
+    
+    // Close SHORT on BUY signal
+    if (buySignal && position && position.type === 'sell') {
       // Close SHORT position
       const exitPrice = executionPrice * (1 + slippage);
       const profit = (position.entry_price - exitPrice) * position.quantity; // SHORT profit calculation
@@ -1805,20 +1834,16 @@ async function runSMACrossoverBacktest(
     const currentRSI = rsi[i];
     const currentATR = atr[i];
     
-    // Use the optimized strategy function
-    const recentCandles = candles.slice(0, i + 1);
-    const signal = evaluateSMACrossoverStrategy(
-      recentCandles.map(c => ({ ...c, timestamp: c.open_time || c.close_time || 0 })), 
-      config, 
-      position !== null
-    );
-    
-    // Calculate crossover signals
+    // ✅ Calculate crossover signals (O(1) instead of O(n))
     const goldenCross = prevSMAFast <= prevSMASlow && currentSMAFast > currentSMASlow;
     const deathCross = prevSMAFast >= prevSMASlow && currentSMAFast < currentSMASlow;
     
-    // BUY signal from optimized strategy
-    if (signal.signal_type === 'BUY' && !position) {
+    // Calculate volume confirmation
+    const volumeAvg = candles.slice(Math.max(0, i - 20), i).reduce((sum, c) => sum + c.volume, 0) / Math.min(20, i);
+    const volumeConfirmed = currentCandle.volume >= volumeAvg * config.volume_multiplier;
+    
+    // BUY signal: Golden cross + RSI not overbought + Volume
+    if (goldenCross && currentRSI < config.rsi_overbought && volumeConfirmed && !position) {
       const positionSize = Math.min(availableBalance * 0.95, balance * 0.1);
       const quantity = Math.floor(positionSize / currentPrice / stepSize) * stepSize;
       
@@ -1847,9 +1872,8 @@ async function runSMACrossoverBacktest(
       }
     }
     
-    // SHORT signal: Death cross + Adaptive RSI oversold (momentum reversal) + Volume
-    // SELL signal from optimized strategy
-    if (signal.signal_type === 'SELL' && !position) {
+    // SHORT signal: Death cross + RSI not oversold + Volume
+    if (deathCross && currentRSI > config.rsi_oversold && volumeConfirmed && !position) {
       const positionSize = Math.min(availableBalance * 0.95, balance * 0.1);
       const quantity = Math.floor(positionSize / currentPrice / stepSize) * stepSize;
       
@@ -2104,10 +2128,9 @@ async function runMTFMomentumBacktest(
         if (!this.isActive) {
           const currentProfitPercent = this.calculateProfitPercent(currentPrice);
           if (currentProfitPercent > 0) {
-            this.isActive = true;
-            this.maxProfitPercent = currentProfitPercent;
-            console.log(`[MTF TRAILING] Activated at ${currentProfitPercent.toFixed(2)}% profit`);
-            return { shouldClose: false, reason: 'TRAILING_ACTIVATED' };
+          this.isActive = true;
+          this.maxProfitPercent = currentProfitPercent;
+          return { shouldClose: false, reason: 'TRAILING_ACTIVATED' };
           }
           return { shouldClose: false, reason: 'NO_PROFIT_YET' };
         }
@@ -2115,13 +2138,11 @@ async function runMTFMomentumBacktest(
         const currentProfitPercent = this.calculateProfitPercent(currentPrice);
         if (currentProfitPercent > this.maxProfitPercent) {
           this.maxProfitPercent = currentProfitPercent;
-          console.log(`[MTF TRAILING] New max profit: ${currentProfitPercent.toFixed(2)}%`);
         }
         
         const trailingThreshold = this.maxProfitPercent - this.trailingPercent;
         
         if (currentProfitPercent < trailingThreshold) {
-          console.log(`[MTF TRAILING] Triggered: ${currentProfitPercent.toFixed(2)}% < ${trailingThreshold.toFixed(2)}% (max: ${this.maxProfitPercent.toFixed(2)}%)`);
           return { shouldClose: true, reason: 'TRAILING_STOP_TRIGGERED' };
         }
         
@@ -2165,6 +2186,7 @@ async function runMTFMomentumBacktest(
   const macd5m = calculateMACD(closes5m);
   const macd15m = calculateMACD(closes15m);
   
+  const atr1m = calculateATR(candles1m, 14);
   const volumeSMA1m = calculateVolumeSMA(candles1m, 20);
   console.log(`[MTF-BACKTEST] ✅ Indicators ready, starting backtest loop...`);
 
@@ -2200,21 +2222,37 @@ async function runMTFMomentumBacktest(
       }
     }
     
-    // Use the optimized strategy function
-    const recentCandles = candles.slice(0, i + 1);
-    const recentCandles1m = candles1m.slice(0, i + 1).map(c => ({ ...c, timestamp: c.open_time || c.close_time || 0 }));
-    const recentCandles5m = candles5m.slice(0, Math.floor((i + 1) / 5)).map(c => ({ ...c, timestamp: c.open_time || c.close_time || 0 }));
-    const recentCandles15m = candles15m.slice(0, Math.floor((i + 1) / 15)).map(c => ({ ...c, timestamp: c.open_time || c.close_time || 0 }));
+    // ✅ Direct indicator access (O(1) instead of O(n³))
+    const idx5m = Math.floor(i / 5);
+    const idx15m = Math.floor(i / 15);
     
-    const signal = evaluateMTFMomentum(
-      recentCandles1m,
-      recentCandles5m,
-      recentCandles15m,
-      config, 
-      position !== null
-    );
+    const currentRSI1m = rsi1m[i];
+    const currentRSI5m = rsi5m[idx5m];
+    const currentRSI15m = rsi15m[idx15m];
     
-    if (signal.signal_type === 'BUY' && !position) {
+    const currentMACD1m = macd1m.histogram[i];
+    const currentMACD5m = macd5m.histogram[idx5m];
+    const currentMACD15m = macd15m.histogram[idx15m];
+    
+    const currentVolume = currentCandle.volume;
+    const avgVolume = volumeSMA1m;
+    const volumeRatio = avgVolume > 0 ? currentVolume / avgVolume : 0;
+    
+    // MTF LONG conditions: RSI + MACD + Volume confluence
+    const mtfLongCondition = !position &&
+      currentRSI1m > config.mtf_rsi_entry_threshold &&
+      (currentRSI5m > config.mtf_rsi_entry_threshold || currentRSI15m > config.mtf_rsi_entry_threshold) &&
+      (currentMACD1m > 0 || currentMACD5m > 0) &&
+      volumeRatio >= config.mtf_volume_multiplier;
+    
+    // MTF SHORT conditions: RSI + MACD + Volume confluence  
+    const mtfShortCondition = !position &&
+      currentRSI1m < (100 - config.mtf_rsi_entry_threshold) &&
+      (currentRSI5m < (100 - config.mtf_rsi_entry_threshold) || currentRSI15m < (100 - config.mtf_rsi_entry_threshold)) &&
+      (currentMACD1m < 0 || currentMACD5m < 0) &&
+      volumeRatio >= config.mtf_volume_multiplier;
+    
+    if (mtfLongCondition) {
       // Calculate position size with proper leverage
       const positionSize = Math.min(availableBalance * 0.95, balance * 0.1); // Max 10% of balance
       const quantity = Math.floor(positionSize / currentPrice / stepSize) * stepSize;
@@ -2245,7 +2283,7 @@ async function runMTFMomentumBacktest(
     }
     
     // Handle SHORT entry (new SELL position)
-    if (signal.signal_type === 'SELL' && !position) {
+    if (mtfShortCondition) {
       // Calculate position size
       const positionSize = Math.min(availableBalance * 0.95, balance * 0.1); // Max 10% of balance
       const quantity = Math.floor(positionSize / currentPrice / stepSize) * stepSize;
@@ -2282,7 +2320,7 @@ async function runMTFMomentumBacktest(
       const exitOnMomentumLoss = currentRSI1m < 40;
       
       // Exit on opposite signal
-      const exitOnSignal = signal.signal_type === 'SELL';
+      const exitOnSignal = mtfShortCondition;
       
       if (exitOnMomentumLoss || exitOnSignal) {
         const exitPrice = currentPrice * (1 - slippage);
@@ -2317,7 +2355,7 @@ async function runMTFMomentumBacktest(
       const exitOnMomentumReversal = currentRSI1m > 60;
       
       // Exit on opposite signal
-      const exitOnSignal = signal.signal_type === 'BUY';
+      const exitOnSignal = mtfLongCondition;
       
       if (exitOnMomentumReversal || exitOnSignal) {
         const exitPrice = currentPrice * (1 + slippage);
