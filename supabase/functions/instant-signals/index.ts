@@ -455,7 +455,7 @@ class PositionExecutionManager {
       };
       
       // Get account balance to calculate position size
-      const accountData = await makeExchangeRequest(config, 'getAccount');
+      const accountData = await makeExchangeRequest(config, 'account');
       const availableBalance = parseFloat(accountData.result.list?.[0]?.totalWalletBalance || '0');
       const riskAmount = availableBalance * 0.01; // 1% risk
       const quantity = Math.max(0.001, riskAmount / signal.price);
@@ -469,7 +469,7 @@ class PositionExecutionManager {
         qty: quantity.toFixed(3)
       };
       
-      const orderResult = await makeExchangeRequest(config, 'placeOrder', orderParams, 'POST');
+      const orderResult = await makeExchangeRequest(config, 'createOrder', orderParams, 'POST');
       
       console.log(`[INSTANT-SIGNALS] Bybit order placed successfully:`, orderResult);
       
