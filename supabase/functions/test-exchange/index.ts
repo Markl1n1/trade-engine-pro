@@ -115,6 +115,10 @@ async function testBybitConnection(apiKey: string, apiSecret: string, isTestnet:
     const timestamp = Date.now();
     const recvWindow = '5000';
     
+    // Bybit V5 API requires query parameters in signature
+    const queryString = 'accountType=UNIFIED';
+    const signaturePayload = timestamp + apiKey + recvWindow + queryString;
+    
     // Generate signature
     const encoder = new TextEncoder();
     const key = await crypto.subtle.importKey(
@@ -127,14 +131,14 @@ async function testBybitConnection(apiKey: string, apiSecret: string, isTestnet:
     const signature = await crypto.subtle.sign(
       'HMAC',
       key,
-      encoder.encode(timestamp + apiKey + recvWindow)
+      encoder.encode(signaturePayload)
     );
     const signatureHex = Array.from(new Uint8Array(signature))
       .map(b => b.toString(16).padStart(2, '0'))
       .join('');
 
     // Test account balance
-    const accountUrl = `${baseUrl}/v5/account/wallet-balance?accountType=UNIFIED`;
+    const accountUrl = `${baseUrl}/v5/account/wallet-balance?${queryString}`;
     const response = await fetch(accountUrl, {
       method: 'GET',
       headers: {

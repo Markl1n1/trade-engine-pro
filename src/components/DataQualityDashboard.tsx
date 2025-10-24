@@ -49,11 +49,6 @@ export const DataQualityDashboard = () => {
 
       if (marketError) throw marketError;
 
-      // Check system health
-      const { data: healthData, error: healthError } = await supabase.functions.invoke("health-check");
-
-      if (healthError) throw healthError;
-
       // Calculate data quality metrics
       const totalRecords = marketData?.length || 0;
       const recentRecords = marketData?.filter((d) => {
@@ -75,14 +70,20 @@ export const DataQualityDashboard = () => {
         missingRecords: Math.floor(totalRecords * 0.015),
       });
 
+      // Calculate data source status from actual data freshness
+      const now = Date.now();
+      const latestCandle = marketData?.[0];
+      const dataAge = latestCandle ? now - new Date(latestCandle.created_at).getTime() : Infinity;
+      const isDataFresh = dataAge < 5 * 60 * 1000; // Fresh if less than 5 minutes old
+
       // Set data sources status
       const sources: DataSource[] = [
         {
-          name: "Binance API",
-          status: healthData?.binanceApi?.status === "healthy" ? "healthy" : "degraded",
-          lastUpdate: new Date().toISOString(),
-          latency: healthData?.binanceApi?.latency || 0,
-          uptime: 99.9,
+          name: "Bybit API",
+          status: isDataFresh ? "healthy" : "degraded",
+          lastUpdate: latestCandle?.created_at || new Date().toISOString(),
+          latency: 0,
+          uptime: isDataFresh ? 99.9 : 95.0,
         },
         {
           name: "WebSocket Feed",
@@ -94,7 +95,7 @@ export const DataQualityDashboard = () => {
         {
           name: "Database",
           status: totalRecords > 0 ? "healthy" : "degraded",
-          lastUpdate: marketData?.[0]?.created_at || new Date().toISOString(),
+          lastUpdate: latestCandle?.created_at || new Date().toISOString(),
           latency: 12,
           uptime: 99.99,
         },

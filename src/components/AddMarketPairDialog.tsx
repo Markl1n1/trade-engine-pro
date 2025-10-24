@@ -59,12 +59,20 @@ export const AddMarketPairDialog = ({ onPairAdded }: AddMarketPairDialogProps) =
       
       setUserPairs(userPairsData || []);
 
-      // Load available pairs from Binance
-      const { data, error } = await supabase.functions.invoke("get-binance-pairs");
-      if (error) throw error;
+      // Load available pairs directly from Bybit
+      const response = await fetch('https://api.bybit.com/v5/market/instruments-info?category=spot');
+      const data = await response.json();
       
-      if (data?.success && data?.data) {
-        setAvailablePairs(data.data);
+      if (data.retCode === 0) {
+        const pairs = data.result.list
+          .filter((instrument: any) => instrument.status === 'Trading')
+          .map((instrument: any) => ({
+            symbol: instrument.symbol,
+            baseAsset: instrument.baseCoin,
+            quoteAsset: instrument.quoteCoin,
+          }))
+          .sort((a: any, b: any) => a.symbol.localeCompare(b.symbol));
+        setAvailablePairs(pairs);
       }
     } catch (error) {
       console.error("Error loading data:", error);

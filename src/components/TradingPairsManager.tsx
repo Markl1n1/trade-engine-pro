@@ -69,17 +69,28 @@ export const TradingPairsManager = () => {
   const loadAvailablePairs = async () => {
     setLoadingPairs(true);
     try {
-      const { data, error } = await supabase.functions.invoke("get-binance-pairs");
-
-      if (error) throw error;
-      if (data?.success && data?.data) {
-        setAvailablePairs(data.data);
+      const response = await fetch('https://api.bybit.com/v5/market/instruments-info?category=spot');
+      const data = await response.json();
+      
+      if (data.retCode !== 0) {
+        throw new Error(`Bybit API error: ${data.retMsg}`);
       }
+
+      const pairs = data.result.list
+        .filter((instrument: any) => instrument.status === 'Trading')
+        .map((instrument: any) => ({
+          symbol: instrument.symbol,
+          baseAsset: instrument.baseCoin,
+          quoteAsset: instrument.quoteCoin,
+        }))
+        .sort((a: any, b: any) => a.symbol.localeCompare(b.symbol));
+      
+      setAvailablePairs(pairs);
     } catch (error) {
       console.error("Error loading available pairs:", error);
       toast({
         title: "Error",
-        description: "Failed to load available pairs from Binance",
+        description: "Failed to load available pairs from Bybit",
         variant: "destructive",
       });
     } finally {
