@@ -79,72 +79,6 @@ export type Database = {
           },
         ]
       }
-      credential_access_log: {
-        Row: {
-          access_source: string | null
-          accessed_at: string
-          credential_type: string
-          id: string
-          success: boolean | null
-          user_id: string
-        }
-        Insert: {
-          access_source?: string | null
-          accessed_at?: string
-          credential_type: string
-          id?: string
-          success?: boolean | null
-          user_id: string
-        }
-        Update: {
-          access_source?: string | null
-          accessed_at?: string
-          credential_type?: string
-          id?: string
-          success?: boolean | null
-          user_id?: string
-        }
-        Relationships: []
-      }
-      exchange_metrics: {
-        Row: {
-          created_at: string
-          dr: number | null
-          gcr: number | null
-          id: string
-          ifer: number | null
-          symbol: string
-          timestamp: string
-          tmv: number | null
-          ufr: number | null
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          dr?: number | null
-          gcr?: number | null
-          id?: string
-          ifer?: number | null
-          symbol: string
-          timestamp?: string
-          tmv?: number | null
-          ufr?: number | null
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          dr?: number | null
-          gcr?: number | null
-          id?: string
-          ifer?: number | null
-          symbol?: string
-          timestamp?: string
-          tmv?: number | null
-          ufr?: number | null
-          user_id?: string
-        }
-        Relationships: []
-      }
       market_data: {
         Row: {
           close: number
@@ -241,39 +175,6 @@ export type Database = {
           telegram_sent_at?: string | null
           timestamp?: string
           user_id?: string
-        }
-        Relationships: []
-      }
-      security_audit_log: {
-        Row: {
-          action: string
-          created_at: string
-          id: string
-          ip_address: string | null
-          record_id: string | null
-          table_name: string
-          user_agent: string | null
-          user_id: string | null
-        }
-        Insert: {
-          action: string
-          created_at?: string
-          id?: string
-          ip_address?: string | null
-          record_id?: string | null
-          table_name: string
-          user_agent?: string | null
-          user_id?: string | null
-        }
-        Update: {
-          action?: string
-          created_at?: string
-          id?: string
-          ip_address?: string | null
-          record_id?: string | null
-          table_name?: string
-          user_agent?: string | null
-          user_id?: string | null
         }
         Relationships: []
       }
@@ -758,33 +659,6 @@ export type Database = {
         }
         Relationships: []
       }
-      system_health_logs: {
-        Row: {
-          created_at: string
-          id: string
-          message: string | null
-          metrics: Json | null
-          service_name: string
-          status: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          message?: string | null
-          metrics?: Json | null
-          service_name: string
-          status: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          message?: string | null
-          metrics?: Json | null
-          service_name?: string
-          status?: string
-        }
-        Relationships: []
-      }
       system_settings: {
         Row: {
           id: string
@@ -1027,16 +901,6 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      cleanup_old_buffered_signals: { Args: never; Returns: undefined }
-      cleanup_old_health_logs: { Args: never; Returns: undefined }
-      get_user_api_credentials: {
-        Args: { user_uuid: string }
-        Returns: {
-          binance_api_key: string
-          binance_api_secret: string
-          use_testnet: boolean
-        }[]
-      }
       get_user_settings: {
         Args: { p_user_id: string }
         Returns: {
