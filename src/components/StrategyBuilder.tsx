@@ -296,7 +296,7 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="sma_crossover">SMA 10/50 Crossover with RSI Filter (Scalping)</SelectItem>
+                <SelectItem value="sma_crossover">SMA 20/200 Crossover</SelectItem>
                 <SelectItem value="mtf_momentum">MTF Momentum Strategy (Scalping)</SelectItem>
                 <SelectItem value="4h_reentry">4h Reentry Breakout (Adapted for 1h/30m)</SelectItem>
                 <SelectItem value="ath_guard_scalping">ATH Guard Mode - 1min Scalping</SelectItem>
@@ -304,7 +304,7 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
             </Select>
             <p className="text-xs text-muted-foreground">
               {strategyType === "sma_crossover"
-                ? "Scalping strategy using SMA 10/50 crossover with aggressive RSI filter and high volume confirmation"
+                ? "Classic trend-following strategy using SMA 20/200 crossover with RSI filter and volume confirmation"
                 : strategyType === "mtf_momentum"
                 ? "Multi-timeframe momentum strategy optimized for scalping. Combines RSI, MACD signals across 1m-15m timeframes with volume confirmation"
                 : strategyType === "4h_reentry"
@@ -317,7 +317,7 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
 
           {strategyType === "sma_crossover" && (
             <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
-              <h4 className="font-medium">SMA Crossover Configuration</h4>
+              <h4 className="font-medium">SMA 20/200 Crossover Configuration</h4>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="smaFastPeriod">SMA Fast Period</Label>

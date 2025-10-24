@@ -264,11 +264,16 @@ export function MonitoringStatus() {
           <div className="space-y-1 max-h-32 overflow-y-auto">
             {recentSignals.slice(0, 5).map(signal => <div key={signal.id} className="flex items-center justify-between text-xs p-2 rounded bg-secondary/30">
                 <div className="flex items-center gap-2">
-                  <Badge variant={signal.signal_type === "buy" ? "default" : "secondary"} className="text-xs px-1.5 py-0">
-                    {signal.signal_type}
+                  <Badge className={`text-xs px-1.5 py-0 ${
+                    signal.signal_type?.toUpperCase() === "BUY" 
+                      ? "bg-green-500 text-white hover:bg-green-600" 
+                      : "bg-red-500 text-white hover:bg-red-600"
+                  }`}>
+                    {signal.signal_type?.toUpperCase()}
                   </Badge>
                   <span className="font-medium">{signal.symbol}</span>
                   <span className="text-muted-foreground">${signal.price}</span>
+                  <span className="text-xs text-muted-foreground">• {signal.strategies?.name || 'Unknown'}</span>
                 </div>
                 <span className="text-muted-foreground">{getTimeAgo(signal.created_at)}</span>
               </div>)}
