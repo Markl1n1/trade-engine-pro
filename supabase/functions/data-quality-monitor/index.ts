@@ -50,26 +50,40 @@ serve(async (req): Promise<Response> => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const authHeader = req.headers.get('Authorization')!;
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+    // Authentication is optional - some actions are public
+    let userId: string | null = null;
+    const authHeader = req.headers.get('Authorization');
 
-    if (userError || !user) {
-      throw new Error('Unauthorized');
+    if (authHeader) {
+      try {
+        const token = authHeader.replace('Bearer ', '');
+        const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+        if (!userError && user) {
+          userId = user.id;
+        }
+      } catch (error) {
+        console.warn('[DATA-QUALITY-MONITOR] Auth check failed, continuing as public access');
+      }
     }
 
     const request = await req.json();
     const { action } = request;
 
+    // Actions that require authentication
+    const protectedActions = ['generate_quality_report'];
+    if (protectedActions.includes(action) && !userId) {
+      throw new Error('Unauthorized: This action requires authentication');
+    }
+
     switch (action) {
       case 'get_quality_report':
-        return await handleGetQualityReport(supabase, user.id);
+        return await handleGetQualityReport(supabase, userId!);
       case 'get_exchange_status':
-        return await handleGetExchangeStatus(supabase, user.id);
+        return await handleGetExchangeStatus(supabase, userId!);
       case 'validate_data_source':
         return await handleValidateDataSource(request);
       case 'generate_quality_report':
-        return await handleGenerateQualityReport(supabase, user.id, request);
+        return await handleGenerateQualityReport(supabase, userId!, request);
       default:
         throw new Error(`Unknown action: ${action}`);
     }

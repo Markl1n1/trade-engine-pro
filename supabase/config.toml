@@ -45,7 +45,7 @@ verify_jwt = false
 
 # MONITORING AND QUALITY
 [functions.data-quality-monitor]
-verify_jwt = true
+verify_jwt = false
 
 [functions.get-audit-logs]
 verify_jwt = true

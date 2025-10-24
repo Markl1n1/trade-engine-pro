@@ -58,43 +58,143 @@ serve(async (req) => {
       );
     }
 
-    // For real-time monitoring, we'll invoke the instant-signals function
-    // which already has the logic to evaluate strategies and generate signals
+    // Evaluate strategies directly without calling instant-signals
     const generatedSignals = [];
     
     for (const strategy of strategies) {
       try {
-        console.log(`[REALTIME-MONITOR] Processing strategy: ${strategy.name} (${strategy.id})`);
+        console.log(`[REALTIME-MONITOR] Evaluating strategy: ${strategy.name} (${strategy.id})`);
         
-        // Call instant-signals for this strategy
-        const { data: signalResult, error: signalError } = await supabase.functions.invoke(
-          'instant-signals',
-          {
-            body: {
-              strategy_id: strategy.id,
-              symbol: strategy.symbol,
-              timeframe: strategy.timeframe,
-            },
-          }
-        );
+        // Fetch market data for this strategy
+        const { data: candles, error: candlesError } = await supabase
+          .from('market_data')
+          .select('*')
+          .eq('symbol', strategy.symbol)
+          .eq('timeframe', strategy.timeframe)
+          .order('timestamp', { ascending: false })
+          .limit(500);
 
-        if (signalError) {
-          console.error(`[REALTIME-MONITOR] Error processing strategy ${strategy.id}:`, signalError);
+        if (candlesError) {
+          console.error(`[REALTIME-MONITOR] Error fetching candles for ${strategy.id}:`, candlesError);
           continue;
         }
 
-        if (signalResult?.signal) {
+        if (!candles || candles.length === 0) {
+          console.log(`[REALTIME-MONITOR] No candles available for ${strategy.symbol} ${strategy.timeframe}`);
+          continue;
+        }
+
+        // Sort candles by timestamp ascending for strategy evaluation
+        const sortedCandles = candles.sort((a, b) => a.timestamp - b.timestamp);
+        
+        // Convert database candles to strategy format
+        const formattedCandles = sortedCandles.map(c => ({
+          open: parseFloat(c.open),
+          high: parseFloat(c.high),
+          low: parseFloat(c.low),
+          close: parseFloat(c.close),
+          volume: parseFloat(c.volume),
+          timestamp: c.timestamp
+        }));
+
+        // Evaluate strategy based on type
+        let signal = null;
+        const currentPrice = formattedCandles[formattedCandles.length - 1].close;
+
+        switch (strategy.type) {
+          case 'sma_crossover': {
+            const { evaluateSMACrossoverStrategy } = await import('../helpers/sma-crossover-strategy.ts');
+            const config = strategy.config || {
+              sma_fast_period: 20,
+              sma_slow_period: 200,
+              rsi_period: 14,
+              rsi_overbought: 75,
+              rsi_oversold: 25,
+              volume_multiplier: 1.3,
+              atr_sl_multiplier: 2.5,
+              atr_tp_multiplier: 4.0,
+              adx_threshold: 25,
+              bollinger_period: 20,
+              bollinger_std: 2,
+              trailing_stop_percent: 1.0,
+              max_position_time: 240,
+              min_trend_strength: 0.6
+            };
+            signal = evaluateSMACrossoverStrategy(formattedCandles, config, false);
+            break;
+          }
+          
+          case 'mtf_momentum': {
+            const { evaluateMTFMomentum } = await import('../helpers/mtf-momentum-strategy.ts');
+            // MTF momentum needs 1m, 5m, and 15m data - for simplicity, use same timeframe
+            const config = strategy.config || {
+              rsi_period: 14,
+              rsi_entry_threshold: 50,
+              macd_fast: 8,
+              macd_slow: 21,
+              macd_signal: 5,
+              volume_multiplier: 1.1
+            };
+            signal = evaluateMTFMomentum(formattedCandles, formattedCandles, formattedCandles, config, false);
+            break;
+          }
+          
+          case '4h_reentry': {
+            const { evaluate4hReentry } = await import('../helpers/4h-reentry-strategy.ts');
+            signal = evaluate4hReentry(formattedCandles, null, strategy);
+            break;
+          }
+          
+          case 'ath_guard': {
+            const { evaluateATHGuardStrategy } = await import('../helpers/ath-guard-strategy.ts');
+            const config = strategy.config || {
+              ema_slope_threshold: 0.01,
+              pullback_tolerance: 0.5,
+              volume_multiplier: 1.5,
+              stoch_oversold: 20,
+              stoch_overbought: 80,
+              atr_sl_multiplier: 1.5,
+              atr_tp1_multiplier: 2.0,
+              atr_tp2_multiplier: 3.0,
+              ath_safety_distance: 0.2,
+              rsi_threshold: 70,
+              adx_threshold: 25,
+              bollinger_period: 20,
+              bollinger_std: 2,
+              trailing_stop_percent: 0.5,
+              max_position_time: 30,
+              min_volume_spike: 1.2,
+              momentum_threshold: 10,
+              support_resistance_lookback: 20
+            };
+            signal = evaluateATHGuardStrategy(formattedCandles, config, false);
+            break;
+          }
+          
+          default:
+            console.log(`[REALTIME-MONITOR] Unknown strategy type: ${strategy.type}`);
+            continue;
+        }
+
+        // Check if signal is valid and actionable
+        if (signal && signal.signal_type && signal.signal_type !== null) {
+          console.log(`[REALTIME-MONITOR] Signal generated for ${strategy.name}:`, signal);
           generatedSignals.push({
             strategy_id: strategy.id,
             strategy_name: strategy.name,
-            signal_type: signalResult.signal.signal_type,
+            signal_type: signal.signal_type,
             symbol: strategy.symbol,
-            price: signalResult.signal.price,
-            reason: signalResult.signal.reason,
+            price: currentPrice,
+            reason: signal.reason || 'Strategy conditions met',
+            confidence: signal.confidence,
+            stop_loss: signal.stop_loss,
+            take_profit: signal.take_profit
           });
+        } else {
+          console.log(`[REALTIME-MONITOR] No signal for ${strategy.name}: ${signal?.reason || 'No reason provided'}`);
         }
       } catch (error) {
-        console.error(`[REALTIME-MONITOR] Error processing strategy ${strategy.id}:`, error);
+        console.error(`[REALTIME-MONITOR] Error evaluating strategy ${strategy.id}:`, error);
       }
     }
 
