@@ -1028,6 +1028,14 @@ serve(async (req) => {
       sample: marketData[0]
     });
     
+    // ⚡ Performance optimization: Warn about large datasets
+    if (marketData.length > 10000) {
+      log(`⚠️ Large dataset detected: ${marketData.length} candles`, {
+        warning: 'This backtest may timeout due to CPU limits',
+        suggestion: 'Consider reducing date range or using a longer timeframe'
+      });
+    }
+    
     // Calculate required candles based on strategy type and indicators
     let requiredCandles = 200; // Default minimum
     
@@ -1392,6 +1400,9 @@ serve(async (req) => {
         losing_trades: results.losing_trades,
         win_rate: results.win_rate,
         max_drawdown: results.max_drawdown,
+        profit_factor: results.profit_factor,
+        avg_win: results.avg_win,
+        avg_loss: results.avg_loss,
       });
 
     if (insertError) {

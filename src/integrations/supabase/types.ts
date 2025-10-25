@@ -374,6 +374,8 @@ export type Database = {
       }
       strategy_backtest_results: {
         Row: {
+          avg_loss: number | null
+          avg_win: number | null
           balance_history: Json | null
           created_at: string
           end_date: string
@@ -382,6 +384,7 @@ export type Database = {
           initial_balance: number
           losing_trades: number
           max_drawdown: number
+          profit_factor: number | null
           sharpe_ratio: number | null
           start_date: string
           strategy_id: string
@@ -391,6 +394,8 @@ export type Database = {
           winning_trades: number
         }
         Insert: {
+          avg_loss?: number | null
+          avg_win?: number | null
           balance_history?: Json | null
           created_at?: string
           end_date: string
@@ -399,6 +404,7 @@ export type Database = {
           initial_balance: number
           losing_trades: number
           max_drawdown: number
+          profit_factor?: number | null
           sharpe_ratio?: number | null
           start_date: string
           strategy_id: string
@@ -408,6 +414,8 @@ export type Database = {
           winning_trades: number
         }
         Update: {
+          avg_loss?: number | null
+          avg_win?: number | null
           balance_history?: Json | null
           created_at?: string
           end_date?: string
@@ -416,6 +424,7 @@ export type Database = {
           initial_balance?: number
           losing_trades?: number
           max_drawdown?: number
+          profit_factor?: number | null
           sharpe_ratio?: number | null
           start_date?: string
           strategy_id?: string
