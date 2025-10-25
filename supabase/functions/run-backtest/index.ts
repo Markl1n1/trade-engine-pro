@@ -712,9 +712,9 @@ serve(async (req) => {
       makerFee: body.makerFee || 0.018,  // Updated to match Bybit VIP1 rates
       takerFee: body.takerFee || 0.04,   // Updated to match Bybit VIP1 rates
       slippage: body.slippage || 0.01,
-      stopLossPercent: body.stopLossPercent,
-      takeProfitPercent: body.takeProfitPercent,
-      trailingStopPercent: body.trailingStopPercent,
+      stopLossPercent: body.stopLossPercent ?? undefined,
+      takeProfitPercent: body.takeProfitPercent ?? undefined,
+      trailingStopPercent: body.trailingStopPercent ?? undefined,
       productType: body.productType || 'spot',
       executionTiming: body.executionTiming || 'close',
       exitOnOppositeSignal: body.exitOnOppositeSignal,
