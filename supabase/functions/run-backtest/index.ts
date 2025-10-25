@@ -2684,27 +2684,52 @@ async function runMTFMomentumBacktest(
   const avgVolume = recentVolumes.reduce((sum, vol) => sum + vol, 0) / recentVolumes.length;
   const volumeRatio = avgVolume > 0 ? currentVolume / avgVolume : 0;
     
-    // FIXED: Require TRUE multi-timeframe confluence - BOTH higher TFs must confirm
-    const mtfLongCondition = !position &&
-      currentRSI1m > config.mtf_rsi_entry_threshold &&
-      currentRSI5m > 48 &&   // BOTH 5m and 15m must confirm
-      currentRSI15m > 48 &&
-      currentMACD1m > 0 &&   // 1m MACD must be positive
-      (currentMACD5m > 0 || currentMACD15m > 0) && // At least one higher TF MACD confirms
-      volumeRatio >= (config.mtf_volume_multiplier * 0.8);
+    // OPTIMIZED: Use helper function for MTF evaluation (matches real-time monitoring)
+    const { evaluateMTFMomentum } = await import('../helpers/mtf-momentum-strategy.ts');
     
-    // FIXED: Require TRUE multi-timeframe confluence for SHORT
-    const mtfShortCondition = !position &&
-      currentRSI1m < (100 - config.mtf_rsi_entry_threshold) &&
-      currentRSI5m < 52 &&   // BOTH 5m and 15m must confirm
-      currentRSI15m < 52 &&
-      currentMACD1m < 0 &&   // 1m MACD must be negative
-      (currentMACD5m < 0 || currentMACD15m < 0) && // At least one higher TF MACD confirms
-      volumeRatio >= (config.mtf_volume_multiplier * 0.8);
+    // Prepare candle slices (same as real-time monitoring)
+    const candles1mSlice = candles1m.slice(Math.max(0, i - 500), i + 1).map(c => ({
+      open: c.open, high: c.high, low: c.low, 
+      close: c.close, volume: c.volume, timestamp: c.open_time
+    }));
+    
+    const candles5mSlice = candles5m.slice(Math.max(0, idx5m - 200), idx5m + 1).map(c => ({
+      open: c.open, high: c.high, low: c.low, 
+      close: c.close, volume: c.volume, timestamp: c.open_time
+    }));
+    
+    const candles15mSlice = candles15m.slice(Math.max(0, idx15m - 100), idx15m + 1).map(c => ({
+      open: c.open, high: c.high, low: c.low, 
+      close: c.close, volume: c.volume, timestamp: c.open_time
+    }));
+    
+    // Evaluate using helper function
+    const mtfSignal = evaluateMTFMomentum(
+      candles1mSlice,
+      candles5mSlice,
+      candles15mSlice,
+      {
+        rsi_period: config.mtf_rsi_period,
+        rsi_entry_threshold: config.mtf_rsi_entry_threshold || 45,
+        macd_fast: config.mtf_macd_fast,
+        macd_slow: config.mtf_macd_slow,
+        macd_signal: config.mtf_macd_signal,
+        volume_multiplier: config.mtf_volume_multiplier,
+        atr_sl_multiplier: 1.5,
+        atr_tp_multiplier: 2.0,
+        trailing_stop_percent: 0.5,
+        max_position_time: 30,
+        min_profit_percent: 0.2
+      },
+      position !== null
+    );
+    
+    const mtfLongCondition = !position && mtfSignal.signal_type === 'BUY';
+    const mtfShortCondition = !position && mtfSignal.signal_type === 'SELL';
     
     // Debug logging for signal analysis
     if (i % 100 === 0) { // Log every 100 candles to avoid spam
-      console.log(`[MTF-DEBUG] Candle ${i}: RSI(1m:${currentRSI1m.toFixed(1)}, 5m:${currentRSI5m.toFixed(1)}, 15m:${currentRSI15m.toFixed(1)}) MACD(1m:${currentMACD1m.toFixed(3)}, 5m:${currentMACD5m.toFixed(3)}) VolRatio:${volumeRatio.toFixed(2)}x`);
+      console.log(`[MTF-DEBUG] Candle ${i}: Signal=${mtfSignal.signal_type || 'NONE'}, Reason=${mtfSignal.reason}`);
     }
     
     if (mtfLongCondition) {

@@ -181,13 +181,13 @@ export function evaluateMTFMomentum(
   // Optimized configuration for ETH scalping
   const cfg = {
     rsi_period: config.rsi_period ?? 14,
-    rsi_entry_threshold: config.rsi_entry_threshold ?? 50,  // Reduced from 55 for more signals
+    rsi_entry_threshold: config.rsi_entry_threshold ?? 45,  // Reduced from 50 for more signals
     macd_fast: config.macd_fast ?? 8,                       // Faster for scalping
     macd_slow: config.macd_slow ?? 21,                      // Faster for scalping
     macd_signal: config.macd_signal ?? 5,                    // Faster for scalping
     supertrend_atr_period: config.supertrend_atr_period ?? 10,
     supertrend_multiplier: config.supertrend_multiplier ?? 3,
-    volume_multiplier: config.volume_multiplier ?? 1.1,     // Reduced from 1.2 for more signals
+    volume_multiplier: config.volume_multiplier ?? 0.9,     // OPTIMIZED: 90% of average volume
     atr_sl_multiplier: config.atr_sl_multiplier ?? 1.5,     // New: ATR-based stop loss
     atr_tp_multiplier: config.atr_tp_multiplier ?? 2.0,      // New: ATR-based take profit
     trailing_stop_percent: config.trailing_stop_percent ?? 0.5, // New: Fast trailing stop

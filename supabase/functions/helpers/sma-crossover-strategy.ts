@@ -11,8 +11,8 @@ interface Candle {
 }
 
 interface SMACrossoverConfig {
-  sma_fast_period: number;      // Default: 20
-  sma_slow_period: number;      // Default: 200
+  sma_fast_period: number;      // Default: 9 (OPTIMIZED for scalping)
+  sma_slow_period: number;      // Default: 21 (OPTIMIZED for scalping)
   rsi_period: number;           // Default: 14
   rsi_overbought: number;       // Default: 75 (optimized for 15m)
   rsi_oversold: number;         // Default: 25 (optimized for 15m)
@@ -487,19 +487,19 @@ export function evaluateSMACrossoverStrategy(
 
 // FIXED: More lenient configuration for better signal generation
 export const defaultSMACrossoverConfig: SMACrossoverConfig = {
-  sma_fast_period: 20,
-  sma_slow_period: 200,
+  sma_fast_period: 9,               // OPTIMIZED for scalping (was 20)
+  sma_slow_period: 21,              // OPTIMIZED for scalping (was 200)
   rsi_period: 14,
-  rsi_overbought: 80,           // Less restrictive for more signals
-  rsi_oversold: 20,             // Less restrictive for more signals
-  volume_multiplier: 1.1,       // Lower volume requirement for more signals
-  atr_sl_multiplier: 2.0,        // Standard stop loss
-  atr_tp_multiplier: 3.0,        // Standard take profit
+  rsi_overbought: 75,               // Less restrictive for more signals
+  rsi_oversold: 25,                 // Less restrictive for more signals
+  volume_multiplier: 0.9,           // OPTIMIZED: 90% of average volume
+  atr_sl_multiplier: 2.0,           // Standard stop loss
+  atr_tp_multiplier: 3.0,           // Standard take profit
   // FIXED: More lenient enhanced parameters
-  adx_threshold: 20,            // Lower minimum trend strength
-  bollinger_period: 20,         // Bollinger Bands period
-  bollinger_std: 2,             // Bollinger Bands standard deviation
-  trailing_stop_percent: 1.0,   // Trailing stop for trends
-  max_position_time: 240,       // Max time in position (4 hours)
-  min_trend_strength: 0.4       // Lower minimum trend strength score
+  adx_threshold: 20,                // Lower minimum trend strength
+  bollinger_period: 20,             // Bollinger Bands period
+  bollinger_std: 2,                 // Bollinger Bands standard deviation
+  trailing_stop_percent: 1.0,       // Trailing stop for trends
+  max_position_time: 240,           // Max time in position (4 hours)
+  min_trend_strength: 0.4           // Lower minimum trend strength score
 };

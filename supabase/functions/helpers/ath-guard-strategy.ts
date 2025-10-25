@@ -413,11 +413,11 @@ function checkMomentum(
   const currentHistogram = macd.histogram[idx];
   const currentRSI = rsi[idx];
   
-  // Simplified momentum check: RSI + MACD histogram
+  // OPTIMIZED: Softened momentum check - ANY condition passes
   if (bias === 'LONG') {
-    return currentRSI > 50 && currentHistogram > 0; // Simple momentum
+    return currentRSI > 45 || currentHistogram > 0; // Either RSI or MACD
   } else {
-    return currentRSI < 50 && currentHistogram < 0; // Simple momentum
+    return currentRSI < 55 || currentHistogram < 0; // Either RSI or MACD
   }
 }
 
@@ -527,6 +527,72 @@ export function evaluateATHGuardStrategy(
     positionOpen
   });
   
+  // Calculate volume ratio early for breakout logic
+  const currentVolume = candles[candles.length - 1].volume;
+  const last20Volumes = candles.slice(-21, -1).map(c => c.volume);
+  const avgVolume = last20Volumes.reduce((a, b) => a + b, 0) / 20;
+  const volumeRatio = currentVolume / avgVolume;
+  
+  // NEW: Breakout Entry (Priority entry - bypasses all other filters)
+  const recentHigh = Math.max(...candles.slice(-20).map(c => c.high));
+  const recentLow = Math.min(...candles.slice(-20).map(c => c.low));
+  const breakoutThreshold = 0.002; // 0.2% breakout
+  const volumeSpike = volumeRatio >= 1.3; // 30% volume spike
+  
+  if (!positionOpen && currentPrice > recentHigh * (1 + breakoutThreshold) && volumeSpike) {
+    const stopLoss = currentPrice - (config.atr_sl_multiplier * currentATR);
+    const takeProfit1 = currentPrice + (config.atr_tp1_multiplier * currentATR);
+    const takeProfit2 = currentPrice + (config.atr_tp2_multiplier * currentATR);
+    
+    console.log('[ATH-GUARD] 🚀 BREAKOUT LONG DETECTED', {
+      price: currentPrice.toFixed(2),
+      recentHigh: recentHigh.toFixed(2),
+      breakout: `+${((currentPrice / recentHigh - 1) * 100).toFixed(2)}%`,
+      volumeSpike: `${volumeRatio.toFixed(2)}x`
+    });
+    
+    return {
+      signal_type: 'BUY',
+      reason: 'ATH Guard BREAKOUT LONG: Price broke recent high with volume spike',
+      stop_loss: stopLoss,
+      take_profit_1: takeProfit1,
+      take_profit_2: takeProfit2,
+      adx: currentADX,
+      bollinger_position: bollingerPosition,
+      momentum_score: momentumScore,
+      support_resistance_level: recentHigh,
+      confidence: 85, // High confidence for breakouts
+      time_to_expire: 15 // Short expiration for breakout signals
+    };
+  }
+  
+  if (!positionOpen && currentPrice < recentLow * (1 - breakoutThreshold) && volumeSpike) {
+    const stopLoss = currentPrice + (config.atr_sl_multiplier * currentATR);
+    const takeProfit1 = currentPrice - (config.atr_tp1_multiplier * currentATR);
+    const takeProfit2 = currentPrice - (config.atr_tp2_multiplier * currentATR);
+    
+    console.log('[ATH-GUARD] 🚀 BREAKOUT SHORT DETECTED', {
+      price: currentPrice.toFixed(2),
+      recentLow: recentLow.toFixed(2),
+      breakout: `${((currentPrice / recentLow - 1) * 100).toFixed(2)}%`,
+      volumeSpike: `${volumeRatio.toFixed(2)}x`
+    });
+    
+    return {
+      signal_type: 'SELL',
+      reason: 'ATH Guard BREAKOUT SHORT: Price broke recent low with volume spike',
+      stop_loss: stopLoss,
+      take_profit_1: takeProfit1,
+      take_profit_2: takeProfit2,
+      adx: currentADX,
+      bollinger_position: bollingerPosition,
+      momentum_score: momentumScore,
+      support_resistance_level: recentLow,
+      confidence: 85, // High confidence for breakouts
+      time_to_expire: 15 // Short expiration for breakout signals
+    };
+  }
+  
   // Step 1: Simplified Bias Filter (EMA alignment only)
   const bias = checkBiasFilter(currentPrice, currentEMA50, currentEMA100, currentEMA150, ema150Slope, config);
   
@@ -541,29 +607,21 @@ export function evaluateATHGuardStrategy(
     return { signal_type: null, reason: 'No clear bias - EMA alignment not met' };
   }
   
-  // Step 2: Enhanced Volume Confirmation with ADX and Bollinger filters
-  const hasVolume = checkVolume(candles, config);
-  const adxConfirmed = currentADX >= config.adx_threshold;
+  // Step 2: SIMPLIFIED Confirmation - Removed Volume and ADX filters
+  // Only check if momentum score is significant
   const momentumConfirmed = Math.abs(momentumScore) >= config.momentum_threshold;
   
-  const currentVolume = candles[candles.length - 1].volume;
-  const last20Volumes = candles.slice(-21, -1).map(c => c.volume);
-  const avgVolume = last20Volumes.reduce((a, b) => a + b, 0) / 20;
-  const volumeRatio = currentVolume / avgVolume;
-  
-  console.log(`[ATH-GUARD] 📈 Step 2 - Enhanced Confirmation:`, {
-    volume: hasVolume ? '✅ PASS' : '❌ FAIL',
-    adx_confirmed: adxConfirmed ? '✅ PASS' : '❌ FAIL',
+  console.log(`[ATH-GUARD] 📈 Step 2 - Simplified Confirmation:`, {
     momentum_confirmed: momentumConfirmed ? '✅ PASS' : '❌ FAIL',
     currentVolume: currentVolume.toFixed(0),
     avgVolume: avgVolume.toFixed(0),
-    ratio: `${volumeRatio.toFixed(2)}x`,
-    adx_value: currentADX.toFixed(2),
+    ratio: `${volumeRatio.toFixed(2)}x (info only)`,
+    adx_value: currentADX.toFixed(2) + ' (info only)',
     momentum_score: momentumScore.toFixed(2)
   });
   
-  if (!hasVolume || !adxConfirmed || !momentumConfirmed) {
-    return { signal_type: null, reason: 'Volume, ADX, or momentum conditions not met' };
+  if (!momentumConfirmed) {
+    return { signal_type: null, reason: 'Momentum score below threshold' };
   }
   
   // Step 3: Simplified Momentum Confirmation (RSI + MACD)
@@ -602,7 +660,7 @@ export function evaluateATHGuardStrategy(
       currentADX, 
       momentumScore, 
       bollingerPosition,
-      hasVolume,
+      volumeRatio >= 1.2, // Volume confirmed if above 1.2x
       athDistance
     );
     
@@ -621,7 +679,7 @@ export function evaluateATHGuardStrategy(
     
     return {
       signal_type: 'BUY',
-      reason: 'ATH Guard LONG: Enhanced 4-step (Bias + Volume + ADX + Momentum)',
+      reason: 'ATH Guard LONG: Simplified 3-step (Bias + Momentum + Pullback)',
       stop_loss: stopLoss,
       take_profit_1: takeProfit1,
       take_profit_2: takeProfit2,
@@ -646,7 +704,7 @@ export function evaluateATHGuardStrategy(
       currentADX, 
       momentumScore, 
       bollingerPosition,
-      hasVolume,
+      volumeRatio >= 1.2, // Volume confirmed if above 1.2x
       athDistance
     );
     
