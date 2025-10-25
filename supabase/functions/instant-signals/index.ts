@@ -336,16 +336,38 @@ class PositionExecutionManager {
   }
   
   private async executeTestnetPosition(signal: TradingSignal, settings: any) {
-    // Открытие позиции на тестнете
     console.log(`[INSTANT-SIGNALS] Executing testnet position for ${signal.symbol}`);
     
-    return {
-      success: true,
-      orderId: `testnet_${Date.now()}`,
-      mode: 'testnet',
-      risk: 'none',
-      message: 'Testnet position executed'
-    };
+    try {
+      // Get testnet credentials
+      const credentials = await this.getDecryptedCredentials(signal.userId, 'bybit_testnet', settings);
+      
+      if (!credentials.apiKey || !credentials.apiSecret) {
+        throw new Error('Bybit testnet API keys required for testnet mode');
+      }
+      
+      // Execute REAL order via testnet API
+      const orderResult = await this.executeRealOrder(signal, credentials, true, settings.exchange_type || 'bybit');
+      
+      return {
+        success: true,
+        orderId: orderResult.orderId,
+        mode: 'testnet',
+        risk: 'none',
+        message: 'Testnet position executed via testnet API',
+        details: orderResult
+      };
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error(`[INSTANT-SIGNALS] Testnet execution failed:`, errorMessage);
+      return {
+        success: false,
+        error: errorMessage,
+        mode: 'testnet',
+        risk: 'none',
+        message: 'Testnet execution failed'
+      };
+    }
   }
   
   private async executePaperPosition(signal: TradingSignal, settings: any) {

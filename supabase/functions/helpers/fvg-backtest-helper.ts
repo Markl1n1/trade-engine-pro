@@ -1,5 +1,5 @@
 // FVG Scalping Strategy Backtest Helper
-import { evaluateFVGStrategy, FVGConfig } from './fvg-scalping-strategy.ts';
+import { evaluateFVGStrategy, FVGConfig, isWithinTradingWindow } from './fvg-scalping-strategy.ts';
 
 interface Candle {
   open: number;
@@ -68,6 +68,20 @@ export async function runFVGScalpingBacktest(
   // Main backtest loop
   for (let i = 10; i < candles.length; i++) {
     const currentCandle = candles[i];
+    
+    // Check if candle is within trading window (9:30-9:35 AM EST)
+    const candleTime = new Date(currentCandle.open_time);
+    const isInWindow = isWithinTradingWindow(candleTime, config);
+    
+    if (!isInWindow) {
+      // Update balance history even for skipped candles
+      balanceHistory.push({
+        time: currentCandle.open_time,
+        balance: balance
+      });
+      continue; // Skip candles outside trading window
+    }
+    
     const currentPrice = executionTiming === 'open' ? currentCandle.open : currentCandle.close;
 
     // Check stop loss and take profit if in position
@@ -153,7 +167,8 @@ export async function runFVGScalpingBacktest(
 
     // Evaluate strategy for new signals if no position
     if (!position) {
-      const recentCandles = candles.slice(Math.max(0, i - 50), i + 1);
+      // Pass more candles for better FVG tracking (200 instead of 50)
+      const recentCandles = candles.slice(Math.max(0, i - 200), i + 1);
       const signal = evaluateFVGStrategy(recentCandles, config, true);
 
       if (signal.signal_type) {

@@ -46,13 +46,18 @@ export function detectFairValueGap(candles: Candle[]): FVGZone | null {
 
   // Check last 3 candles
   const prev = candles[candles.length - 3];
-  const current = candles[candles.length - 2];
+  const middle = candles[candles.length - 2];
   const next = candles[candles.length - 1];
 
-  // Bullish FVG: previous candle's high < next candle's low (gap between them)
-  if (prev.high < next.low) {
+  // Bullish FVG: gap between prev.high and next.low, middle doesn't fill
+  const bullishGap = prev.high < next.low;
+  const middleDoesntFillBullish = middle.low > prev.high && middle.high < next.low;
+  
+  if (bullishGap && middleDoesntFillBullish) {
     console.log('[FVG] Bullish FVG detected:', {
       prevHigh: prev.high,
+      middleLow: middle.low,
+      middleHigh: middle.high,
       nextLow: next.low,
       gap: next.low - prev.high
     });
@@ -65,10 +70,15 @@ export function detectFairValueGap(candles: Candle[]): FVGZone | null {
     };
   }
 
-  // Bearish FVG: previous candle's low > next candle's high (gap between them)
-  if (prev.low > next.high) {
+  // Bearish FVG: gap between next.high and prev.low, middle doesn't fill
+  const bearishGap = prev.low > next.high;
+  const middleDoesntFillBearish = middle.high < prev.low && middle.low > next.high;
+  
+  if (bearishGap && middleDoesntFillBearish) {
     console.log('[FVG] Bearish FVG detected:', {
       prevLow: prev.low,
+      middleHigh: middle.high,
+      middleLow: middle.low,
       nextHigh: next.high,
       gap: prev.low - next.high
     });
@@ -89,11 +99,15 @@ export function detectRetestCandle(fvg: FVGZone, candle: Candle): boolean {
   if (!fvg.detected) return false;
 
   if (fvg.type === 'bullish') {
-    // For bullish FVG, check if price touches the gap zone
-    return candle.low <= fvg.top && candle.low >= fvg.bottom;
+    // Check if ANY part of candle touches the FVG zone
+    return (candle.low <= fvg.top && candle.low >= fvg.bottom) ||
+           (candle.high <= fvg.top && candle.high >= fvg.bottom) ||
+           (candle.low < fvg.bottom && candle.high > fvg.top);
   } else {
-    // For bearish FVG, check if price touches the gap zone
-    return candle.high >= fvg.bottom && candle.high <= fvg.top;
+    // Check if ANY part of candle touches the FVG zone
+    return (candle.high >= fvg.bottom && candle.high <= fvg.top) ||
+           (candle.low >= fvg.bottom && candle.low <= fvg.top) ||
+           (candle.high > fvg.top && candle.low < fvg.bottom);
   }
 }
 
