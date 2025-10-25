@@ -224,6 +224,11 @@ export type Database = {
           benchmark_symbol: string | null
           created_at: string
           description: string | null
+          fvg_analysis_timeframe: string | null
+          fvg_key_candle_time: string | null
+          fvg_key_timeframe: string | null
+          fvg_risk_reward_ratio: number | null
+          fvg_tick_size: number | null
           id: string
           initial_capital: number | null
           mstg_exit_threshold: number | null
@@ -273,6 +278,11 @@ export type Database = {
           benchmark_symbol?: string | null
           created_at?: string
           description?: string | null
+          fvg_analysis_timeframe?: string | null
+          fvg_key_candle_time?: string | null
+          fvg_key_timeframe?: string | null
+          fvg_risk_reward_ratio?: number | null
+          fvg_tick_size?: number | null
           id?: string
           initial_capital?: number | null
           mstg_exit_threshold?: number | null
@@ -322,6 +332,11 @@ export type Database = {
           benchmark_symbol?: string | null
           created_at?: string
           description?: string | null
+          fvg_analysis_timeframe?: string | null
+          fvg_key_candle_time?: string | null
+          fvg_key_timeframe?: string | null
+          fvg_risk_reward_ratio?: number | null
+          fvg_tick_size?: number | null
           id?: string
           initial_capital?: number | null
           mstg_exit_threshold?: number | null

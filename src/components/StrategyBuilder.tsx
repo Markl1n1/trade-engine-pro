@@ -51,6 +51,13 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
     mtfMacdSlow: 26,
     mtfMacdSignal: 9,
     mtfVolumeMultiplier: 1.2,
+    // FVG Scalping config
+    fvgKeyTimeStart: "09:30",
+    fvgKeyTimeEnd: "09:35",
+    fvgKeyTimeframe: "5m",
+    fvgAnalysisTimeframe: "1m",
+    fvgRiskRewardRatio: 3.0,
+    fvgTickSize: 0.01,
   });
 
   // Load strategy data when editing
@@ -95,6 +102,13 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
         mtfMacdSlow: editStrategy.mtf_macd_slow || 26,
         mtfMacdSignal: editStrategy.mtf_macd_signal || 9,
         mtfVolumeMultiplier: editStrategy.mtf_volume_multiplier || 1.2,
+        // FVG Scalping config
+        fvgKeyTimeStart: editStrategy.fvg_key_candle_time?.split('-')[0] || "09:30",
+        fvgKeyTimeEnd: editStrategy.fvg_key_candle_time?.split('-')[1] || "09:35",
+        fvgKeyTimeframe: editStrategy.fvg_key_timeframe || "5m",
+        fvgAnalysisTimeframe: editStrategy.fvg_analysis_timeframe || "1m",
+        fvgRiskRewardRatio: editStrategy.fvg_risk_reward_ratio || 3.0,
+        fvgTickSize: editStrategy.fvg_tick_size || 0.01,
       });
     }
   };
@@ -127,6 +141,12 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
       mtfMacdSlow: 26,
       mtfMacdSignal: 9,
       mtfVolumeMultiplier: 1.2,
+      fvgKeyTimeStart: "09:30",
+      fvgKeyTimeEnd: "09:35",
+      fvgKeyTimeframe: "5m",
+      fvgAnalysisTimeframe: "1m",
+      fvgRiskRewardRatio: 3.0,
+      fvgTickSize: 0.01,
     });
   };
 
@@ -166,6 +186,12 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
         mtf_macd_slow: strategyType === "mtf_momentum" ? strategyConfig.mtfMacdSlow : null,
         mtf_macd_signal: strategyType === "mtf_momentum" ? strategyConfig.mtfMacdSignal : null,
         mtf_volume_multiplier: strategyType === "mtf_momentum" ? strategyConfig.mtfVolumeMultiplier : null,
+        // FVG Scalping configuration
+        fvg_key_candle_time: strategyType === "fvg_scalping" ? `${strategyConfig.fvgKeyTimeStart}-${strategyConfig.fvgKeyTimeEnd}` : null,
+        fvg_key_timeframe: strategyType === "fvg_scalping" ? strategyConfig.fvgKeyTimeframe : null,
+        fvg_analysis_timeframe: strategyType === "fvg_scalping" ? strategyConfig.fvgAnalysisTimeframe : null,
+        fvg_risk_reward_ratio: strategyType === "fvg_scalping" ? strategyConfig.fvgRiskRewardRatio : null,
+        fvg_tick_size: strategyType === "fvg_scalping" ? strategyConfig.fvgTickSize : null,
         updated_at: new Date().toISOString(),
       };
 
@@ -300,6 +326,7 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
                 <SelectItem value="mtf_momentum">MTF Momentum Strategy (Scalping)</SelectItem>
                 <SelectItem value="4h_reentry">4h Reentry Breakout (Adapted for 1h/30m)</SelectItem>
                 <SelectItem value="ath_guard_scalping">ATH Guard Mode - 1min Scalping</SelectItem>
+                <SelectItem value="fvg_scalping">FVG Scalping (9:30-9:35 EST)</SelectItem>
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
@@ -311,6 +338,8 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
                 ? "Pre-configured strategy adapted for 1h/30m range re-entry trading with faster execution"
                 : strategyType === "ath_guard_scalping"
                 ? "Advanced 1-minute scalping system with EMA bias filter, VWAP pullbacks, MACD+Stochastic momentum triggers, volume validation, and ATR-based risk management"
+                : strategyType === "fvg_scalping"
+                ? "Fair Value Gap scalping strategy - trades FVG retests with 3:1 R:R during market open (9:30-9:35 AM EST). High risk/reward, limited time window."
                 : ""}
             </p>
           </div>
@@ -461,6 +490,102 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
             </div>
           )}
 
+          {strategyType === "fvg_scalping" && (
+            <div className="space-y-4 p-4 bg-muted/50 rounded-lg border-2 border-primary/20">
+              <h4 className="font-medium flex items-center gap-2">
+                FVG Scalping Configuration
+                <span className="text-xs text-muted-foreground font-normal">(Fair Value Gap Strategy)</span>
+              </h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2 col-span-2">
+                  <Label>Trading Window (EST)</Label>
+                  <div className="flex gap-2 items-center">
+                    <Input
+                      type="time"
+                      value={strategyConfig.fvgKeyTimeStart}
+                      onChange={(e) => setStrategyConfig(prev => ({ ...prev, fvgKeyTimeStart: e.target.value }))}
+                      className="flex-1"
+                    />
+                    <span className="text-muted-foreground">to</span>
+                    <Input
+                      type="time"
+                      value={strategyConfig.fvgKeyTimeEnd}
+                      onChange={(e) => setStrategyConfig(prev => ({ ...prev, fvgKeyTimeEnd: e.target.value }))}
+                      className="flex-1"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">Default: 9:30-9:35 AM EST (market open volatility)</p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="fvgKeyTimeframe">Key Levels Timeframe</Label>
+                  <Select 
+                    value={strategyConfig.fvgKeyTimeframe} 
+                    onValueChange={(v) => setStrategyConfig(prev => ({ ...prev, fvgKeyTimeframe: v }))}
+                  >
+                    <SelectTrigger id="fvgKeyTimeframe">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1m">1 minute</SelectItem>
+                      <SelectItem value="5m">5 minutes</SelectItem>
+                      <SelectItem value="15m">15 minutes</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="fvgAnalysisTimeframe">Analysis Timeframe</Label>
+                  <Select 
+                    value={strategyConfig.fvgAnalysisTimeframe} 
+                    onValueChange={(v) => setStrategyConfig(prev => ({ ...prev, fvgAnalysisTimeframe: v }))}
+                  >
+                    <SelectTrigger id="fvgAnalysisTimeframe">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1m">1 minute</SelectItem>
+                      <SelectItem value="5m">5 minutes</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="fvgRiskRewardRatio">Risk/Reward Ratio</Label>
+                  <Input
+                    id="fvgRiskRewardRatio"
+                    type="number"
+                    step="0.1"
+                    value={strategyConfig.fvgRiskRewardRatio}
+                    onChange={(e) => setStrategyConfig(prev => ({ ...prev, fvgRiskRewardRatio: parseFloat(e.target.value) || 3.0 }))}
+                    placeholder="3.0"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="fvgTickSize">Tick Size</Label>
+                  <Input
+                    id="fvgTickSize"
+                    type="number"
+                    step="0.01"
+                    value={strategyConfig.fvgTickSize}
+                    onChange={(e) => setStrategyConfig(prev => ({ ...prev, fvgTickSize: parseFloat(e.target.value) || 0.01 }))}
+                    placeholder="0.01"
+                  />
+                </div>
+              </div>
+              <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+                <p className="text-xs font-medium mb-1">⚠️ Strategy Risk Profile:</p>
+                <ul className="text-xs text-muted-foreground space-y-1">
+                  <li>✅ High R:R ratio (3:1)</li>
+                  <li>✅ Clear entry/exit rules</li>
+                  <li>❌ Limited trading window (5 min/day)</li>
+                  <li>❌ High volatility at market open</li>
+                  <li>❌ News-dependent</li>
+                  <li>💰 Max 2% risk per trade recommended</li>
+                </ul>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                <strong>Strategy Logic:</strong> Detect Fair Value Gap (FVG) → Wait for retest → Confirm with engulfment → Enter with 3:1 R:R (SL: 1 tick beyond FVG)
+              </p>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="description">Description</Label>

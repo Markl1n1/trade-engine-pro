@@ -15,6 +15,7 @@ import { UnifiedBacktestEngine } from '../helpers/unified-backtest-engine.ts';
 import { AdaptiveStrategyManager, defaultAdaptiveParameters } from '../helpers/adaptive-strategy-manager.ts';
 import { EnhancedReporting } from '../helpers/enhanced-reporting.ts';
 import { BaseConfig, BacktestConfig, MarketRegime } from '../helpers/strategy-interfaces.ts';
+import { runFVGScalpingBacktest } from '../helpers/fvg-backtest-helper.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -1328,6 +1329,32 @@ serve(async (req) => {
       );
     }
 
+    // Check if this is FVG Scalping strategy
+    const isFVGScalping = strategy.strategy_type === 'fvg_scalping';
+    
+    if (isFVGScalping) {
+      console.log('Running FVG Scalping strategy backtest...');
+      return await runFVGScalpingBacktest(
+        strategy,
+        candles,
+        initialBalance,
+        productType,
+        leverage,
+        makerFee,
+        takerFee,
+        slippage,
+        executionTiming,
+        supabaseClient,
+        strategyId,
+        startDate,
+        endDate,
+        corsHeaders,
+        trailingStopPercent,
+        stopLossPercent,
+        takeProfitPercent
+      );
+    }
+
     // Check if this is MSTG strategy
     if (isMSTG) {
       console.log('Running MSTG strategy backtest...');
@@ -2617,7 +2644,7 @@ async function runMTFMomentumBacktest(
     
   // ✅ FIXED: Proper multi-timeframe data synchronization
   // Find the closest 5m and 15m candles to current 1m candle
-  const currentTime = currentCandle.open_time;
+  // currentTime already declared above
   
   // Find 5m candle that contains this 1m candle
   let idx5m = -1;

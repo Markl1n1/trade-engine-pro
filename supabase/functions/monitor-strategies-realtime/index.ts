@@ -171,6 +171,20 @@ serve(async (req) => {
             break;
           }
           
+          case 'fvg_scalping': {
+            const { evaluateFVGStrategy } = await import('../helpers/fvg-scalping-strategy.ts');
+            const config = {
+              keyTimeStart: strategy.fvg_key_candle_time?.split('-')[0] || "09:30",
+              keyTimeEnd: strategy.fvg_key_candle_time?.split('-')[1] || "09:35",
+              keyTimeframe: strategy.fvg_key_timeframe || "5m",
+              analysisTimeframe: strategy.fvg_analysis_timeframe || "1m",
+              riskRewardRatio: strategy.fvg_risk_reward_ratio || 3.0,
+              tickSize: strategy.fvg_tick_size || 0.01
+            };
+            signal = evaluateFVGStrategy(formattedCandles, config, false);
+            break;
+          }
+          
           default:
             console.log(`[REALTIME-MONITOR] Unknown strategy type: ${strategy.type}`);
             continue;
