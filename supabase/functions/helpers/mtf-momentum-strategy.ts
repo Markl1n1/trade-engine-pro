@@ -229,20 +229,20 @@ export function evaluateMTFMomentum(
   const currentMACD5 = last(macd5.histogram);
   const currentMACD15 = last(macd15.histogram);
 
-  // FIXED: Require TRUE multi-timeframe confluence - BOTH higher TFs must confirm
+  // RELAXED: More lenient multi-timeframe confluence for crypto
   const condLong = !positionOpen && 
     currentRSI1 > cfg.rsi_entry_threshold &&
-    currentRSI5 > 48 &&   // More lenient threshold (48 instead of 50)
-    currentRSI15 > 48 &&  // BOTH 5m AND 15m must confirm (not OR)
+    currentRSI5 > 45 &&   // Much more lenient threshold (45 instead of 48)
+    currentRSI15 > 45 &&  // BOTH 5m AND 15m must confirm (not OR)
     currentMACD1 > 0 &&   // 1m MACD must be positive
     (currentMACD5 > 0 || currentMACD15 > 0) && // At least one higher TF MACD confirms
     volOk;
 
-  // FIXED: Require TRUE multi-timeframe confluence for SELL
+  // RELAXED: More lenient multi-timeframe confluence for SELL
   const condShort = !positionOpen &&
     currentRSI1 < (100 - cfg.rsi_entry_threshold) &&
-    currentRSI5 < 52 &&   // BOTH 5m AND 15m must confirm
-    currentRSI15 < 52 &&
+    currentRSI5 < 55 &&   // Much more lenient threshold (55 instead of 52)
+    currentRSI15 < 55 &&  // BOTH 5m AND 15m must confirm
     currentMACD1 < 0 &&   // 1m MACD must be negative
     (currentMACD5 < 0 || currentMACD15 < 0) && // At least one higher TF MACD confirms
     volOk;
@@ -298,13 +298,13 @@ export function evaluateMTFMomentum(
 
 export const defaultMTFMomentumConfig: MTFMomentumConfig = {
   rsi_period: 14,
-  rsi_entry_threshold: 50,        // Optimized for ETH scalping
+  rsi_entry_threshold: 45,        // More lenient for crypto (was 50)
   macd_fast: 8,                   // Faster for scalping
   macd_slow: 21,                  // Faster for scalping
   macd_signal: 5,                 // Faster for scalping
   supertrend_atr_period: 10,
   supertrend_multiplier: 3,
-  volume_multiplier: 1.1,         // Reduced for more signals
+  volume_multiplier: 1.0,         // Much more lenient (was 1.1)
   atr_sl_multiplier: 1.5,         // ATR-based stop loss
   atr_tp_multiplier: 2.0,         // ATR-based take profit
   trailing_stop_percent: 0.5,     // Fast trailing stop

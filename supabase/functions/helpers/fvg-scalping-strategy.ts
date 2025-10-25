@@ -49,14 +49,16 @@ export function detectFairValueGap(candles: Candle[]): FVGZone | null {
   const middle = candles[candles.length - 2];
   const next = candles[candles.length - 1];
 
-  // Calculate minimum gap size as 0.05% of current price (dynamic threshold)
+  // Calculate minimum gap size as 0.1% of current price (more realistic for crypto)
   const currentPrice = next.close;
-  const minGapSize = currentPrice * 0.0005; // 0.05% of price
+  const minGapSize = currentPrice * 0.001; // 0.1% of price (increased from 0.05%)
   
-  // Bullish FVG: gap exists AND middle doesn't FULLY CLOSE the gap
+  // Bullish FVG: gap exists AND middle doesn't FULLY CLOSE the gap (RELAXED)
   const bullishGap = prev.high < next.low;
   const gapSize = next.low - prev.high;
-  const middleFillsGap = (middle.low <= prev.high && middle.high >= next.low);
+  // More lenient: middle candle doesn't completely fill the gap
+  const middleFillsGap = (middle.low <= prev.high && middle.high >= next.low) || 
+                         (middle.low <= prev.high && middle.high >= prev.high + (gapSize * 0.8));
   
   // Debug: Log every 3-candle check
   console.log(`[FVG-CHECK] Prev H:${prev.high.toFixed(2)} | Mid L:${middle.low.toFixed(2)}-H:${middle.high.toFixed(2)} | Next L:${next.low.toFixed(2)} | Gap:${gapSize.toFixed(4)} | Min:${minGapSize.toFixed(4)}`);
@@ -85,10 +87,12 @@ export function detectFairValueGap(candles: Candle[]): FVGZone | null {
     console.log(`[FVG] ❌ Bullish gap FILLED by middle candle`);
   }
 
-  // Bearish FVG: gap exists AND middle doesn't FULLY CLOSE the gap
+  // Bearish FVG: gap exists AND middle doesn't FULLY CLOSE the gap (RELAXED)
   const bearishGap = prev.low > next.high;
   const gapSizeBear = prev.low - next.high;
-  const middleFillsGapBear = (middle.high >= prev.low && middle.low <= next.high);
+  // More lenient: middle candle doesn't completely fill the gap
+  const middleFillsGapBear = (middle.high >= prev.low && middle.low <= next.high) ||
+                             (middle.high >= prev.low && middle.low <= prev.low - (gapSizeBear * 0.8));
   
   if (bearishGap && !middleFillsGapBear && gapSizeBear >= minGapSize) {
     const top = Math.min(prev.low, middle.high);
@@ -179,31 +183,47 @@ export function detectFairValueGapRelaxed(candles: Candle[]): FVGZone | null {
   return null;
 }
 
-// Check if candle retests the FVG zone
+// Check if candle retests the FVG zone (RELAXED)
 export function detectRetestCandle(fvg: FVGZone, candle: Candle): boolean {
   if (!fvg.detected) return false;
 
   if (fvg.type === 'bullish') {
-    // Check if ANY part of candle touches the FVG zone
-    return (candle.low <= fvg.top && candle.low >= fvg.bottom) ||
-           (candle.high <= fvg.top && candle.high >= fvg.bottom) ||
-           (candle.low < fvg.bottom && candle.high > fvg.top);
+    // More lenient: candle touches or comes close to FVG zone (within 0.05% tolerance)
+    const tolerance = fvg.bottom * 0.0005; // 0.05% tolerance
+    return (candle.low <= fvg.top + tolerance && candle.low >= fvg.bottom - tolerance) ||
+           (candle.high <= fvg.top + tolerance && candle.high >= fvg.bottom - tolerance) ||
+           (candle.low < fvg.bottom - tolerance && candle.high > fvg.top + tolerance) ||
+           // Also check if candle is very close to FVG zone
+           (Math.abs(candle.low - fvg.bottom) <= tolerance || Math.abs(candle.high - fvg.top) <= tolerance);
   } else {
-    // Check if ANY part of candle touches the FVG zone
-    return (candle.high >= fvg.bottom && candle.high <= fvg.top) ||
-           (candle.low >= fvg.bottom && candle.low <= fvg.top) ||
-           (candle.high > fvg.top && candle.low < fvg.bottom);
+    // More lenient: candle touches or comes close to FVG zone (within 0.05% tolerance)
+    const tolerance = fvg.bottom * 0.0005; // 0.05% tolerance
+    return (candle.high >= fvg.bottom - tolerance && candle.high <= fvg.top + tolerance) ||
+           (candle.low >= fvg.bottom - tolerance && candle.low <= fvg.top + tolerance) ||
+           (candle.high > fvg.top + tolerance && candle.low < fvg.bottom - tolerance) ||
+           // Also check if candle is very close to FVG zone
+           (Math.abs(candle.high - fvg.top) <= tolerance || Math.abs(candle.low - fvg.bottom) <= tolerance);
   }
 }
 
-// Check if retest candle engulfs the FVG zone
+// Check if retest candle engulfs the FVG zone (RELAXED)
 export function checkEngulfment(retestCandle: Candle, fvg: FVGZone): boolean {
   if (fvg.type === 'bullish') {
-    // Bullish engulfment: candle closes above the FVG top
-    return retestCandle.close > fvg.top;
+    // More lenient bullish engulfment: candle closes above FVG top OR shows strong bullish momentum
+    const tolerance = fvg.top * 0.0005; // 0.05% tolerance
+    const strongBullish = retestCandle.close > retestCandle.open && 
+                         (retestCandle.close - retestCandle.open) > (retestCandle.high - retestCandle.low) * 0.6;
+    
+    return retestCandle.close > fvg.top - tolerance || 
+           (retestCandle.close > fvg.bottom && strongBullish);
   } else {
-    // Bearish engulfment: candle closes below the FVG bottom
-    return retestCandle.close < fvg.bottom;
+    // More lenient bearish engulfment: candle closes below FVG bottom OR shows strong bearish momentum
+    const tolerance = fvg.bottom * 0.0005; // 0.05% tolerance
+    const strongBearish = retestCandle.close < retestCandle.open && 
+                         (retestCandle.open - retestCandle.close) > (retestCandle.high - retestCandle.low) * 0.6;
+    
+    return retestCandle.close < fvg.bottom + tolerance || 
+           (retestCandle.close < fvg.top && strongBearish);
   }
 }
 
@@ -276,8 +296,9 @@ export function evaluateFVGStrategy(
 
   // Only enforce time window for ES/NQ futures (not crypto)
   const isFutures = symbol?.includes('ES') || symbol?.includes('NQ');
+  const isCrypto = symbol?.includes('BTC') || symbol?.includes('ETH') || symbol?.includes('USDT');
   
-  if (!isBacktest && isFutures) {
+  if (!isBacktest && isFutures && !isCrypto) {
     const currentTime = new Date();
     if (!isWithinTradingWindow(currentTime, config)) {
       return {
@@ -289,6 +310,7 @@ export function evaluateFVGStrategy(
   }
   
   // For crypto (BTCUSDT, ETHUSDT, etc.), trade 24/7 - no time restriction
+  // For futures, only trade during market hours
 
   // Step 1: Detect FVG in recent candles
   const fvg = detectFairValueGap(candles);

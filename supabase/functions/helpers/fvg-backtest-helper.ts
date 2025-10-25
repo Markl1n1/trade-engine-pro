@@ -81,10 +81,11 @@ export async function runFVGScalpingBacktest(
   for (let i = 10; i < candles.length; i++) {
     const currentCandle = candles[i];
     
-    // For crypto, trade 24/7. Only check time window for futures
+    // For crypto, trade 24/7. Only check time window for futures (not crypto)
     const isFutures = symbol.includes('ES') || symbol.includes('NQ');
+    const isCrypto = symbol.includes('BTC') || symbol.includes('ETH') || symbol.includes('USDT');
     
-    if (isFutures) {
+    if (isFutures && !isCrypto) {
       const candleTime = new Date(currentCandle.open_time);
       const isInWindow = isWithinTradingWindow(candleTime, config);
       
@@ -94,7 +95,7 @@ export async function runFVGScalpingBacktest(
           time: currentCandle.open_time,
           balance: balance
         });
-        continue; // Skip candles outside 9:30-9:35 AM EST for futures
+        continue; // Skip candles outside 9:30-9:35 AM EST for futures only
       }
     }
     
