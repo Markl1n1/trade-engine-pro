@@ -159,7 +159,7 @@ CREATE TYPE public.indicator_type AS ENUM (
 -- User Roles Table
 CREATE TABLE IF NOT EXISTS public.user_roles (
   id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   role public.app_role NOT NULL DEFAULT 'user'::app_role,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   UNIQUE(user_id)
@@ -168,7 +168,7 @@ CREATE TABLE IF NOT EXISTS public.user_roles (
 -- User Settings Table
 CREATE TABLE IF NOT EXISTS public.user_settings (
   id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id uuid NOT NULL UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL UNIQUE REFERENCES public.profiles(id) ON DELETE CASCADE,
   exchange_type text DEFAULT 'binance',
   use_testnet boolean NOT NULL DEFAULT true,
   use_testnet_api boolean NOT NULL DEFAULT true,
@@ -201,7 +201,7 @@ CREATE TABLE IF NOT EXISTS public.user_settings (
 -- API Credentials Table
 CREATE TABLE IF NOT EXISTS public.api_credentials (
   id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   credential_type text NOT NULL,
   api_key text NOT NULL,
   api_secret text NOT NULL,
@@ -217,7 +217,7 @@ CREATE TABLE IF NOT EXISTS public.api_credentials (
 -- Strategies Table
 CREATE TABLE IF NOT EXISTS public.strategies (
   id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   name text NOT NULL,
   description text,
   symbol text NOT NULL DEFAULT 'BTCUSDT',
@@ -307,7 +307,7 @@ CREATE TABLE IF NOT EXISTS public.strategy_conditions (
 CREATE TABLE IF NOT EXISTS public.strategy_live_states (
   id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   strategy_id uuid NOT NULL REFERENCES public.strategies(id) ON DELETE CASCADE,
-  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   position_open boolean NOT NULL DEFAULT false,
   entry_price numeric,
   entry_time timestamp with time zone,
@@ -355,7 +355,7 @@ CREATE TABLE IF NOT EXISTS public.strategy_templates (
   stop_loss_percent numeric,
   take_profit_percent numeric,
   is_public boolean DEFAULT true,
-  created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_by uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
   usage_count integer DEFAULT 0,
   created_at timestamp with time zone DEFAULT now()
 );
@@ -383,7 +383,7 @@ CREATE TABLE IF NOT EXISTS public.market_data (
 -- Strategy Signals Table
 CREATE TABLE IF NOT EXISTS public.strategy_signals (
   id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   strategy_id uuid NOT NULL REFERENCES public.strategies(id) ON DELETE CASCADE,
   symbol text NOT NULL,
   signal_type text NOT NULL,
@@ -403,7 +403,7 @@ CREATE TABLE IF NOT EXISTS public.strategy_signals (
 -- Position Events Table
 CREATE TABLE IF NOT EXISTS public.position_events (
   id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   strategy_id uuid NOT NULL REFERENCES public.strategies(id) ON DELETE CASCADE,
   symbol text NOT NULL,
   event_type text NOT NULL,
@@ -422,7 +422,7 @@ CREATE TABLE IF NOT EXISTS public.position_events (
 -- Trailing Stop States Table
 CREATE TABLE IF NOT EXISTS public.trailing_stop_states (
   id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   position_id text NOT NULL,
   symbol text NOT NULL,
   position_type text NOT NULL,
@@ -437,7 +437,7 @@ CREATE TABLE IF NOT EXISTS public.trailing_stop_states (
 -- User Trading Pairs Table
 CREATE TABLE IF NOT EXISTS public.user_trading_pairs (
   id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   symbol text NOT NULL,
   base_asset text NOT NULL,
   quote_asset text NOT NULL,
@@ -453,14 +453,14 @@ CREATE TABLE IF NOT EXISTS public.system_settings (
   id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   setting_key text NOT NULL UNIQUE,
   setting_value text NOT NULL,
-  updated_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  updated_by uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
   updated_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
 -- User Settings Audit Table
 CREATE TABLE IF NOT EXISTS public.user_settings_audit (
   id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   action text NOT NULL,
   ip_address text,
   user_agent text,
@@ -496,7 +496,7 @@ SET search_path = public
 AS $$
 BEGIN
   -- Assign 'admin' role to first user, 'user' role to others
-  IF (SELECT COUNT(*) FROM auth.users) = 1 THEN
+  IF (SELECT COUNT(*) FROM public.profiles) = 1 THEN
     INSERT INTO public.user_roles (user_id, role)
     VALUES (NEW.id, 'admin');
   ELSE
