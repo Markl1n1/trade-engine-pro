@@ -1,7 +1,7 @@
 // Input validation schemas for edge functions
 import { z } from 'https://deno.land/x/zod@v3.22.4/mod.ts';
 
-// Signal validation schema - support both nested and flat structures
+// Signal validation schema - support both nested and flat structures with flexible field names
 export const signalSchema = z.union([
   // Nested structure: { type: 'signal', signal: { ... } }
   z.object({
@@ -10,38 +10,74 @@ export const signalSchema = z.union([
       id: z.string().uuid(),
       strategyId: z.string().uuid(),
       userId: z.string().uuid(),
-      signal: z.enum(['buy', 'sell', 'hold']),
+      // Accept both 'signal' and 'signal_type' fields with case variations
+      signal_type: z.enum(['BUY', 'SELL', 'buy', 'sell', 'hold', 'HOLD']).optional(),
+      signal: z.enum(['BUY', 'SELL', 'buy', 'sell', 'hold', 'HOLD']).optional(),
       symbol: z.string().regex(/^[A-Z0-9]{4,12}$/, 'Invalid symbol format'),
       price: z.number().positive().finite(),
-      timestamp: z.number().int().positive(),
-      mode: z.string(),
+      // Accept both number timestamp and ISO string
+      timestamp: z.union([
+        z.number().int().positive(),
+        z.string().transform(str => {
+          const parsed = Date.parse(str);
+          return isNaN(parsed) ? parseInt(str) : parsed;
+        })
+      ]),
+      // Make mode optional with default
+      mode: z.string().optional().default('hybrid_safe'),
       priority: z.enum(['critical', 'high', 'medium', 'low']),
       channels: z.array(z.string()),
+      // Make metadata optional with default
       metadata: z.object({
-        indicators: z.any(),
-        conditions: z.any(),
-        risk: z.any()
-      })
-    })
+        indicators: z.any().optional(),
+        conditions: z.any().optional(),
+        risk: z.any().optional()
+      }).optional().default({}),
+      // Accept additional optional fields
+      quantity: z.number().optional(),
+      reason: z.string().optional(),
+      confidence: z.number().optional(),
+      stop_loss: z.number().optional(),
+      take_profit: z.number().optional()
+    }).transform(data => ({
+      ...data,
+      // Normalize signal field to lowercase
+      signal: ((data.signal_type || data.signal || 'hold') as string).toLowerCase() as 'buy' | 'sell' | 'hold'
+    }))
   }),
-  // Flat structure: { id, strategyId, userId, signal, symbol, price, timestamp, mode, priority, channels, metadata }
+  // Flat structure with same flexibility
   z.object({
     id: z.string().uuid(),
     strategyId: z.string().uuid(),
     userId: z.string().uuid(),
-    signal: z.enum(['buy', 'sell', 'hold']),
+    signal_type: z.enum(['BUY', 'SELL', 'buy', 'sell', 'hold', 'HOLD']).optional(),
+    signal: z.enum(['BUY', 'SELL', 'buy', 'sell', 'hold', 'HOLD']).optional(),
     symbol: z.string().regex(/^[A-Z0-9]{4,12}$/, 'Invalid symbol format'),
     price: z.number().positive().finite(),
-    timestamp: z.union([z.number().int().positive(), z.string().transform(str => parseInt(str))]),
-    mode: z.string(),
+    timestamp: z.union([
+      z.number().int().positive(),
+      z.string().transform(str => {
+        const parsed = Date.parse(str);
+        return isNaN(parsed) ? parseInt(str) : parsed;
+      })
+    ]),
+    mode: z.string().optional().default('hybrid_safe'),
     priority: z.enum(['critical', 'high', 'medium', 'low']),
     channels: z.array(z.string()),
     metadata: z.object({
-      indicators: z.any(),
-      conditions: z.any(),
-      risk: z.any()
-    })
-  })
+      indicators: z.any().optional(),
+      conditions: z.any().optional(),
+      risk: z.any().optional()
+    }).optional().default({}),
+    quantity: z.number().optional(),
+    reason: z.string().optional(),
+    confidence: z.number().optional(),
+    stop_loss: z.number().optional(),
+    take_profit: z.number().optional()
+  }).transform(data => ({
+    ...data,
+    signal: ((data.signal_type || data.signal || 'hold') as string).toLowerCase() as 'buy' | 'sell' | 'hold'
+  }))
 ]);
 
 // Backtest validation schema

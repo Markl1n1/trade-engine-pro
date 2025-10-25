@@ -2644,7 +2644,6 @@ async function runMTFMomentumBacktest(
     
   // ✅ FIXED: Proper multi-timeframe data synchronization
   // Find the closest 5m and 15m candles to current 1m candle
-  // currentTime already declared above
   
   // Find 5m candle that contains this 1m candle
   let idx5m = -1;
@@ -2685,19 +2684,23 @@ async function runMTFMomentumBacktest(
   const avgVolume = recentVolumes.reduce((sum, vol) => sum + vol, 0) / recentVolumes.length;
   const volumeRatio = avgVolume > 0 ? currentVolume / avgVolume : 0;
     
-    // FIXED: More lenient MTF LONG conditions for better signal generation
+    // FIXED: Require TRUE multi-timeframe confluence - BOTH higher TFs must confirm
     const mtfLongCondition = !position &&
       currentRSI1m > config.mtf_rsi_entry_threshold &&
-      (currentRSI5m > 45 || currentRSI15m > 45) && // More lenient higher timeframe RSI
-      (currentMACD1m > 0 || currentMACD5m > 0) &&
-      volumeRatio >= (config.mtf_volume_multiplier * 0.8); // Reduced volume requirement
+      currentRSI5m > 48 &&   // BOTH 5m and 15m must confirm
+      currentRSI15m > 48 &&
+      currentMACD1m > 0 &&   // 1m MACD must be positive
+      (currentMACD5m > 0 || currentMACD15m > 0) && // At least one higher TF MACD confirms
+      volumeRatio >= (config.mtf_volume_multiplier * 0.8);
     
-    // FIXED: More lenient MTF SHORT conditions for better signal generation
+    // FIXED: Require TRUE multi-timeframe confluence for SHORT
     const mtfShortCondition = !position &&
       currentRSI1m < (100 - config.mtf_rsi_entry_threshold) &&
-      (currentRSI5m < 55 || currentRSI15m < 55) && // More lenient higher timeframe RSI
-      (currentMACD1m < 0 || currentMACD5m < 0) &&
-      volumeRatio >= (config.mtf_volume_multiplier * 0.8); // Reduced volume requirement
+      currentRSI5m < 52 &&   // BOTH 5m and 15m must confirm
+      currentRSI15m < 52 &&
+      currentMACD1m < 0 &&   // 1m MACD must be negative
+      (currentMACD5m < 0 || currentMACD15m < 0) && // At least one higher TF MACD confirms
+      volumeRatio >= (config.mtf_volume_multiplier * 0.8);
     
     // Debug logging for signal analysis
     if (i % 100 === 0) { // Log every 100 candles to avoid spam

@@ -229,18 +229,22 @@ export function evaluateMTFMomentum(
   const currentMACD5 = last(macd5.histogram);
   const currentMACD15 = last(macd15.histogram);
 
-  // Relaxed MTF confluence for BUY - at least 1m bullish + one higher TF confirms
+  // FIXED: Require TRUE multi-timeframe confluence - BOTH higher TFs must confirm
   const condLong = !positionOpen && 
     currentRSI1 > cfg.rsi_entry_threshold &&
-    (currentRSI5 > 50 || currentRSI15 > 50) && // At least one higher TF neutral/bullish
-    (currentMACD1 > 0 || currentMACD5 > 0) && // At least one MACD positive
+    currentRSI5 > 48 &&   // More lenient threshold (48 instead of 50)
+    currentRSI15 > 48 &&  // BOTH 5m AND 15m must confirm (not OR)
+    currentMACD1 > 0 &&   // 1m MACD must be positive
+    (currentMACD5 > 0 || currentMACD15 > 0) && // At least one higher TF MACD confirms
     volOk;
 
-  // Relaxed MTF confluence for SELL - at least 1m bearish + one higher TF confirms
+  // FIXED: Require TRUE multi-timeframe confluence for SELL
   const condShort = !positionOpen &&
     currentRSI1 < (100 - cfg.rsi_entry_threshold) &&
-    (currentRSI5 < 50 || currentRSI15 < 50) && // At least one higher TF neutral/bearish
-    (currentMACD1 < 0 || currentMACD5 < 0) && // At least one MACD negative
+    currentRSI5 < 52 &&   // BOTH 5m AND 15m must confirm
+    currentRSI15 < 52 &&
+    currentMACD1 < 0 &&   // 1m MACD must be negative
+    (currentMACD5 < 0 || currentMACD15 < 0) && // At least one higher TF MACD confirms
     volOk;
 
   if (positionOpen) {

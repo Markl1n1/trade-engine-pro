@@ -126,7 +126,52 @@ serve(async (req) => {
           
           case 'mtf_momentum': {
             const { evaluateMTFMomentum } = await import('../helpers/mtf-momentum-strategy.ts');
-            // MTF momentum needs 1m, 5m, and 15m data - for simplicity, use same timeframe
+            
+            // Fetch actual 1m, 5m, and 15m data from database for true MTF analysis
+            const { data: candles1m, error: error1m } = await supabase
+              .from('market_data')
+              .select('*')
+              .eq('symbol', strategy.symbol)
+              .eq('timeframe', '1m')
+              .order('open_time', { ascending: false })
+              .limit(500);
+            
+            const { data: candles5m, error: error5m } = await supabase
+              .from('market_data')
+              .select('*')
+              .eq('symbol', strategy.symbol)
+              .eq('timeframe', '5m')
+              .order('open_time', { ascending: false })
+              .limit(200);
+            
+            const { data: candles15m, error: error15m } = await supabase
+              .from('market_data')
+              .select('*')
+              .eq('symbol', strategy.symbol)
+              .eq('timeframe', '15m')
+              .order('open_time', { ascending: false })
+              .limit(100);
+            
+            if (error1m || error5m || error15m || !candles1m || !candles5m || !candles15m) {
+              console.error('[REALTIME-MONITOR] Error fetching MTF data:', { error1m, error5m, error15m });
+              continue;
+            }
+            
+            const formatted1m = candles1m.sort((a, b) => a.open_time - b.open_time).map(c => ({
+              open: parseFloat(c.open), high: parseFloat(c.high), low: parseFloat(c.low),
+              close: parseFloat(c.close), volume: parseFloat(c.volume), timestamp: c.open_time
+            }));
+            
+            const formatted5m = candles5m.sort((a, b) => a.open_time - b.open_time).map(c => ({
+              open: parseFloat(c.open), high: parseFloat(c.high), low: parseFloat(c.low),
+              close: parseFloat(c.close), volume: parseFloat(c.volume), timestamp: c.open_time
+            }));
+            
+            const formatted15m = candles15m.sort((a, b) => a.open_time - b.open_time).map(c => ({
+              open: parseFloat(c.open), high: parseFloat(c.high), low: parseFloat(c.low),
+              close: parseFloat(c.close), volume: parseFloat(c.volume), timestamp: c.open_time
+            }));
+            
             const config = strategy.config || {
               rsi_period: 14,
               rsi_entry_threshold: 50,
@@ -135,7 +180,8 @@ serve(async (req) => {
               macd_signal: 5,
               volume_multiplier: 1.1
             };
-            signal = evaluateMTFMomentum(formattedCandles, formattedCandles, formattedCandles, config, false);
+            
+            signal = evaluateMTFMomentum(formatted1m, formatted5m, formatted15m, config, false);
             break;
           }
           
