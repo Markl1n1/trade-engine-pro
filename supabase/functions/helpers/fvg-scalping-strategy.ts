@@ -49,21 +49,27 @@ export function detectFairValueGap(candles: Candle[]): FVGZone | null {
   const middle = candles[candles.length - 2];
   const next = candles[candles.length - 1];
 
+  // Calculate minimum gap size as 0.05% of current price (dynamic threshold)
+  const currentPrice = next.close;
+  const minGapSize = currentPrice * 0.0005; // 0.05% of price
+  
   // Bullish FVG: gap exists AND middle doesn't FULLY CLOSE the gap
   const bullishGap = prev.high < next.low;
   const gapSize = next.low - prev.high;
   const middleFillsGap = (middle.low <= prev.high && middle.high >= next.low);
   
-  if (bullishGap && !middleFillsGap && gapSize > 0.1) {
+  // Debug: Log every 3-candle check
+  console.log(`[FVG-CHECK] Prev H:${prev.high.toFixed(2)} | Mid L:${middle.low.toFixed(2)}-H:${middle.high.toFixed(2)} | Next L:${next.low.toFixed(2)} | Gap:${gapSize.toFixed(4)} | Min:${minGapSize.toFixed(4)}`);
+  
+  if (bullishGap && !middleFillsGap && gapSize >= minGapSize) {
     const top = Math.min(next.low, middle.low);
     const bottom = Math.max(prev.high, middle.high);
     
-    console.log('[FVG] ✅ Bullish FVG detected:', {
-      prevHigh: prev.high.toFixed(2),
-      middleLow: middle.low.toFixed(2),
-      middleHigh: middle.high.toFixed(2),
-      nextLow: next.low.toFixed(2),
-      gapSize: gapSize.toFixed(2),
+    console.log('[FVG] ✅ Bullish FVG DETECTED:', {
+      price: currentPrice.toFixed(2),
+      minGap: minGapSize.toFixed(4),
+      actualGap: gapSize.toFixed(4),
+      gapPercent: ((gapSize / currentPrice) * 100).toFixed(3) + '%',
       fvgZone: `${bottom.toFixed(2)}-${top.toFixed(2)}`
     });
     return {
@@ -73,6 +79,10 @@ export function detectFairValueGap(candles: Candle[]): FVGZone | null {
       timestamp: next.timestamp || next.open_time || 0,
       detected: true
     };
+  } else if (bullishGap && !middleFillsGap) {
+    console.log(`[FVG] ❌ Bullish gap TOO SMALL: ${gapSize.toFixed(4)} < ${minGapSize.toFixed(4)} (need ${((minGapSize - gapSize) / currentPrice * 100).toFixed(3)}% more)`);
+  } else if (bullishGap && middleFillsGap) {
+    console.log(`[FVG] ❌ Bullish gap FILLED by middle candle`);
   }
 
   // Bearish FVG: gap exists AND middle doesn't FULLY CLOSE the gap
@@ -80,16 +90,15 @@ export function detectFairValueGap(candles: Candle[]): FVGZone | null {
   const gapSizeBear = prev.low - next.high;
   const middleFillsGapBear = (middle.high >= prev.low && middle.low <= next.high);
   
-  if (bearishGap && !middleFillsGapBear && gapSizeBear > 0.1) {
+  if (bearishGap && !middleFillsGapBear && gapSizeBear >= minGapSize) {
     const top = Math.min(prev.low, middle.high);
     const bottom = Math.max(next.high, middle.low);
     
-    console.log('[FVG] ✅ Bearish FVG detected:', {
-      prevLow: prev.low.toFixed(2),
-      middleHigh: middle.high.toFixed(2),
-      middleLow: middle.low.toFixed(2),
-      nextHigh: next.high.toFixed(2),
-      gapSize: gapSizeBear.toFixed(2),
+    console.log('[FVG] ✅ Bearish FVG DETECTED:', {
+      price: currentPrice.toFixed(2),
+      minGap: minGapSize.toFixed(4),
+      actualGap: gapSizeBear.toFixed(4),
+      gapPercent: ((gapSizeBear / currentPrice) * 100).toFixed(3) + '%',
       fvgZone: `${bottom.toFixed(2)}-${top.toFixed(2)}`
     });
     return {
@@ -99,6 +108,10 @@ export function detectFairValueGap(candles: Candle[]): FVGZone | null {
       timestamp: next.timestamp || next.open_time || 0,
       detected: true
     };
+  } else if (bearishGap && !middleFillsGapBear) {
+    console.log(`[FVG] ❌ Bearish gap TOO SMALL: ${gapSizeBear.toFixed(4)} < ${minGapSize.toFixed(4)} (need ${((minGapSize - gapSizeBear) / currentPrice * 100).toFixed(3)}% more)`);
+  } else if (bearishGap && middleFillsGapBear) {
+    console.log(`[FVG] ❌ Bearish gap FILLED by middle candle`);
   }
 
   return null;

@@ -255,13 +255,15 @@ export async function runFVGScalpingBacktest(
           ...c,
           timestamp: c.open_time  // Add timestamp field
         }));
+        
+        console.log(`[FVG-BACKTEST] 🔍 Checking candle ${i}/${candles.length} for FVG (${activeFVGs.length}/${maxActiveFVGs} active)`);
         const newFVG = detectFairValueGap(recentCandles);
         
         if (newFVG) {
           fvgsDetectedCount++;
           const fvgWithIndex = { ...newFVG, candleIndex: i };
           activeFVGs.push(fvgWithIndex);
-          console.log(`[FVG-BACKTEST] 🆕 FVG #${fvgsDetectedCount} detected at candle ${i}/${candles.length}: ${newFVG.type.toUpperCase()} ${newFVG.bottom.toFixed(2)}-${newFVG.top.toFixed(2)} (gap: ${(newFVG.top - newFVG.bottom).toFixed(2)})`);
+          console.log(`[FVG-BACKTEST] 🆕 FVG #${fvgsDetectedCount} DETECTED at candle ${i}/${candles.length}: ${newFVG.type.toUpperCase()} ${newFVG.bottom.toFixed(2)}-${newFVG.top.toFixed(2)} (gap: ${(newFVG.top - newFVG.bottom).toFixed(4)}, ${((newFVG.top - newFVG.bottom) / currentCandle.close * 100).toFixed(3)}%)`);
         }
       }
     }
