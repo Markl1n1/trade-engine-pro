@@ -63,18 +63,3 @@ verify_jwt = true
 
 [functions.test-telegram]
 verify_jwt = true
-
-# =====================================================
-# EDGE FUNCTION CLEANUP LOG
-# =====================================================
-# Removed Edge Functions (2025-01-24):
-# - health-check (not integrated, removed from codebase)
-# - get-binance-pairs (replaced with direct API calls)
-# - migrate-credentials (one-time migration, completed)
-# - process-buffered-signals (signal_buffer table unused)
-# - retry-failed-signals (retry mechanism unused)
-# - generate-strategy (AI Strategy Generator, not implemented)
-# - performance-dashboard (mock data only, not used)
-# - data-quality (not integrated in frontend)
-# - risk-management (mock data only, not used)
-# - execute-javascript-strategy (not called from frontend)
