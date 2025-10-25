@@ -71,6 +71,12 @@ export async function runFVGScalpingBacktest(
   console.log('[FVG-BACKTEST] Config:', config);
   console.log(`[FVG-BACKTEST] Analyzing ${candles.length} candles`);
 
+  // Debugging counters
+  let fvgsDetectedCount = 0;
+  let retestAttempts = 0;
+  let engulfmentFailures = 0;
+  let engulfmentSuccess = 0;
+
   // Main backtest loop
   for (let i = 10; i < candles.length; i++) {
     const currentCandle = candles[i];
@@ -183,7 +189,7 @@ export async function runFVGScalpingBacktest(
         
         // Remove stale FVGs (older than 50 candles)
         if (i - fvg.candleIndex > 50) {
-          console.log(`[FVG-BACKTEST] Removing stale ${fvg.type} FVG from candle ${fvg.candleIndex}`);
+          console.log(`[FVG-BACKTEST] 🗑️ Removing stale ${fvg.type} FVG from candle ${fvg.candleIndex} (age: ${i - fvg.candleIndex} candles)`);
           activeFVGs.splice(j, 1);
           continue;
         }
@@ -192,9 +198,20 @@ export async function runFVGScalpingBacktest(
         const { detectRetestCandle, checkEngulfment, calculateEntry, calculateConfidence } = await import('./fvg-scalping-strategy.ts');
         
         if (detectRetestCandle(fvg, currentCandle)) {
+          retestAttempts++;
+          console.log(`[FVG-BACKTEST] 🎯 Retest attempt #${retestAttempts} at candle ${i} for ${fvg.type} FVG (${fvg.bottom.toFixed(2)}-${fvg.top.toFixed(2)})`);
+          
           const hasEngulfment = checkEngulfment(currentCandle, fvg);
           
+          if (!hasEngulfment) {
+            engulfmentFailures++;
+            console.log(`[FVG-BACKTEST] ❌ Engulfment FAILED (total failures: ${engulfmentFailures}). Close: ${currentCandle.close.toFixed(2)}, Need: ${fvg.type === 'bullish' ? '>' : '<'} ${fvg.type === 'bullish' ? fvg.top.toFixed(2) : fvg.bottom.toFixed(2)}`);
+          }
+          
           if (hasEngulfment) {
+            engulfmentSuccess++;
+            console.log(`[FVG-BACKTEST] ✅ Engulfment SUCCESS #${engulfmentSuccess}`);
+
             console.log(`[FVG-BACKTEST] Retest confirmed at candle ${i} for ${fvg.type} FVG from candle ${fvg.candleIndex}`);
             
             const { entry, stopLoss, takeProfit } = calculateEntry(currentCandle, fvg, config);
@@ -234,13 +251,17 @@ export async function runFVGScalpingBacktest(
       // Detect NEW FVGs if no position and room for more
       if (!position && activeFVGs.length < maxActiveFVGs) {
         const { detectFairValueGap } = await import('./fvg-scalping-strategy.ts');
-        const recentCandles = candles.slice(Math.max(0, i - 10), i + 1);
+        const recentCandles = candles.slice(Math.max(0, i - 10), i + 1).map(c => ({
+          ...c,
+          timestamp: c.open_time  // Add timestamp field
+        }));
         const newFVG = detectFairValueGap(recentCandles);
         
         if (newFVG) {
+          fvgsDetectedCount++;
           const fvgWithIndex = { ...newFVG, candleIndex: i };
           activeFVGs.push(fvgWithIndex);
-          console.log(`[FVG-BACKTEST] New ${newFVG.type} FVG detected at candle ${i}: ${newFVG.bottom.toFixed(2)}-${newFVG.top.toFixed(2)}`);
+          console.log(`[FVG-BACKTEST] 🆕 FVG #${fvgsDetectedCount} detected at candle ${i}/${candles.length}: ${newFVG.type.toUpperCase()} ${newFVG.bottom.toFixed(2)}-${newFVG.top.toFixed(2)} (gap: ${(newFVG.top - newFVG.bottom).toFixed(2)})`);
         }
       }
     }
@@ -301,6 +322,20 @@ export async function runFVGScalpingBacktest(
   const totalWins = wins.reduce((a, b) => a + b, 0);
   const totalLosses = Math.abs(losses.reduce((a, b) => a + b, 0));
   const profitFactor = totalLosses > 0 ? totalWins / totalLosses : 0;
+
+  // Print backtest summary
+  console.log(`[FVG-BACKTEST] 📊 BACKTEST SUMMARY:
+  ==========================================
+  🔍 FVGs Detected: ${fvgsDetectedCount}
+  🎯 Retest Attempts: ${retestAttempts}
+  ✅ Engulfment Success: ${engulfmentSuccess}
+  ❌ Engulfment Failures: ${engulfmentFailures}
+  📈 Trades Executed: ${trades.length}
+  💰 Win Rate: ${winRate.toFixed(1)}%
+  💵 Profit Factor: ${profitFactor.toFixed(2)}
+  📉 Max Drawdown: ${(maxDrawdown * 100).toFixed(2)}%
+  🎲 Total Return: ${totalReturn.toFixed(2)}%
+  ==========================================`);
 
   const results = {
     initial_balance: initialBalance,

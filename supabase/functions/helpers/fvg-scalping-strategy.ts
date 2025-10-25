@@ -38,7 +38,7 @@ export function isWithinTradingWindow(currentTime: Date, config: FVGConfig): boo
   return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
 }
 
-// Detect Fair Value Gap between three consecutive candles
+// Detect Fair Value Gap between three consecutive candles (RELAXED LOGIC)
 export function detectFairValueGap(candles: Candle[]): FVGZone | null {
   if (candles.length < 3) {
     return null;
@@ -49,46 +49,118 @@ export function detectFairValueGap(candles: Candle[]): FVGZone | null {
   const middle = candles[candles.length - 2];
   const next = candles[candles.length - 1];
 
-  // Bullish FVG: gap between prev.high and next.low, middle doesn't fill
+  // Bullish FVG: gap exists AND middle doesn't FULLY CLOSE the gap
   const bullishGap = prev.high < next.low;
-  const middleDoesntFillBullish = middle.low > prev.high && middle.high < next.low;
+  const gapSize = next.low - prev.high;
+  const middleFillsGap = (middle.low <= prev.high && middle.high >= next.low);
   
-  if (bullishGap && middleDoesntFillBullish) {
-    console.log('[FVG] Bullish FVG detected:', {
-      prevHigh: prev.high,
-      middleLow: middle.low,
-      middleHigh: middle.high,
-      nextLow: next.low,
-      gap: next.low - prev.high
+  if (bullishGap && !middleFillsGap && gapSize > 0.1) {
+    const top = Math.min(next.low, middle.low);
+    const bottom = Math.max(prev.high, middle.high);
+    
+    console.log('[FVG] ✅ Bullish FVG detected:', {
+      prevHigh: prev.high.toFixed(2),
+      middleLow: middle.low.toFixed(2),
+      middleHigh: middle.high.toFixed(2),
+      nextLow: next.low.toFixed(2),
+      gapSize: gapSize.toFixed(2),
+      fvgZone: `${bottom.toFixed(2)}-${top.toFixed(2)}`
     });
     return {
       type: 'bullish',
-      top: next.low,
-      bottom: prev.high,
+      top: top,
+      bottom: bottom,
       timestamp: next.timestamp || next.open_time || 0,
       detected: true
     };
   }
 
-  // Bearish FVG: gap between next.high and prev.low, middle doesn't fill
+  // Bearish FVG: gap exists AND middle doesn't FULLY CLOSE the gap
   const bearishGap = prev.low > next.high;
-  const middleDoesntFillBearish = middle.high < prev.low && middle.low > next.high;
+  const gapSizeBear = prev.low - next.high;
+  const middleFillsGapBear = (middle.high >= prev.low && middle.low <= next.high);
   
-  if (bearishGap && middleDoesntFillBearish) {
-    console.log('[FVG] Bearish FVG detected:', {
-      prevLow: prev.low,
-      middleHigh: middle.high,
-      middleLow: middle.low,
-      nextHigh: next.high,
-      gap: prev.low - next.high
+  if (bearishGap && !middleFillsGapBear && gapSizeBear > 0.1) {
+    const top = Math.min(prev.low, middle.high);
+    const bottom = Math.max(next.high, middle.low);
+    
+    console.log('[FVG] ✅ Bearish FVG detected:', {
+      prevLow: prev.low.toFixed(2),
+      middleHigh: middle.high.toFixed(2),
+      middleLow: middle.low.toFixed(2),
+      nextHigh: next.high.toFixed(2),
+      gapSize: gapSizeBear.toFixed(2),
+      fvgZone: `${bottom.toFixed(2)}-${top.toFixed(2)}`
     });
     return {
       type: 'bearish',
-      top: prev.low,
-      bottom: next.high,
+      top: top,
+      bottom: bottom,
       timestamp: next.timestamp || next.open_time || 0,
       detected: true
     };
+  }
+
+  return null;
+}
+
+// Relaxed FVG detection for crypto scalping (more permissive)
+export function detectFairValueGapRelaxed(candles: Candle[]): FVGZone | null {
+  if (candles.length < 3) return null;
+
+  const prev = candles[candles.length - 3];
+  const middle = candles[candles.length - 2];
+  const next = candles[candles.length - 1];
+
+  // Bullish FVG: Look for upward gap with incomplete fill
+  const upwardGap = next.low > prev.high;
+  const gapSize = next.low - prev.high;
+  
+  if (upwardGap && gapSize >= 0.05) {
+    // Check if middle candle leaves some gap unfilled
+    const filledTop = Math.min(next.low, middle.high);
+    const filledBottom = Math.max(prev.high, middle.low);
+    const remainingGap = filledTop - filledBottom;
+    
+    if (remainingGap > 0.02) {
+      console.log('[FVG-RELAXED] ✅ Bullish FVG detected:', {
+        gapSize: gapSize.toFixed(2),
+        remainingGap: remainingGap.toFixed(2),
+        fvgZone: `${filledBottom.toFixed(2)}-${filledTop.toFixed(2)}`
+      });
+      return {
+        type: 'bullish',
+        top: filledTop,
+        bottom: filledBottom,
+        timestamp: next.timestamp || next.open_time || 0,
+        detected: true
+      };
+    }
+  }
+
+  // Bearish FVG: Look for downward gap with incomplete fill
+  const downwardGap = next.high < prev.low;
+  const gapSizeBear = prev.low - next.high;
+  
+  if (downwardGap && gapSizeBear >= 0.05) {
+    const filledTop = Math.min(prev.low, middle.high);
+    const filledBottom = Math.max(next.high, middle.low);
+    const remainingGap = filledTop - filledBottom;
+    
+    if (remainingGap > 0.02) {
+      console.log('[FVG-RELAXED] ✅ Bearish FVG detected:', {
+        gapSize: gapSizeBear.toFixed(2),
+        remainingGap: remainingGap.toFixed(2),
+        fvgZone: `${filledBottom.toFixed(2)}-${filledTop.toFixed(2)}`
+      });
+      return {
+        type: 'bearish',
+        top: filledTop,
+        bottom: filledBottom,
+        timestamp: next.timestamp || next.open_time || 0,
+        detected: true
+      };
+    }
   }
 
   return null;
