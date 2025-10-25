@@ -2495,7 +2495,7 @@ async function runMTFMomentumBacktest(
   const macd15m = calculateMACD(closes15m);
   
   const atr1m = calculateATR(candles1m, 14);
-  const volumeSMA1m = calculateVolumeSMA(candles1m, 20);
+  // FIXED: Remove pre-calculated volumeSMA as it's now calculated per candle
   console.log(`[MTF-BACKTEST] ✅ Indicators ready, starting backtest loop...`);
 
   for (let i = Math.max(config.mtf_rsi_period, config.mtf_macd_slow); i < candles.length; i++) {
@@ -2615,35 +2615,67 @@ async function runMTFMomentumBacktest(
       }
     }
     
-    // ✅ Direct indicator access (O(1) instead of O(n³))
-    const idx5m = Math.floor(i / 5);
-    const idx15m = Math.floor(i / 15);
+  // ✅ FIXED: Proper multi-timeframe data synchronization
+  // Find the closest 5m and 15m candles to current 1m candle
+  const currentTime = currentCandle.open_time;
+  
+  // Find 5m candle that contains this 1m candle
+  let idx5m = -1;
+  for (let j = 0; j < candles5m.length; j++) {
+    if (candles5m[j].open_time <= currentTime && 
+        (j === candles5m.length - 1 || candles5m[j + 1].open_time > currentTime)) {
+      idx5m = j;
+      break;
+    }
+  }
+  
+  // Find 15m candle that contains this 1m candle
+  let idx15m = -1;
+  for (let j = 0; j < candles15m.length; j++) {
+    if (candles15m[j].open_time <= currentTime && 
+        (j === candles15m.length - 1 || candles15m[j + 1].open_time > currentTime)) {
+      idx15m = j;
+      break;
+    }
+  }
+  
+  // Skip if we don't have valid multi-timeframe data
+  if (idx5m < 0 || idx15m < 0 || i < 50) {
+    continue;
+  }
+  
+  const currentRSI1m = rsi1m[i];
+  const currentRSI5m = rsi5m[idx5m];
+  const currentRSI15m = rsi15m[idx15m];
+  
+  const currentMACD1m = macd1m.histogram[i];
+  const currentMACD5m = macd5m.histogram[idx5m];
+  const currentMACD15m = macd15m.histogram[idx15m];
+  
+  // FIXED: Calculate volume ratio for each candle
+  const currentVolume = currentCandle.volume;
+  const recentVolumes = candles1m.slice(Math.max(0, i - 19), i + 1).map(c => c.volume);
+  const avgVolume = recentVolumes.reduce((sum, vol) => sum + vol, 0) / recentVolumes.length;
+  const volumeRatio = avgVolume > 0 ? currentVolume / avgVolume : 0;
     
-    const currentRSI1m = rsi1m[i];
-    const currentRSI5m = rsi5m[idx5m];
-    const currentRSI15m = rsi15m[idx15m];
-    
-    const currentMACD1m = macd1m.histogram[i];
-    const currentMACD5m = macd5m.histogram[idx5m];
-    const currentMACD15m = macd15m.histogram[idx15m];
-    
-    const currentVolume = currentCandle.volume;
-    const avgVolume = volumeSMA1m;
-    const volumeRatio = avgVolume > 0 ? currentVolume / avgVolume : 0;
-    
-    // MTF LONG conditions: RSI + MACD + Volume confluence
+    // FIXED: More lenient MTF LONG conditions for better signal generation
     const mtfLongCondition = !position &&
       currentRSI1m > config.mtf_rsi_entry_threshold &&
-      (currentRSI5m > config.mtf_rsi_entry_threshold || currentRSI15m > config.mtf_rsi_entry_threshold) &&
+      (currentRSI5m > 45 || currentRSI15m > 45) && // More lenient higher timeframe RSI
       (currentMACD1m > 0 || currentMACD5m > 0) &&
-      volumeRatio >= config.mtf_volume_multiplier;
+      volumeRatio >= (config.mtf_volume_multiplier * 0.8); // Reduced volume requirement
     
-    // MTF SHORT conditions: RSI + MACD + Volume confluence  
+    // FIXED: More lenient MTF SHORT conditions for better signal generation
     const mtfShortCondition = !position &&
       currentRSI1m < (100 - config.mtf_rsi_entry_threshold) &&
-      (currentRSI5m < (100 - config.mtf_rsi_entry_threshold) || currentRSI15m < (100 - config.mtf_rsi_entry_threshold)) &&
+      (currentRSI5m < 55 || currentRSI15m < 55) && // More lenient higher timeframe RSI
       (currentMACD1m < 0 || currentMACD5m < 0) &&
-      volumeRatio >= config.mtf_volume_multiplier;
+      volumeRatio >= (config.mtf_volume_multiplier * 0.8); // Reduced volume requirement
+    
+    // Debug logging for signal analysis
+    if (i % 100 === 0) { // Log every 100 candles to avoid spam
+      console.log(`[MTF-DEBUG] Candle ${i}: RSI(1m:${currentRSI1m.toFixed(1)}, 5m:${currentRSI5m.toFixed(1)}, 15m:${currentRSI15m.toFixed(1)}) MACD(1m:${currentMACD1m.toFixed(3)}, 5m:${currentMACD5m.toFixed(3)}) VolRatio:${volumeRatio.toFixed(2)}x`);
+    }
     
     if (mtfLongCondition) {
       // Position sizing (simplified like 4h Reentry)
