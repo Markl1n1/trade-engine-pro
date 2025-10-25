@@ -209,7 +209,9 @@ export function isStrategySuitableForRegime(
     'mtf_momentum': ['trending', 'volatile'],
     'ath_guard': ['trending', 'volatile'],
     '4h_reentry_br': ['trending', 'ranging'],
-    'mstg': ['trending', 'ranging']
+    'mstg': ['trending', 'ranging'],
+    'fvg_scalping': ['ranging', 'volatile'],
+    '4h_reentry': ['trending', 'ranging']
   };
   
   const suitableRegimes = strategyRegimeMap[strategyType] || ['trending'];

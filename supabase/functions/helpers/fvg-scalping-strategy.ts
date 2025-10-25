@@ -173,11 +173,11 @@ export function calculateConfidence(fvg: FVGZone, candle: Candle): number {
   return Math.min(100, confidence);
 }
 
-// Main FVG strategy evaluation function
 export function evaluateFVGStrategy(
   candles: Candle[],
   config: FVGConfig,
-  isBacktest: boolean = false
+  isBacktest: boolean = false,
+  symbol?: string
 ): BaseSignal {
   console.log('[FVG-STRATEGY] Evaluating with', candles.length, 'candles');
   
@@ -189,17 +189,21 @@ export function evaluateFVGStrategy(
     };
   }
 
-  // Check trading window (skip for backtest)
-  if (!isBacktest) {
+  // Only enforce time window for ES/NQ futures (not crypto)
+  const isFutures = symbol?.includes('ES') || symbol?.includes('NQ');
+  
+  if (!isBacktest && isFutures) {
     const currentTime = new Date();
     if (!isWithinTradingWindow(currentTime, config)) {
       return {
         signal_type: null,
-        reason: 'Outside trading window (9:30-9:35 AM EST)',
+        reason: 'Outside trading window (9:30-9:35 AM EST for futures)',
         confidence: 0
       };
     }
   }
+  
+  // For crypto (BTCUSDT, ETHUSDT, etc.), trade 24/7 - no time restriction
 
   // Step 1: Detect FVG in recent candles
   const fvg = detectFairValueGap(candles);

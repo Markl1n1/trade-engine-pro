@@ -52,6 +52,10 @@ export async function runFVGScalpingBacktest(
     { time: candles[0].open_time, balance }
   ];
 
+  // Track multiple active FVGs (up to 3 untested FVGs)
+  const activeFVGs: (any & { candleIndex: number })[] = [];
+  const maxActiveFVGs = 3;
+
   // FVG Strategy Configuration
   const config: FVGConfig = {
     keyTimeStart: strategy.fvg_key_candle_time?.split('-')[0] || "09:30",
@@ -62,6 +66,8 @@ export async function runFVGScalpingBacktest(
     tickSize: strategy.fvg_tick_size || 0.01
   };
 
+  const symbol = strategy.symbol || 'BTCUSDT';
+
   console.log('[FVG-BACKTEST] Config:', config);
   console.log(`[FVG-BACKTEST] Analyzing ${candles.length} candles`);
 
@@ -69,17 +75,21 @@ export async function runFVGScalpingBacktest(
   for (let i = 10; i < candles.length; i++) {
     const currentCandle = candles[i];
     
-    // Check if candle is within trading window (9:30-9:35 AM EST)
-    const candleTime = new Date(currentCandle.open_time);
-    const isInWindow = isWithinTradingWindow(candleTime, config);
+    // For crypto, trade 24/7. Only check time window for futures
+    const isFutures = symbol.includes('ES') || symbol.includes('NQ');
     
-    if (!isInWindow) {
-      // Update balance history even for skipped candles
-      balanceHistory.push({
-        time: currentCandle.open_time,
-        balance: balance
-      });
-      continue; // Skip candles outside trading window
+    if (isFutures) {
+      const candleTime = new Date(currentCandle.open_time);
+      const isInWindow = isWithinTradingWindow(candleTime, config);
+      
+      if (!isInWindow) {
+        // Update balance history even for skipped candles
+        balanceHistory.push({
+          time: currentCandle.open_time,
+          balance: balance
+        });
+        continue; // Skip candles outside 9:30-9:35 AM EST for futures
+      }
     }
     
     const currentPrice = executionTiming === 'open' ? currentCandle.open : currentCandle.close;
@@ -165,34 +175,73 @@ export async function runFVGScalpingBacktest(
       }
     }
 
-    // Evaluate strategy for new signals if no position
+    // Check ALL active FVGs for retest
     if (!position) {
-      // Pass more candles for better FVG tracking (200 instead of 50)
-      const recentCandles = candles.slice(Math.max(0, i - 200), i + 1);
-      const signal = evaluateFVGStrategy(recentCandles, config, true);
+      // Remove stale FVGs and check for retests
+      for (let j = activeFVGs.length - 1; j >= 0; j--) {
+        const fvg = activeFVGs[j];
+        
+        // Remove stale FVGs (older than 50 candles)
+        if (i - fvg.candleIndex > 50) {
+          console.log(`[FVG-BACKTEST] Removing stale ${fvg.type} FVG from candle ${fvg.candleIndex}`);
+          activeFVGs.splice(j, 1);
+          continue;
+        }
+        
+        // Check if current candle retests this FVG
+        const { detectRetestCandle, checkEngulfment, calculateEntry, calculateConfidence } = await import('./fvg-scalping-strategy.ts');
+        
+        if (detectRetestCandle(fvg, currentCandle)) {
+          const hasEngulfment = checkEngulfment(currentCandle, fvg);
+          
+          if (hasEngulfment) {
+            console.log(`[FVG-BACKTEST] Retest confirmed at candle ${i} for ${fvg.type} FVG from candle ${fvg.candleIndex}`);
+            
+            const { entry, stopLoss, takeProfit } = calculateEntry(currentCandle, fvg, config);
+            const confidence = calculateConfidence(fvg, currentCandle);
+            
+            const entryPrice = entry * (1 + (fvg.type === 'bullish' ? slippage : -slippage) / 100);
+            const positionSizePercent = strategy.position_size_percent || 100;
+            const positionValue = (balance * positionSizePercent) / 100;
+            const quantity = productType === 'futures'
+              ? (positionValue * leverage) / entryPrice
+              : positionValue / entryPrice;
 
-      if (signal.signal_type) {
-        const entryPrice = currentPrice * (1 + (signal.signal_type === 'BUY' ? slippage : -slippage) / 100);
-        const positionSizePercent = strategy.position_size_percent || 100;
-        const positionValue = (balance * positionSizePercent) / 100;
-        const quantity = productType === 'futures'
-          ? (positionValue * leverage) / entryPrice
-          : positionValue / entryPrice;
+            if (quantity > 0) {
+              position = {
+                entry_price: entryPrice,
+                entry_time: currentCandle.open_time,
+                type: fvg.type === 'bullish' ? 'buy' : 'sell',
+                quantity: quantity,
+              };
 
-        position = {
-          entry_price: entryPrice,
-          entry_time: currentCandle.open_time,
-          type: signal.signal_type === 'BUY' ? 'buy' : 'sell',
-          quantity: quantity,
-        };
+              // Set SL and TP
+              (position as any).stopLossPrice = stopLoss;
+              (position as any).takeProfitPrice = takeProfit;
 
-        // Set SL and TP from signal
-        (position as any).stopLossPrice = signal.stop_loss;
-        (position as any).takeProfitPrice = signal.take_profit;
-
-        console.log(
-          `[FVG-BACKTEST] ENTRY: ${position.type.toUpperCase()} @ ${entryPrice.toFixed(2)}, SL: ${signal.stop_loss?.toFixed(2)}, TP: ${signal.take_profit?.toFixed(2)}`
-        );
+              console.log(
+                `[FVG-BACKTEST] ENTRY: ${position.type.toUpperCase()} @ ${entryPrice.toFixed(2)}, SL: ${stopLoss.toFixed(2)}, TP: ${takeProfit.toFixed(2)}, Confidence: ${confidence.toFixed(1)}%`
+              );
+              
+              // Remove tested FVG
+              activeFVGs.splice(j, 1);
+              break; // Only one entry per candle
+            }
+          }
+        }
+      }
+      
+      // Detect NEW FVGs if no position and room for more
+      if (!position && activeFVGs.length < maxActiveFVGs) {
+        const { detectFairValueGap } = await import('./fvg-scalping-strategy.ts');
+        const recentCandles = candles.slice(Math.max(0, i - 10), i + 1);
+        const newFVG = detectFairValueGap(recentCandles);
+        
+        if (newFVG) {
+          const fvgWithIndex = { ...newFVG, candleIndex: i };
+          activeFVGs.push(fvgWithIndex);
+          console.log(`[FVG-BACKTEST] New ${newFVG.type} FVG detected at candle ${i}: ${newFVG.bottom.toFixed(2)}-${newFVG.top.toFixed(2)}`);
+        }
       }
     }
 

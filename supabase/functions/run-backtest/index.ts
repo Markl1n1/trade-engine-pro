@@ -1112,50 +1112,22 @@ serve(async (req) => {
     const marketRegime = detectMarketRegime(candles);
     log(`[MARKET-REGIME] Detected regime: ${marketRegime.regime} (${marketRegime.strength}% strength, ${marketRegime.direction} direction, ${marketRegime.confidence}% confidence)`);
     
-    // Check if strategy is suitable for current market regime
+    // Check if strategy is suitable for current market regime (warning only, not blocking)
     const isSuitable = isStrategySuitableForRegime(strategyType, marketRegime);
     
     if (!isSuitable) {
-      log(`[MARKET-REGIME] Strategy ${strategyType} not suitable for ${marketRegime.regime} market`, {
+      log(`[MARKET-REGIME] ⚠️ WARNING: Strategy ${strategyType} performs best in other market conditions. Current: ${marketRegime.regime} (${marketRegime.strength}% strength). Proceeding with backtest...`, {
         regime: marketRegime.regime,
         strength: marketRegime.strength,
         direction: marketRegime.direction,
         confidence: marketRegime.confidence
       });
-      
-      return new Response(
-        JSON.stringify({
-          success: true,
-          results: {
-            initial_balance: initialBalance,
-            final_balance: initialBalance,
-            total_return: 0,
-            total_trades: 0,
-            winning_trades: 0,
-            losing_trades: 0,
-            win_rate: 0,
-            max_drawdown: 0,
-            profit_factor: 0,
-            avg_win: 0,
-            avg_loss: 0,
-            balance_history: [],
-            trades: [],
-            market_regime: marketRegime,
-            reason: `Market regime: ${marketRegime.regime} - strategy not suitable`
-          },
-          config: {
-            product_type: productType,
-            leverage,
-            maker_fee: makerFee,
-            taker_fee: takerFee,
-            slippage,
-            execution_timing: executionTiming,
-            trailing_stop_percent: trailingStopPercent
-          }
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    } else {
+      log(`[MARKET-REGIME] ✅ Strategy ${strategyType} is suitable for ${marketRegime.regime} market (${marketRegime.strength}% strength)`);
     }
+    
+    // Continue with backtest regardless of market regime
+    log(`[BACKTEST] Proceeding with backtest for ${strategyType} in ${marketRegime.regime} market...`);
     
     // Get regime-specific position size adjustment
     const regimePositionAdjustment = getRegimePositionAdjustment(marketRegime);
