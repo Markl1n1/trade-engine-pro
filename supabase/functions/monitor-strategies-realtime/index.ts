@@ -101,7 +101,7 @@ serve(async (req) => {
         let signal = null;
         const currentPrice = formattedCandles[formattedCandles.length - 1].close;
 
-        switch (strategy.type) {
+        switch (strategy.strategy_type) {
           case 'sma_crossover': {
             const { evaluateSMACrossoverStrategy } = await import('../helpers/sma-crossover-strategy.ts');
             const config = strategy.config || {
@@ -232,7 +232,7 @@ serve(async (req) => {
           }
           
           default:
-            console.log(`[REALTIME-MONITOR] Unknown strategy type: ${strategy.type}`);
+            console.log(`[REALTIME-MONITOR] Unknown strategy type: ${strategy.strategy_type}`);
             continue;
         }
 

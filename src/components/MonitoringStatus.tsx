@@ -86,14 +86,40 @@ export function MonitoringStatus() {
   const loadCronStatus = async () => {
     try {
       // Check cron job status from system settings
-      const {
-        data: cronSettings
-      } = await supabase.from('system_settings').select('setting_value').eq('setting_key', 'monitoring_enabled').single();
-      const {
-        data: lastRun
-      } = await supabase.from('system_settings').select('setting_value').eq('setting_key', 'last_monitoring_run').single();
-      setCronStatus(cronSettings?.setting_value === 'true' ? 'active' : 'inactive');
-      setCronLastRun(lastRun?.setting_value || null);
+      const { data: cronSettings } = await supabase
+        .from('system_settings')
+        .select('setting_value')
+        .eq('setting_key', 'monitoring_enabled')
+        .single();
+      
+      const { data: lastRunData } = await supabase
+        .from('system_settings')
+        .select('setting_value')
+        .eq('setting_key', 'last_monitoring_run')
+        .maybeSingle();
+      
+      const lastRunTime = lastRunData?.setting_value;
+      
+      // Check if cron is actually running (last run within 2 minutes)
+      if (lastRunTime) {
+        const lastRunDate = new Date(lastRunTime);
+        const now = new Date();
+        const diffMinutes = (now.getTime() - lastRunDate.getTime()) / 60000;
+        
+        // If last run was within 2 minutes, consider it active
+        if (diffMinutes < 2 && cronSettings?.setting_value === 'true') {
+          setCronStatus('active');
+        } else if (cronSettings?.setting_value === 'true') {
+          setCronStatus('inactive'); // Enabled but not running
+        } else {
+          setCronStatus('inactive');
+        }
+        
+        setCronLastRun(lastRunTime);
+      } else {
+        setCronStatus(cronSettings?.setting_value === 'true' ? 'unknown' : 'inactive');
+        setCronLastRun(null);
+      }
     } catch (error) {
       console.error('[MONITOR] Error loading cron status:', error);
       setCronStatus('unknown');
