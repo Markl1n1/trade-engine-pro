@@ -938,14 +938,19 @@ Deno.serve(async (req) => {
           const signal = insertResult.data;
           allSignals.push(signal);
 
-          // Выполняем сделку в зависимости от режима торговли
+          // Always trigger instant-signals for real-time delivery (regardless of trading mode)
+          try {
+            console.log(`[CRON] Triggering instant signals for ${strategy.name} in ${tradingMode} mode`);
+            await triggerInstantSignalExecution(signal, userSettings, tradingMode);
+          } catch (error) {
+            console.error(`[CRON] Instant signals failed for ${strategy.name}:`, error);
+          }
+          
+          // Execute real trades only for specific modes
           if (shouldExecuteRealTrades(tradingMode)) {
             try {
               console.log(`[CRON] Executing real trade for ${strategy.name} in ${tradingMode} mode`);
-              
-              // Trigger instant-signals for real-time execution
-              await triggerInstantSignalExecution(signal, userSettings, tradingMode);
-              
+              // Real trade execution logic would go here
             } catch (error) {
               console.error(`[CRON] Trade execution failed for ${strategy.name}:`, error);
             }

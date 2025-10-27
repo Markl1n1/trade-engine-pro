@@ -20,19 +20,28 @@ export const useUserRole = () => {
       }
 
       try {
+        console.log('[USER-ROLE] Fetching role for user:', user.id);
+        
         const { data, error } = await supabase
           .from('user_roles')
           .select('role')
           .eq('user_id', user.id)
           .single();
 
-        if (error) throw error;
+        if (error) {
+          console.error('[USER-ROLE] Database error:', error);
+          throw error;
+        }
 
         const userRole = data?.role as AppRole;
+        console.log('[USER-ROLE] User role:', userRole);
+        
         setRole(userRole);
         setIsAdmin(userRole === 'admin');
+        
+        console.log('[USER-ROLE] isAdmin set to:', userRole === 'admin');
       } catch (error) {
-        console.error('Error fetching user role:', error);
+        console.error('[USER-ROLE] Error fetching user role:', error);
         setRole('user');
         setIsAdmin(false);
       } finally {
