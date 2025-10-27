@@ -252,7 +252,6 @@ export type Database = {
           rsi_period: number | null
           sma_fast_period: number | null
           sma_slow_period: number | null
-          status: Database["public"]["Enums"]["strategy_status"]
           stop_loss_percent: number | null
           strategy_type: string | null
           symbol: string
@@ -306,7 +305,6 @@ export type Database = {
           rsi_period?: number | null
           sma_fast_period?: number | null
           sma_slow_period?: number | null
-          status?: Database["public"]["Enums"]["strategy_status"]
           stop_loss_percent?: number | null
           strategy_type?: string | null
           symbol?: string
@@ -360,7 +358,6 @@ export type Database = {
           rsi_period?: number | null
           sma_fast_period?: number | null
           sma_slow_period?: number | null
-          status?: Database["public"]["Enums"]["strategy_status"]
           stop_loss_percent?: number | null
           strategy_type?: string | null
           symbol?: string
@@ -451,14 +448,10 @@ export type Database = {
           deviation: number | null
           group_id: string | null
           id: string
-          indicator_type: Database["public"]["Enums"]["indicator_type"]
-          indicator_type_2: Database["public"]["Enums"]["indicator_type"] | null
           logical_operator: string | null
           lookback_bars: number | null
           multiplier: number | null
-          operator: Database["public"]["Enums"]["condition_operator"]
           order_index: number
-          order_type: Database["public"]["Enums"]["order_type"]
           period_1: number | null
           period_2: number | null
           smoothing: number | null
@@ -473,16 +466,10 @@ export type Database = {
           deviation?: number | null
           group_id?: string | null
           id?: string
-          indicator_type: Database["public"]["Enums"]["indicator_type"]
-          indicator_type_2?:
-            | Database["public"]["Enums"]["indicator_type"]
-            | null
           logical_operator?: string | null
           lookback_bars?: number | null
           multiplier?: number | null
-          operator: Database["public"]["Enums"]["condition_operator"]
           order_index?: number
-          order_type: Database["public"]["Enums"]["order_type"]
           period_1?: number | null
           period_2?: number | null
           smoothing?: number | null
@@ -497,16 +484,10 @@ export type Database = {
           deviation?: number | null
           group_id?: string | null
           id?: string
-          indicator_type?: Database["public"]["Enums"]["indicator_type"]
-          indicator_type_2?:
-            | Database["public"]["Enums"]["indicator_type"]
-            | null
           logical_operator?: string | null
           lookback_bars?: number | null
           multiplier?: number | null
-          operator?: Database["public"]["Enums"]["condition_operator"]
           order_index?: number
-          order_type?: Database["public"]["Enums"]["order_type"]
           period_1?: number | null
           period_2?: number | null
           smoothing?: number | null
@@ -805,19 +786,16 @@ export type Database = {
         Row: {
           created_at: string
           id: string
-          role: Database["public"]["Enums"]["app_role"]
           user_id: string
         }
         Insert: {
           created_at?: string
           id?: string
-          role?: Database["public"]["Enums"]["app_role"]
           user_id: string
         }
         Update: {
           created_at?: string
           id?: string
-          role?: Database["public"]["Enums"]["app_role"]
           user_id?: string
         }
         Relationships: []
@@ -996,13 +974,6 @@ export type Database = {
           use_testnet_api: boolean
         }[]
       }
-      has_role: {
-        Args: {
-          _role: Database["public"]["Enums"]["app_role"]
-          _user_id: string
-        }
-        Returns: boolean
-      }
       retrieve_credential: {
         Args: { p_credential_type: string; p_user_id: string }
         Returns: {
@@ -1021,7 +992,7 @@ export type Database = {
       }
     }
     Enums: {
-      app_role: "admin" | "user"
+      app_role: "admin" | "moderator" | "user"
       condition_operator:
         | "greater_than"
         | "less_than"
@@ -1030,98 +1001,52 @@ export type Database = {
         | "crosses_below"
         | "between"
         | "indicator_comparison"
-        | "CROSSES_ABOVE"
-        | "CROSSES_BELOW"
-        | "BULLISH_DIVERGENCE"
-        | "BEARISH_DIVERGENCE"
-        | "BREAKOUT_ABOVE"
-        | "BREAKOUT_BELOW"
-        | "BOUNCE_OFF"
-        | "IN_RANGE"
+        | "bullish_divergence"
+        | "bearish_divergence"
+        | "breakout_above"
+        | "breakout_below"
+        | "bounce_off"
+        | "in_range"
       indicator_type:
-        | "rsi"
-        | "macd"
-        | "sma"
-        | "ema"
-        | "bollinger_bands"
-        | "stochastic"
-        | "atr"
-        | "adx"
-        | "WMA"
-        | "KAMA"
-        | "MAMA"
-        | "DEMA"
-        | "TEMA"
-        | "WILDER_MA"
-        | "VWMA"
-        | "HULL_MA"
-        | "STOCHASTIC"
-        | "MOMENTUM"
-        | "CCI"
-        | "CHAIKIN_OSC"
-        | "AROON"
-        | "WPR"
-        | "MFI"
-        | "CMF"
-        | "CRSI"
-        | "TMF"
-        | "TRIX"
-        | "TSI"
-        | "ULTIMATE_OSC"
-        | "ROC"
-        | "BOP"
-        | "AWESOME_OSC"
-        | "ACCELERATOR_OSC"
-        | "STOCH_RSI"
-        | "STC"
-        | "RMI"
-        | "RCI"
-        | "SMA_RSI"
-        | "EMA_RSI"
-        | "SMI"
-        | "SMIE"
-        | "CHMO"
-        | "KDJ"
-        | "VOLATILITY_STOP"
-        | "TII"
-        | "MCGINLEY"
-        | "DEMAND_INDEX"
-        | "BB_UPPER"
-        | "BB_LOWER"
-        | "BB_MIDDLE"
-        | "ADX"
-        | "PLUS_DI"
-        | "MINUS_DI"
-        | "OBV"
-        | "AD_LINE"
-        | "PSAR"
-        | "FIBONACCI"
-        | "VWAP"
-        | "ICHIMOKU_TENKAN"
-        | "ICHIMOKU_KIJUN"
-        | "ICHIMOKU_SENKOU_A"
-        | "ICHIMOKU_SENKOU_B"
-        | "KELTNER_UPPER"
-        | "KELTNER_LOWER"
-        | "VOLUME"
-        | "supertrend"
-        | "td_sequential"
-        | "anchored_vwap"
-        | "bb_width"
-        | "percent_b"
-        | "ema_crossover"
-        | "kdj_j"
-        | "psar"
-        | "cmf"
-        | "ichimoku_tenkan"
-        | "ichimoku_kijun"
-        | "ichimoku_senkou_a"
-        | "ichimoku_senkou_b"
-        | "ichimoku_chikou"
         | "price"
         | "open"
         | "high"
         | "low"
+        | "close"
+        | "volume"
+        | "sma"
+        | "ema"
+        | "wma"
+        | "hma"
+        | "tema"
+        | "dema"
+        | "zlema"
+        | "kama"
+        | "mama"
+        | "rsi"
+        | "macd"
+        | "macd_signal"
+        | "macd_histogram"
+        | "bb_upper"
+        | "bb_middle"
+        | "bb_lower"
+        | "atr"
+        | "adx"
+        | "stochastic"
+        | "stoch_k"
+        | "stoch_d"
+        | "cci"
+        | "mfi"
+        | "obv"
+        | "vwap"
+        | "psar"
+        | "supertrend"
+        | "ichimoku_tenkan"
+        | "ichimoku_kijun"
+        | "ichimoku_senkou_a"
+        | "ichimoku_senkou_b"
+        | "fibonacci"
+        | "pivot_point"
       order_type: "buy" | "sell"
       strategy_status: "draft" | "active" | "paused" | "archived"
     }
@@ -1251,7 +1176,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "user"],
+      app_role: ["admin", "moderator", "user"],
       condition_operator: [
         "greater_than",
         "less_than",
@@ -1260,99 +1185,53 @@ export const Constants = {
         "crosses_below",
         "between",
         "indicator_comparison",
-        "CROSSES_ABOVE",
-        "CROSSES_BELOW",
-        "BULLISH_DIVERGENCE",
-        "BEARISH_DIVERGENCE",
-        "BREAKOUT_ABOVE",
-        "BREAKOUT_BELOW",
-        "BOUNCE_OFF",
-        "IN_RANGE",
+        "bullish_divergence",
+        "bearish_divergence",
+        "breakout_above",
+        "breakout_below",
+        "bounce_off",
+        "in_range",
       ],
       indicator_type: [
-        "rsi",
-        "macd",
-        "sma",
-        "ema",
-        "bollinger_bands",
-        "stochastic",
-        "atr",
-        "adx",
-        "WMA",
-        "KAMA",
-        "MAMA",
-        "DEMA",
-        "TEMA",
-        "WILDER_MA",
-        "VWMA",
-        "HULL_MA",
-        "STOCHASTIC",
-        "MOMENTUM",
-        "CCI",
-        "CHAIKIN_OSC",
-        "AROON",
-        "WPR",
-        "MFI",
-        "CMF",
-        "CRSI",
-        "TMF",
-        "TRIX",
-        "TSI",
-        "ULTIMATE_OSC",
-        "ROC",
-        "BOP",
-        "AWESOME_OSC",
-        "ACCELERATOR_OSC",
-        "STOCH_RSI",
-        "STC",
-        "RMI",
-        "RCI",
-        "SMA_RSI",
-        "EMA_RSI",
-        "SMI",
-        "SMIE",
-        "CHMO",
-        "KDJ",
-        "VOLATILITY_STOP",
-        "TII",
-        "MCGINLEY",
-        "DEMAND_INDEX",
-        "BB_UPPER",
-        "BB_LOWER",
-        "BB_MIDDLE",
-        "ADX",
-        "PLUS_DI",
-        "MINUS_DI",
-        "OBV",
-        "AD_LINE",
-        "PSAR",
-        "FIBONACCI",
-        "VWAP",
-        "ICHIMOKU_TENKAN",
-        "ICHIMOKU_KIJUN",
-        "ICHIMOKU_SENKOU_A",
-        "ICHIMOKU_SENKOU_B",
-        "KELTNER_UPPER",
-        "KELTNER_LOWER",
-        "VOLUME",
-        "supertrend",
-        "td_sequential",
-        "anchored_vwap",
-        "bb_width",
-        "percent_b",
-        "ema_crossover",
-        "kdj_j",
-        "psar",
-        "cmf",
-        "ichimoku_tenkan",
-        "ichimoku_kijun",
-        "ichimoku_senkou_a",
-        "ichimoku_senkou_b",
-        "ichimoku_chikou",
         "price",
         "open",
         "high",
         "low",
+        "close",
+        "volume",
+        "sma",
+        "ema",
+        "wma",
+        "hma",
+        "tema",
+        "dema",
+        "zlema",
+        "kama",
+        "mama",
+        "rsi",
+        "macd",
+        "macd_signal",
+        "macd_histogram",
+        "bb_upper",
+        "bb_middle",
+        "bb_lower",
+        "atr",
+        "adx",
+        "stochastic",
+        "stoch_k",
+        "stoch_d",
+        "cci",
+        "mfi",
+        "obv",
+        "vwap",
+        "psar",
+        "supertrend",
+        "ichimoku_tenkan",
+        "ichimoku_kijun",
+        "ichimoku_senkou_a",
+        "ichimoku_senkou_b",
+        "fibonacci",
+        "pivot_point",
       ],
       order_type: ["buy", "sell"],
       strategy_status: ["draft", "active", "paused", "archived"],
