@@ -97,7 +97,7 @@ async function triggerInstantSignalExecution(signal: any, userSettings: any, tra
         strategyId: signal.strategy_id,
         userId: signal.user_id,
         symbol: signal.symbol,
-        signal_type: signal.signal_type,
+        signal: signal.signal_type, // Map signal_type to signal
         price: signal.price,
         quantity: 0.001, // Default for scalping
         reason: signal.reason,

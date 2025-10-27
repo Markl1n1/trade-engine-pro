@@ -34,11 +34,12 @@ interface SignalConfig {
 
 class WebSocketSignalManager {
   private connections = new Map<string, WebSocket>();
+  private userConnections = new Map<string, Set<string>>(); // userId -> Set of connectionIds
   private signalBuffer = new Map<string, TradingSignal[]>();
   private signalCounts = new Map<string, { count: number; resetTime: number }>();
   
   async broadcastSignal(signal: TradingSignal, userSettings: any) {
-    console.log(`[INSTANT-SIGNALS] Broadcasting signal: ${signal.id}`);
+    console.log(`[INSTANT-SIGNALS] Broadcasting signal: ${signal.id} for user ${signal.userId}`);
     
     // Проверяем лимиты
     if (!this.checkSignalLimits(signal)) {
@@ -90,6 +91,8 @@ class WebSocketSignalManager {
       signal: signal,
       timestamp: Date.now()
     });
+    
+    console.log(`[INSTANT-SIGNALS] Found ${userConnections.length} connections for user ${signal.userId}`);
     
     for (const ws of userConnections) {
       if (ws.readyState === WebSocket.OPEN) {
@@ -190,9 +193,44 @@ ${riskLevel}
   
   private getUserConnections(userId: string): WebSocket[] {
     // Возвращает все WebSocket соединения для пользователя
-    return Array.from(this.connections.values()).filter(ws => 
-      ws.readyState === WebSocket.OPEN
-    );
+    const userConnectionIds = this.userConnections.get(userId);
+    if (!userConnectionIds) return [];
+    
+    const connections: WebSocket[] = [];
+    for (const connectionId of userConnectionIds) {
+      const ws = this.connections.get(connectionId);
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        connections.push(ws);
+      }
+    }
+    return connections;
+  }
+  
+  addUserConnection(userId: string, connectionId: string, socket: WebSocket) {
+    this.connections.set(connectionId, socket);
+    
+    if (!this.userConnections.has(userId)) {
+      this.userConnections.set(userId, new Set());
+    }
+    this.userConnections.get(userId)!.add(connectionId);
+  }
+  
+  removeUserConnection(connectionId: string) {
+    const socket = this.connections.get(connectionId);
+    if (socket) {
+      this.connections.delete(connectionId);
+      
+      // Find and remove from user connections
+      for (const [userId, connectionIds] of this.userConnections.entries()) {
+        if (connectionIds.has(connectionId)) {
+          connectionIds.delete(connectionId);
+          if (connectionIds.size === 0) {
+            this.userConnections.delete(userId);
+          }
+          break;
+        }
+      }
+    }
   }
 }
 
@@ -666,6 +704,9 @@ const signalManager = new WebSocketSignalManager();
 const positionManager = new PositionExecutionManager();
 const priorityManager = new SignalPriorityManager();
 
+// Global connection tracking
+const connectionMap = new Map<WebSocket, string>(); // socket -> connectionId
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -765,11 +806,24 @@ Deno.serve(async (req) => {
   
   socket.onopen = () => {
     console.log('[INSTANT-SIGNALS] WebSocket connected');
+    // Generate unique connection ID
+    const connectionId = `conn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    connectionMap.set(socket, connectionId);
   };
   
   socket.onmessage = async (event) => {
     try {
       const data = JSON.parse(event.data);
+      
+      if (data.type === 'user_info') {
+        // Register user connection
+        const connectionId = connectionMap.get(socket);
+        if (connectionId) {
+          signalManager.addUserConnection(data.userId, connectionId, socket);
+          console.log(`[INSTANT-SIGNALS] User ${data.userId} connected with ID ${connectionId}`);
+        }
+        return;
+      }
       
       if (data.type === 'signal') {
         const signal: TradingSignal = data.signal;
@@ -812,6 +866,12 @@ Deno.serve(async (req) => {
   
   socket.onclose = () => {
     console.log('[INSTANT-SIGNALS] WebSocket disconnected');
+    // Remove the connection from our map
+    const connectionId = connectionMap.get(socket);
+    if (connectionId) {
+      signalManager.removeUserConnection(connectionId);
+      connectionMap.delete(socket);
+    }
   };
   
   socket.onerror = (error) => {
