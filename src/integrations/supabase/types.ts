@@ -252,6 +252,7 @@ export type Database = {
           rsi_period: number | null
           sma_fast_period: number | null
           sma_slow_period: number | null
+          status: string
           stop_loss_percent: number | null
           strategy_type: string | null
           symbol: string
@@ -305,6 +306,7 @@ export type Database = {
           rsi_period?: number | null
           sma_fast_period?: number | null
           sma_slow_period?: number | null
+          status?: string
           stop_loss_percent?: number | null
           strategy_type?: string | null
           symbol?: string
@@ -358,6 +360,7 @@ export type Database = {
           rsi_period?: number | null
           sma_fast_period?: number | null
           sma_slow_period?: number | null
+          status?: string
           stop_loss_percent?: number | null
           strategy_type?: string | null
           symbol?: string
@@ -786,16 +789,19 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          role: string
           user_id: string
         }
         Insert: {
           created_at?: string
           id?: string
+          role?: string
           user_id: string
         }
         Update: {
           created_at?: string
           id?: string
+          role?: string
           user_id?: string
         }
         Relationships: []
