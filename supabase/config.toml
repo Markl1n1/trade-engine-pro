@@ -6,7 +6,7 @@ project_id = "wnkjtkigpyfnthnfmdlk"
 
 # CORE TRADING FUNCTIONS
 [functions.monitor-strategies-cron]
-verify_jwt = true
+verify_jwt = false
 
 [functions.run-backtest]
 verify_jwt = true
