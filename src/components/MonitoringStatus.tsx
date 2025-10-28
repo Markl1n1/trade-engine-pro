@@ -84,45 +84,25 @@ export function MonitoringStatus() {
     };
   }, []);
   const loadCronStatus = async () => {
-    try {
-      // Check cron job status from system settings
-      const { data: cronSettings } = await supabase
-        .from('system_settings')
-        .select('setting_value')
-        .eq('setting_key', 'monitoring_enabled')
-        .single();
+    const { data } = await supabase
+      .from('system_settings')
+      .select('setting_value, updated_at')
+      .eq('setting_key', 'last_monitoring_run')
+      .single();
+
+    if (data) {
+      const lastRun = new Date(data.updated_at);
+      const now = new Date();
+      const diffMs = now.getTime() - lastRun.getTime();
+      // FIXED: Cron runs every minute, give 3 minutes grace period for processing delays
+      const isActive = diffMs < 180000; // Active if updated within last 3 minutes (was 2)
       
-      const { data: lastRunData } = await supabase
-        .from('system_settings')
-        .select('setting_value')
-        .eq('setting_key', 'last_monitoring_run')
-        .maybeSingle();
+      setCronStatus(isActive ? 'active' : 'inactive');
+      setCronLastRun(lastRun.toLocaleString());
       
-      const lastRunTime = lastRunData?.setting_value;
-      
-      // Check if cron is actually running (last run within 2 minutes)
-      if (lastRunTime) {
-        const lastRunDate = new Date(lastRunTime);
-        const now = new Date();
-        const diffMinutes = (now.getTime() - lastRunDate.getTime()) / 60000;
-        
-        // If last run was within 2 minutes, consider it active
-        if (diffMinutes < 2 && cronSettings?.setting_value === 'true') {
-          setCronStatus('active');
-        } else if (cronSettings?.setting_value === 'true') {
-          setCronStatus('inactive'); // Enabled but not running
-        } else {
-          setCronStatus('inactive');
-        }
-        
-        setCronLastRun(lastRunTime);
-      } else {
-        setCronStatus(cronSettings?.setting_value === 'true' ? 'unknown' : 'inactive');
-        setCronLastRun(null);
-      }
-    } catch (error) {
-      console.error('[MONITOR] Error loading cron status:', error);
-      setCronStatus('unknown');
+      console.log(`[MONITORING-STATUS] Cron check: last run ${diffMs}ms ago, status: ${isActive ? 'active' : 'inactive'}`);
+    } else {
+      console.log('[MONITORING-STATUS] No cron status found in system_settings');
     }
   };
   const loadSystemHealth = async () => {

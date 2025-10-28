@@ -49,9 +49,9 @@ export function detectFairValueGap(candles: Candle[]): FVGZone | null {
   const middle = candles[candles.length - 2];
   const next = candles[candles.length - 1];
 
-  // Calculate minimum gap size as 0.1% of current price (more realistic for crypto)
+  // Calculate minimum gap size as 0.05% of current price (SOFTER for more signals)
   const currentPrice = next.close;
-  const minGapSize = currentPrice * 0.001; // 0.1% of price (increased from 0.05%)
+  const minGapSize = currentPrice * 0.0005; // 0.05% of price (reduced for more trades)
   
   // Bullish FVG: gap exists AND middle doesn't FULLY CLOSE the gap (RELAXED)
   const bullishGap = prev.high < next.low;

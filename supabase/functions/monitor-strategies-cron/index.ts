@@ -629,6 +629,9 @@ Deno.serve(async (req) => {
           continue;
         }
         
+        // Extract current price BEFORE using it in logs
+        const currentPrice = candles[candles.length - 1].close;
+        
         console.log(`[CRON] 📊 Processing ${strategy.name}: ${candles.length} candles, current price: ${currentPrice}`);
 
         // Fix: Support both 'buy'/'sell' (DB values) and 'entry'/'exit' (legacy)
@@ -638,7 +641,6 @@ Deno.serve(async (req) => {
         const sellConditions = strategy.strategy_conditions.filter((c: any) => 
           c.order_type === 'sell' || c.order_type === 'exit'
         );
-        const currentPrice = candles[candles.length - 1].close;
         
         console.log(`[CRON] 🔍 ${strategy.name} conditions: ${buyConditions.length} buy, ${sellConditions.length} sell, position_open: ${liveState?.position_open}`);
 
@@ -961,9 +963,6 @@ Deno.serve(async (req) => {
           } else {
             console.log(`[CRON] Signal generated for ${strategy.name} in ${tradingMode} mode (no real execution)`);
           }
-        } else {
-          console.log(`[CRON] ⏸️ No signal generated for ${strategy.name} - conditions not met`);
-        }
 
           // Send enhanced Telegram notification IMMEDIATELY
           if (userSettings?.telegram_enabled && userSettings.telegram_bot_token && userSettings.telegram_chat_id) {
@@ -1010,6 +1009,8 @@ Deno.serve(async (req) => {
           } else {
             console.log(`[ENHANCED-TELEGRAM] Telegram disabled or not configured for ${strategy.name}`);
           }
+        } else {
+          console.log(`[CRON] ⏸️ No signal generated for ${strategy.name} - conditions not met`);
         }
       } catch (error) {
         console.error(`[ERROR] Failed to process strategy ${strategy.name}:`, error);

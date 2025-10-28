@@ -52,8 +52,8 @@ export class UnifiedBacktestEngine {
     // Initialize trailing stop manager
     let trailingStopManager = this.createTrailingStopManager();
     
-    // Main backtest loop
-    for (let i = 200; i < candles.length; i++) {
+    // Main backtest loop - START AT 100 for more data (softer entry criteria)
+    for (let i = 100; i < candles.length; i++) {
       const currentCandle = candles[i];
       const executionPrice = this.config.executionTiming === 'open' 
         ? currentCandle.open 
