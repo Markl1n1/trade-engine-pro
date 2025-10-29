@@ -41,6 +41,7 @@ const Backtest = () => {
   useEffect(() => {
     loadStrategies();
     checkDataAvailability();
+    loadUserSettings();
     
     // Set default dates (last 30 days)
     const end = new Date();
@@ -108,6 +109,30 @@ const Backtest = () => {
         variant: "destructive",
       });
       setStrategies([]);
+    }
+  };
+
+  const loadUserSettings = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from('user_settings')
+        .select('debug_mode')
+        .eq('user_id', user.id)
+        .single();
+
+      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
+        console.warn('Error loading user settings:', error);
+        return;
+      }
+
+      if (data?.debug_mode !== undefined) {
+        setDebugMode(data.debug_mode);
+      }
+    } catch (error: any) {
+      console.warn('Error loading user settings:', error);
     }
   };
 
@@ -237,6 +262,17 @@ const Backtest = () => {
     try {
       const functionName = engine === 'simple' ? 'run-backtest-simple' : 'run-backtest';
       
+      // Save debug mode to user settings first
+      if (debugMode !== undefined) {
+        await supabase
+          .from('user_settings')
+          .upsert({
+            user_id: (await supabase.auth.getUser()).data.user?.id,
+            debug_mode: debugMode,
+            updated_at: new Date().toISOString()
+          });
+      }
+
       const { data, error } = await supabase.functions.invoke(functionName, {
         body: {
           strategyId: selectedStrategy,
@@ -252,7 +288,6 @@ const Backtest = () => {
           takerFee: parseFloat(takerFee),
           slippage: parseFloat(slippage),
           executionTiming: engine === 'advanced' ? executionTiming : undefined,
-          debug: debugMode,
         },
       });
 

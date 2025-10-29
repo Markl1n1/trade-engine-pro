@@ -759,10 +759,10 @@ serve(async (req) => {
 
     log(`Strategy loaded`, { name: strategy.name, symbol: strategy.symbol, timeframe: strategy.timeframe, type: strategy.strategy_type || 'standard' });
 
-    // Fetch user settings to get exchange_type
+    // Fetch user settings to get exchange_type and debug_mode
     const { data: userSettings, error: settingsError } = await supabaseClient
       .from('user_settings')
-      .select('exchange_type')
+      .select('exchange_type, debug_mode')
       .eq('user_id', strategy.user_id)
       .single();
 
@@ -1315,7 +1315,8 @@ serve(async (req) => {
         corsHeaders,
         trailingStopPercent,
         stopLossPercent,
-        takeProfitPercent
+        takeProfitPercent,
+        userSettings?.debug_mode || false
       );
     }
 
@@ -2495,8 +2496,10 @@ async function runMTFMomentumBacktest(
   // Validate minimum data requirements
   const minRequiredCandles = Math.max(config.mtf_rsi_period, config.mtf_macd_slow) + 10;
   if (candles1m.length < minRequiredCandles || candles5m.length < minRequiredCandles || candles15m.length < minRequiredCandles) {
-    const debugPayload = { type: 'debug', scope: 'MTF-BACKTEST', event: 'INDICATOR_WINDOW_MISSING', candles1m: candles1m.length, candles5m: candles5m.length, candles15m: candles15m.length, required: minRequiredCandles };
-    try { if ((Deno.env.get('DEBUG_MODE') || '').toLowerCase() === 'true') console.log(JSON.stringify(debugPayload)); } catch {}
+    const debugMode = userSettings?.debug_mode || false;
+    if (debugMode) {
+      console.log(JSON.stringify({ type: 'debug', scope: 'MTF-BACKTEST', event: 'INDICATOR_WINDOW_MISSING', candles1m: candles1m.length, candles5m: candles5m.length, candles15m: candles15m.length, required: minRequiredCandles }));
+    }
     return new Response(JSON.stringify({ success: false, error: 'Insufficient data for MTF analysis' }), { headers: corsHeaders });
   }
 
@@ -2537,8 +2540,10 @@ async function runMTFMomentumBacktest(
     
     // Guard against missing windows
     if (index5m >= candles5m.length || index15m >= candles15m.length) {
-      const debugPayload2 = { type: 'debug', scope: 'MTF-BACKTEST', event: 'INDICATOR_WINDOW_MISSING', i, index5m, index15m, len5m: candles5m.length, len15m: candles15m.length };
-      try { if ((Deno.env.get('DEBUG_MODE') || '').toLowerCase() === 'true') console.log(JSON.stringify(debugPayload2)); } catch {}
+      const debugMode = userSettings?.debug_mode || false;
+      if (debugMode) {
+        console.log(JSON.stringify({ type: 'debug', scope: 'MTF-BACKTEST', event: 'INDICATOR_WINDOW_MISSING', i, index5m, index15m, len5m: candles5m.length, len15m: candles15m.length }));
+      }
       continue;
     }
     const currentTime = currentCandle.open_time;

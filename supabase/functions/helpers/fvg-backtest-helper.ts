@@ -40,7 +40,8 @@ export async function runFVGScalpingBacktest(
   corsHeaders: any,
   trailingStopPercent?: number,
   stopLossPercent?: number,
-  takeProfitPercent?: number
+  takeProfitPercent?: number,
+  debugMode: boolean = false
 ) {
   console.log('[FVG-BACKTEST] Initializing FVG Scalping backtest...');
 
@@ -86,7 +87,9 @@ export async function runFVGScalpingBacktest(
       if (!isInWindow) {
         // Update balance history even for skipped candles
         balanceHistory.push({ time: currentCandle.open_time, balance: balance });
-        try { if ((Deno.env.get('DEBUG_MODE') || '').toLowerCase() === 'true') console.log(JSON.stringify({ type: 'debug', scope: 'FVG-BACKTEST', event: 'OUTSIDE_TRADING_WINDOW', time: currentCandle.open_time })); } catch {}
+        if (debugMode) {
+          console.log(JSON.stringify({ type: 'debug', scope: 'FVG-BACKTEST', event: 'OUTSIDE_TRADING_WINDOW', time: currentCandle.open_time }));
+        }
         continue; // Skip candles outside 9:30-9:35 AM EST for futures only
       }
     }
@@ -185,7 +188,9 @@ export async function runFVGScalpingBacktest(
         
         // Remove stale FVGs (older than 50 candles)
         if (i - fvg.candleIndex > 50) {
-          try { if ((Deno.env.get('DEBUG_MODE') || '').toLowerCase() === 'true') console.log(JSON.stringify({ type: 'debug', scope: 'FVG-BACKTEST', event: 'FVG_RETEST_TTL_EXPIRED', candleIndex: fvg.candleIndex, age: i - fvg.candleIndex })); } catch {}
+          if (debugMode) {
+            console.log(JSON.stringify({ type: 'debug', scope: 'FVG-BACKTEST', event: 'FVG_RETEST_TTL_EXPIRED', candleIndex: fvg.candleIndex, age: i - fvg.candleIndex }));
+          }
           activeFVGs.splice(j, 1);
           continue;
         }
@@ -201,7 +206,9 @@ export async function runFVGScalpingBacktest(
           
           if (!hasEngulfment) {
             engulfmentFailures++;
-            try { if ((Deno.env.get('DEBUG_MODE') || '').toLowerCase() === 'true') console.log(JSON.stringify({ type: 'debug', scope: 'FVG-BACKTEST', event: 'FVG_GAP_FILLED_OR_NOT_ENGULFED', close: currentCandle.close, need: fvg.type === 'bullish' ? `>${fvg.top}` : `<${fvg.bottom}` })); } catch {}
+            if (debugMode) {
+              console.log(JSON.stringify({ type: 'debug', scope: 'FVG-BACKTEST', event: 'FVG_GAP_FILLED_OR_NOT_ENGULFED', close: currentCandle.close, need: fvg.type === 'bullish' ? `>${fvg.top}` : `<${fvg.bottom}` }));
+            }
           }
           
           if (hasEngulfment) {
@@ -260,7 +267,9 @@ export async function runFVGScalpingBacktest(
           const fvgWithIndex = { ...newFVG, candleIndex: i };
           activeFVGs.push(fvgWithIndex);
           console.log(`[FVG-BACKTEST] 🆕 FVG #${fvgsDetectedCount} DETECTED at candle ${i}/${candles.length}: ${newFVG.type.toUpperCase()} ${newFVG.bottom.toFixed(2)}-${newFVG.top.toFixed(2)} (gap: ${(newFVG.top - newFVG.bottom).toFixed(4)}, ${((newFVG.top - newFVG.bottom) / currentCandle.close * 100).toFixed(3)}%)`);
-          try { if ((Deno.env.get('DEBUG_MODE') || '').toLowerCase() === 'true') console.log(JSON.stringify({ type: 'debug', scope: 'FVG-BACKTEST', event: 'FVG_DETECTED', index: i, fvg: { type: newFVG.type, bottom: newFVG.bottom, top: newFVG.top } })); } catch {}
+          if (debugMode) {
+            console.log(JSON.stringify({ type: 'debug', scope: 'FVG-BACKTEST', event: 'FVG_DETECTED', index: i, fvg: { type: newFVG.type, bottom: newFVG.bottom, top: newFVG.top } }));
+          }
         }
       }
     }

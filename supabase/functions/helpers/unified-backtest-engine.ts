@@ -13,7 +13,7 @@ import {
   PositionSizing,
   AdaptiveParameters
 } from './strategy-interfaces.ts';
-import { getBybitConstraints, getBinanceConstraints } from './exchange-constraints.ts';
+import { getBybitConstraints, getBinanceConstraints, roundToStepSize, roundToTickSize, validateOrder } from './exchange-constraints.ts';
 
 // Numeric helpers for stability
 const EPS = 1e-8;
@@ -77,9 +77,6 @@ export class UnifiedBacktestEngine {
     const symbol = this.config.symbol || 'BTCUSDT';
     const exchangeType = this.config.exchangeType || 'bybit';
     const constraints = exchangeType === 'binance' ? getBinanceConstraints(symbol) : getBybitConstraints(symbol);
-    const stepSize = constraints.stepSize;
-    const minQty = constraints.minQty;
-    const minNotional = constraints.minNotional;
 
     // Main backtest loop
     for (let i = startIndex; i < candles.length; i++) {
@@ -137,18 +134,32 @@ export class UnifiedBacktestEngine {
           // Convert position size% to USD exposure
           const usdExposure = this.calculatePositionSize(evaluation, balance) * Math.max(1, this.config.leverage || 1);
           // Convert to base qty and quantize
-          let baseQty = floorToStep(safeDiv(usdExposure, executionPrice), stepSize);
-
-          const notional = baseQty * executionPrice;
-          const qtyValid = Number.isFinite(baseQty) && baseQty >= minQty && notional >= minNotional;
-
-          if (!qtyValid || baseQty <= 0) {
+          let baseQty = roundToStepSize(safeDiv(usdExposure, executionPrice), constraints.stepSize);
+          
+          // Round price to tick size
+          const roundedPrice = roundToTickSize(executionPrice, constraints.priceTick);
+          
+          // Validate order against exchange constraints
+          const validation = validateOrder(baseQty, roundedPrice, constraints);
+          
+          if (!validation.valid || baseQty <= 0) {
             const reason = !Number.isFinite(baseQty) || baseQty <= 0 ? 'SIZE_TOO_SMALL' : 'EXCHANGE_CONSTRAINT';
-            this.debug('SKIP_ENTRY', { reason, baseQty, minQty, notional, minNotional, price: executionPrice });
+            this.debug('SKIP_ENTRY', { 
+              reason, 
+              baseQty, 
+              price: roundedPrice,
+              validation: validation.reason,
+              constraints: {
+                stepSize: constraints.stepSize,
+                minQty: constraints.minQty,
+                minNotional: constraints.minNotional,
+                priceTick: constraints.priceTick
+              }
+            });
           } else {
             position = this.openPosition(
               signal,
-              executionPrice,
+              roundedPrice,
               baseQty,
               currentCandle.open_time || currentCandle.timestamp || 0
             );
@@ -338,9 +349,11 @@ export class UnifiedBacktestEngine {
     return { trade, netProfit };
   }
 
-  // Debug logging helpers (enabled via DEBUG_MODE env)
-  private get debugEnabled(): boolean {
-    try { return (Deno.env.get('DEBUG_MODE') || '').toLowerCase() === 'true'; } catch { return false; }
+  // Debug logging helpers (enabled via user_settings.debug_mode)
+  private debugEnabled: boolean = false;
+  
+  public setDebugMode(enabled: boolean): void {
+    this.debugEnabled = enabled;
   }
 
   private debug(event: string, data: Record<string, unknown>): void {
