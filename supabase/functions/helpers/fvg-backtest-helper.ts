@@ -172,6 +172,9 @@ export async function runFVGScalpingBacktest(
           `[FVG-BACKTEST] ${exitReason}: ${position.type.toUpperCase()} @ ${exitPrice.toFixed(2)}, Profit: ${netProfit.toFixed(2)}`
         );
 
+        // Reset all FVG zones after position close to prevent duplicate entries
+        activeFVGs.length = 0;
+        console.log(`[FVG-BACKTEST] 🔄 Reset all FVG zones after position close`);
         position = null;
       }
     }
@@ -368,6 +371,7 @@ export async function runFVGScalpingBacktest(
       losing_trades: results.losing_trades,
       win_rate: results.win_rate,
       max_drawdown: results.max_drawdown,
+      trades: results.trades,
       balance_history: results.balance_history
     });
 

@@ -523,6 +523,7 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
     win_rate: winRate, 
     max_drawdown: maxDrawdown, 
     sharpe_ratio: 0,
+    trades: trades,
     balance_history: balanceHistory
   });
 
@@ -2346,6 +2347,7 @@ async function runSMACrossoverBacktest(
       win_rate: winRate,
       max_drawdown: maxDrawdown,
       profit_factor: profitFactor,
+      trades: trades,
       balance_history: balanceHistory
     });
 
@@ -2489,6 +2491,13 @@ async function runMTFMomentumBacktest(
   const candles15m = resampleCandles(candles, '15m');
   
   console.log(`[MTF-BACKTEST] Resampled: ${candles5m.length} 5m → ${candles15m.length} 15m candles`);
+  
+  // Validate minimum data requirements
+  const minRequiredCandles = Math.max(config.mtf_rsi_period, config.mtf_macd_slow) + 10;
+  if (candles1m.length < minRequiredCandles || candles5m.length < minRequiredCandles || candles15m.length < minRequiredCandles) {
+    console.log(`[MTF-BACKTEST] ❌ Insufficient data: 1m=${candles1m.length}, 5m=${candles5m.length}, 15m=${candles15m.length}, required=${minRequiredCandles}`);
+    return new Response(JSON.stringify({ success: false, error: 'Insufficient data for MTF analysis' }), { headers: corsHeaders });
+  }
 
   // PRE-CALCULATE ALL INDICATORS ONCE (O(n) instead of O(n³))
   const closes1m = candles1m.map(c => c.close);
@@ -2520,6 +2529,16 @@ async function runMTFMomentumBacktest(
     }
     const currentCandle = candles[i];
     const currentPrice = executionTiming === 'open' ? currentCandle.open : currentCandle.close;
+    
+    // Synchronize indices across timeframes
+    const index5m = Math.floor(i / 5);
+    const index15m = Math.floor(i / 15);
+    
+    // Guard against missing windows
+    if (index5m >= candles5m.length || index15m >= candles15m.length) {
+      console.log(`[MTF-BACKTEST] ⚠️ Skipping candle ${i}: Missing higher timeframe data (5m: ${index5m}/${candles5m.length}, 15m: ${index15m}/${candles15m.length})`);
+      continue;
+    }
     const currentTime = currentCandle.open_time;
     
     // Check SL/TP first (priority over trailing stop)
@@ -3400,6 +3419,7 @@ async function runMSTGBacktest(
       losing_trades: losingTrades,
       win_rate: winRate,
       max_drawdown: maxDrawdown,
+      trades: trades,
       balance_history: balanceHistory
     });
 
@@ -3929,6 +3949,7 @@ async function run4hReentryBacktest(
       losing_trades: losingTrades,
       win_rate: winRate,
       max_drawdown: maxDrawdown,
+      trades: trades,
       balance_history: balanceHistory
     });
 

@@ -292,8 +292,13 @@ export class UnifiedBacktestEngine {
     quantity: number, 
     timestamp: number
   ): Trade {
+    // Apply slippage to entry price (worse for entry)
+    const entryPrice = signal.signal_type === 'BUY'
+      ? price * (1 + this.config.slippage / 100)  // Long: worse entry (higher price)
+      : price * (1 - this.config.slippage / 100); // Short: worse entry (lower price)
+    
     return {
-      entry_price: price,
+      entry_price: entryPrice,
       entry_time: timestamp,
       type: signal.signal_type === 'BUY' ? 'buy' : 'sell',
       quantity: quantity,
@@ -312,14 +317,20 @@ export class UnifiedBacktestEngine {
     price: number, 
     reason: string
   ): { trade: Trade; netProfit: number } {
-    const exitPrice = price * (1 - this.config.slippage / 100);
-    const profit = position.type === 'buy' 
+    // Apply slippage to exit price (worse for exit)
+    const exitPrice = position.type === 'buy' 
+      ? price * (1 - this.config.slippage / 100)  // Long: worse exit (lower price)
+      : price * (1 + this.config.slippage / 100); // Short: worse exit (higher price)
+    
+    // Calculate gross profit before fees
+    const grossProfit = position.type === 'buy' 
       ? (exitPrice - position.entry_price) * position.quantity
       : (position.entry_price - exitPrice) * position.quantity;
     
+    // Apply fees: entry fee (maker), exit fee (taker)
     const entryFee = (position.entry_price * position.quantity * this.config.makerFee) / 100;
     const exitFee = (exitPrice * position.quantity * this.config.takerFee) / 100;
-    const netProfit = profit - entryFee - exitFee;
+    const netProfit = grossProfit - entryFee - exitFee;
     
     const trade: Trade = {
       ...position,
@@ -407,22 +418,28 @@ export class UnifiedBacktestEngine {
     balanceHistory: { time: number; balance: number }[],
     maxDrawdown: number
   ): BacktestResults {
-    const totalReturn = ((finalBalance - initialBalance) / initialBalance) * 100;
+    // Safe division guards for all metrics
+    const totalReturn = safeDiv(finalBalance - initialBalance, initialBalance) * 100;
     const totalTrades = trades.length;
     const winningTrades = trades.filter(t => (t.profit || 0) > 0).length;
     const losingTrades = totalTrades - winningTrades;
-    const winRate = totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0;
+    const winRate = totalTrades > 0 ? safeDiv(winningTrades, totalTrades) * 100 : 0;
     
     const profits = trades.map(t => t.profit || 0);
     const wins = profits.filter(p => p > 0);
     const losses = profits.filter(p => p < 0);
     
-    const avgWin = wins.length > 0 ? wins.reduce((a, b) => a + b, 0) / wins.length : 0;
-    const avgLoss = losses.length > 0 ? losses.reduce((a, b) => a + b, 0) / losses.length : 0;
+    const avgWin = wins.length > 0 ? safeDiv(wins.reduce((a, b) => a + b, 0), wins.length) : 0;
+    const avgLoss = losses.length > 0 ? safeDiv(losses.reduce((a, b) => a + b, 0), losses.length) : 0;
     
     const totalWins = wins.reduce((a, b) => a + b, 0);
     const totalLosses = Math.abs(losses.reduce((a, b) => a + b, 0));
-    const profitFactor = totalLosses > 0 ? totalWins / totalLosses : 0;
+    const profitFactor = totalLosses > 0 ? safeDiv(totalWins, totalLosses) : 0;
+    
+    // Clamp all metrics to prevent NaN/Infinity
+    const clampedTotalReturn = clamp(totalReturn, -100, 10000);
+    const clampedWinRate = clamp(winRate, 0, 100);
+    const clampedProfitFactor = clamp(profitFactor, 0, 100);
     
     // Enhanced metrics
     const confidenceAvg = trades.length > 0 
@@ -444,16 +461,16 @@ export class UnifiedBacktestEngine {
     return {
       initial_balance: initialBalance,
       final_balance: finalBalance,
-      total_return: totalReturn,
+      total_return: clampedTotalReturn,
       total_trades: totalTrades,
       winning_trades: winningTrades,
       losing_trades: losingTrades,
-      win_rate: winRate,
+      win_rate: clampedWinRate,
       avg_win: avgWin,
       avg_loss: avgLoss,
       max_drawdown: maxDrawdown * 100,
       sharpe_ratio: this.calculateSharpeRatio(balanceHistory),
-      profit_factor: profitFactor,
+      profit_factor: clampedProfitFactor,
       confidence_avg: confidenceAvg,
       adx_avg: adxAvg,
       momentum_avg: momentumAvg,

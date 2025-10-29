@@ -56,16 +56,15 @@ export function detectFairValueGap(candles: Candle[]): FVGZone | null {
   // Bullish FVG: gap exists AND middle doesn't FULLY CLOSE the gap (RELAXED)
   const bullishGap = prev.high < next.low;
   const gapSize = next.low - prev.high;
-  // More lenient: middle candle doesn't completely fill the gap
-  const middleFillsGap = (middle.low <= prev.high && middle.high >= next.low) || 
-                         (middle.low <= prev.high && middle.high >= prev.high + (gapSize * 0.8));
+  // More lenient: middle candle doesn't completely fill the gap (allow partial fill up to 80%)
+  const middleFillsGap = middle.low <= prev.high && middle.high >= next.low;
   
   // Debug: Log every 3-candle check
   console.log(`[FVG-CHECK] Prev H:${prev.high.toFixed(2)} | Mid L:${middle.low.toFixed(2)}-H:${middle.high.toFixed(2)} | Next L:${next.low.toFixed(2)} | Gap:${gapSize.toFixed(4)} | Min:${minGapSize.toFixed(4)}`);
   
   if (bullishGap && !middleFillsGap && gapSize >= minGapSize) {
-    const top = Math.min(next.low, middle.low);
-    const bottom = Math.max(prev.high, middle.high);
+    const top = next.low;
+    const bottom = prev.high;
     
     console.log('[FVG] ✅ Bullish FVG DETECTED:', {
       price: currentPrice.toFixed(2),
@@ -91,12 +90,11 @@ export function detectFairValueGap(candles: Candle[]): FVGZone | null {
   const bearishGap = prev.low > next.high;
   const gapSizeBear = prev.low - next.high;
   // More lenient: middle candle doesn't completely fill the gap
-  const middleFillsGapBear = (middle.high >= prev.low && middle.low <= next.high) ||
-                             (middle.high >= prev.low && middle.low <= prev.low - (gapSizeBear * 0.8));
+  const middleFillsGapBear = middle.high >= prev.low && middle.low <= next.high;
   
   if (bearishGap && !middleFillsGapBear && gapSizeBear >= minGapSize) {
-    const top = Math.min(prev.low, middle.high);
-    const bottom = Math.max(next.high, middle.low);
+    const top = prev.low;
+    const bottom = next.high;
     
     console.log('[FVG] ✅ Bearish FVG DETECTED:', {
       price: currentPrice.toFixed(2),
