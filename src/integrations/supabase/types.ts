@@ -374,9 +374,11 @@ export type Database = {
       }
       strategy_backtest_results: {
         Row: {
+          adx_avg: number | null
           avg_loss: number | null
           avg_win: number | null
           balance_history: Json | null
+          confidence_avg: number | null
           created_at: string
           end_date: string
           final_balance: number
@@ -384,19 +386,24 @@ export type Database = {
           initial_balance: number
           losing_trades: number
           max_drawdown: number
+          momentum_avg: number | null
           profit_factor: number | null
+          session_strength_avg: number | null
           sharpe_ratio: number | null
           start_date: string
           strategy_id: string
           total_return: number
           total_trades: number
+          trades: Json | null
           win_rate: number
           winning_trades: number
         }
         Insert: {
+          adx_avg?: number | null
           avg_loss?: number | null
           avg_win?: number | null
           balance_history?: Json | null
+          confidence_avg?: number | null
           created_at?: string
           end_date: string
           final_balance: number
@@ -404,19 +411,24 @@ export type Database = {
           initial_balance: number
           losing_trades: number
           max_drawdown: number
+          momentum_avg?: number | null
           profit_factor?: number | null
+          session_strength_avg?: number | null
           sharpe_ratio?: number | null
           start_date: string
           strategy_id: string
           total_return: number
           total_trades: number
+          trades?: Json | null
           win_rate: number
           winning_trades: number
         }
         Update: {
+          adx_avg?: number | null
           avg_loss?: number | null
           avg_win?: number | null
           balance_history?: Json | null
+          confidence_avg?: number | null
           created_at?: string
           end_date?: string
           final_balance?: number
@@ -424,12 +436,15 @@ export type Database = {
           initial_balance?: number
           losing_trades?: number
           max_drawdown?: number
+          momentum_avg?: number | null
           profit_factor?: number | null
+          session_strength_avg?: number | null
           sharpe_ratio?: number | null
           start_date?: string
           strategy_id?: string
           total_return?: number
           total_trades?: number
+          trades?: Json | null
           win_rate?: number
           winning_trades?: number
         }
