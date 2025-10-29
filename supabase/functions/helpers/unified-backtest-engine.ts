@@ -124,6 +124,26 @@ export class UnifiedBacktestEngine {
       
       // Evaluate strategy if no position
       if (!position) {
+        // Position cooldown logic
+        const lastTradeTime = trades.length > 0 ? trades[trades.length - 1].exit_time || 0 : 0;
+        const cooldownPeriod = 5 * 60 * 1000; // 5 minutes in milliseconds
+
+        if (Date.now() - lastTradeTime < cooldownPeriod) {
+          this.debug('SKIP_ENTRY', { reason: 'COOLDOWN_ACTIVE', lastTradeTime, cooldownPeriod });
+          continue; // Skip entry during cooldown
+        }
+
+        // Daily trades limit
+        const today = new Date().toDateString();
+        const todayTrades = trades.filter(t => 
+          new Date(t.entry_time).toDateString() === today
+        ).length;
+
+        if (todayTrades >= 5) { // Max 5 trades per day
+          this.debug('SKIP_ENTRY', { reason: 'DAILY_LIMIT_REACHED', todayTrades, maxDaily: 5 });
+          continue;
+        }
+
         const signal = strategyEvaluator(candles, i, strategyConfig);
         
         if (signal.signal_type) {
@@ -131,24 +151,24 @@ export class UnifiedBacktestEngine {
           // Ensure TTL present
           signal.time_to_expire = signal.time_to_expire ?? evaluation.time_to_expire;
 
-          // Convert position size% to USD exposure
-          const usdExposure = this.calculatePositionSize(evaluation, balance) * Math.max(1, this.config.leverage || 1);
-          // Convert to base qty and quantize
-          let baseQty = roundToStepSize(safeDiv(usdExposure, executionPrice), constraints.stepSize);
-          
           // Round price to tick size
           const roundedPrice = roundToTickSize(executionPrice, constraints.priceTick);
           
-          // Validate order against exchange constraints
-          const validation = validateOrder(baseQty, roundedPrice, constraints);
+          // Use centralized position sizing with constraints
+          const positionResult = this.calculatePositionWithConstraints(
+            evaluation, 
+            balance, 
+            roundedPrice, 
+            constraints
+          );
           
-          if (!validation.valid || baseQty <= 0) {
-            const reason = !Number.isFinite(baseQty) || baseQty <= 0 ? 'SIZE_TOO_SMALL' : 'EXCHANGE_CONSTRAINT';
+          if (!positionResult.valid || positionResult.quantity <= 0) {
+            const reason = !Number.isFinite(positionResult.quantity) || positionResult.quantity <= 0 ? 'SIZE_TOO_SMALL' : 'EXCHANGE_CONSTRAINT';
             this.debug('SKIP_ENTRY', { 
               reason, 
-              baseQty, 
+              baseQty: positionResult.quantity, 
               price: roundedPrice,
-              validation: validation.reason,
+              validation: positionResult.reason,
               constraints: {
                 stepSize: constraints.stepSize,
                 minQty: constraints.minQty,
@@ -156,11 +176,12 @@ export class UnifiedBacktestEngine {
                 priceTick: constraints.priceTick
               }
             });
+            continue; // Skip entry due to constraints
           } else {
             position = this.openPosition(
               signal,
               roundedPrice,
-              baseQty,
+              positionResult.quantity,
               currentCandle.open_time || currentCandle.timestamp || 0
             );
             
@@ -289,6 +310,68 @@ export class UnifiedBacktestEngine {
     const minSize = balance * 0.01; // Min 1% of balance
     const clamped = clamp(baseSize, minSize, maxSize);
     return Number.isFinite(clamped) ? clamped : 0;
+  }
+
+  // Centralized position sizing with minNotional bump logic
+  private calculatePositionWithConstraints(
+    evaluation: StrategyEvaluation,
+    balance: number,
+    entryPrice: number,
+    constraints: any
+  ): { quantity: number; notional: number; valid: boolean; reason?: string } {
+    // Calculate base exposure
+    const usdExposure = this.calculatePositionSize(evaluation, balance) * Math.max(1, this.config.leverage || 1);
+    
+    // Convert to base quantity and quantize
+    let baseQty = roundToStepSize(safeDiv(usdExposure, entryPrice), constraints.stepSize);
+    let notional = baseQty * entryPrice;
+    
+    // Check if we meet minimum notional
+    if (notional < constraints.minNotional) {
+      // Bump to minimum notional if within balance limits
+      const minQtyForNotional = safeDiv(constraints.minNotional, entryPrice);
+      const bumpedQty = roundToStepSize(minQtyForNotional, constraints.stepSize);
+      const bumpedNotional = bumpedQty * entryPrice;
+      
+      // Check if we can afford the bumped position
+      const requiredMargin = safeDiv(bumpedNotional, this.config.leverage || 1);
+      
+      if (requiredMargin <= balance) {
+        baseQty = bumpedQty;
+        notional = bumpedNotional;
+        this.debug('POSITION_BUMP', { 
+          reason: 'MIN_NOTIONAL_BUMP', 
+          originalQty: safeDiv(usdExposure, entryPrice),
+          bumpedQty: baseQty,
+          notional: notional,
+          minNotional: constraints.minNotional
+        });
+      } else {
+        return { 
+          quantity: 0, 
+          notional: 0, 
+          valid: false, 
+          reason: 'INSUFFICIENT_MARGIN_FOR_MIN_NOTIONAL' 
+        };
+      }
+    }
+    
+    // Final validation
+    const validation = validateOrder(baseQty, entryPrice, constraints);
+    if (!validation.valid) {
+      return { 
+        quantity: 0, 
+        notional: 0, 
+        valid: false, 
+        reason: validation.reason 
+      };
+    }
+    
+    return { 
+      quantity: baseQty, 
+      notional: notional, 
+      valid: true 
+    };
   }
 
   // Open position

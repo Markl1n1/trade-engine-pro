@@ -49,22 +49,23 @@ export function detectFairValueGap(candles: Candle[]): FVGZone | null {
   const middle = candles[candles.length - 2];
   const next = candles[candles.length - 1];
 
-  // Calculate minimum gap size as 0.05% of current price (SOFTER for more signals)
+  // Calculate minimum gap size based on tick size and price
   const currentPrice = next.close;
-  const minGapSize = currentPrice * 0.0005; // 0.05% of price (reduced for more trades)
+  const tickSize = 0.01; // Default tick size for most pairs
+  const minGapSize = Math.max(tickSize * 2, currentPrice * 0.001); // At least 2 ticks or 0.1% of price
   
-  // Bullish FVG: gap exists AND middle doesn't FULLY CLOSE the gap (RELAXED)
+  // Bullish FVG: gap exists AND middle doesn't FULLY CLOSE the gap
   const bullishGap = prev.high < next.low;
   const gapSize = next.low - prev.high;
-  // More lenient: middle candle doesn't completely fill the gap (allow partial fill up to 80%)
+  // Middle fills gap if it touches both sides of the gap
   const middleFillsGap = middle.low <= prev.high && middle.high >= next.low;
   
   // Debug: Log every 3-candle check
   console.log(`[FVG-CHECK] Prev H:${prev.high.toFixed(2)} | Mid L:${middle.low.toFixed(2)}-H:${middle.high.toFixed(2)} | Next L:${next.low.toFixed(2)} | Gap:${gapSize.toFixed(4)} | Min:${minGapSize.toFixed(4)}`);
   
   if (bullishGap && !middleFillsGap && gapSize >= minGapSize) {
-    const top = next.low;
-    const bottom = prev.high;
+    const top = next.low;    // Upper boundary of gap
+    const bottom = prev.high; // Lower boundary of gap
     
     console.log('[FVG] ✅ Bullish FVG DETECTED:', {
       price: currentPrice.toFixed(2),
@@ -86,15 +87,15 @@ export function detectFairValueGap(candles: Candle[]): FVGZone | null {
     console.log(`[FVG] ❌ Bullish gap FILLED by middle candle`);
   }
 
-  // Bearish FVG: gap exists AND middle doesn't FULLY CLOSE the gap (RELAXED)
+  // Bearish FVG: gap exists AND middle doesn't FULLY CLOSE the gap
   const bearishGap = prev.low > next.high;
   const gapSizeBear = prev.low - next.high;
-  // More lenient: middle candle doesn't completely fill the gap
+  // Middle fills gap if it touches both sides of the gap
   const middleFillsGapBear = middle.high >= prev.low && middle.low <= next.high;
   
   if (bearishGap && !middleFillsGapBear && gapSizeBear >= minGapSize) {
-    const top = prev.low;
-    const bottom = next.high;
+    const top = prev.low;    // Upper boundary of gap
+    const bottom = next.high; // Lower boundary of gap
     
     console.log('[FVG] ✅ Bearish FVG DETECTED:', {
       price: currentPrice.toFixed(2),
