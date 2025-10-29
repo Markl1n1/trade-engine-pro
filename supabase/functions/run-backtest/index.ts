@@ -1877,18 +1877,18 @@ async function runSMACrossoverBacktest(
     sma_fast_period: strategy.sma_fast_period || 20,
     sma_slow_period: strategy.sma_slow_period || 200,
     rsi_period: strategy.rsi_period || 14,
-    rsi_overbought: strategy.rsi_overbought || 75,           // More restrictive for 15m
-    rsi_oversold: strategy.rsi_oversold || 25,               // More restrictive for 15m
-    volume_multiplier: strategy.volume_multiplier || 1.3,     // Higher volume requirement for 15m
+    rsi_overbought: strategy.rsi_overbought || 80,           // Relaxed from 75 to 80
+    rsi_oversold: strategy.rsi_oversold || 20,               // Relaxed from 25 to 20
+    volume_multiplier: strategy.volume_multiplier || 1.1,     // Relaxed from 1.3 to 1.1
     atr_sl_multiplier: strategy.atr_sl_multiplier || 2.5,     // Larger stop loss for 15m
     atr_tp_multiplier: strategy.atr_tp_multiplier || 4.0,     // Larger take profit for 15m
     // New enhanced parameters
-    adx_threshold: strategy.adx_threshold || 25,              // Minimum trend strength
+    adx_threshold: strategy.adx_threshold || 20,              // Relaxed from 25 to 20
     bollinger_period: strategy.bollinger_period || 20,         // Bollinger Bands period
     bollinger_std: strategy.bollinger_std || 2,                // Bollinger Bands standard deviation
     trailing_stop_percent: strategy.trailing_stop_percent || 1.0, // Trailing stop for trends
     max_position_time: strategy.max_position_time || 240,      // Max time in position (4 hours)
-    min_trend_strength: strategy.min_trend_strength || 0.6     // Minimum trend strength score
+    min_trend_strength: strategy.min_trend_strength || 0.4     // Relaxed from 0.6 to 0.4
   };
 
   console.log(`[SMA-BACKTEST] Processing ${candles.length} candles`);
@@ -2147,6 +2147,14 @@ async function runSMACrossoverBacktest(
         let entryNotional = quantity * entryPrice;
         let marginRequired = entryNotional / leverage;
         
+        // Ensure minimum notional requirement is met
+        if (entryNotional < minNotional) {
+          const minQuantity = Math.ceil(minNotional / entryPrice / stepSize) * stepSize;
+          quantity = minQuantity;
+          entryNotional = quantity * entryPrice;
+          marginRequired = entryNotional / leverage;
+        }
+        
         // Guard: if rounding made margin exceed available, shrink to fit
         if (marginRequired > availableBalance) {
           const maxExposure = availableBalance * leverage;
@@ -2216,6 +2224,14 @@ async function runSMACrossoverBacktest(
         
         let entryNotional = quantity * entryPrice;
         let marginRequired = entryNotional / leverage;
+        
+        // Ensure minimum notional requirement is met
+        if (entryNotional < minNotional) {
+          const minQuantity = Math.ceil(minNotional / entryPrice / stepSize) * stepSize;
+          quantity = minQuantity;
+          entryNotional = quantity * entryPrice;
+          marginRequired = entryNotional / leverage;
+        }
         
         // Guard: shrink if rounding exceeds available margin
         if (marginRequired > availableBalance) {
