@@ -13,6 +13,13 @@ import {
   PositionSizing,
   AdaptiveParameters
 } from './strategy-interfaces.ts';
+import { getBybitConstraints, getBinanceConstraints } from './exchange-constraints.ts';
+
+// Numeric helpers for stability
+const EPS = 1e-8;
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+const safeDiv = (a: number, b: number) => a / (Math.abs(b) < EPS ? (b >= 0 ? EPS : -EPS) : b);
+const floorToStep = (v: number, step: number) => Math.floor(v / (step || EPS)) * (step || EPS);
 
 export class UnifiedBacktestEngine {
   private config: BacktestConfig;
@@ -38,6 +45,17 @@ export class UnifiedBacktestEngine {
     strategyConfig: BaseConfig
   ): Promise<BacktestResults> {
     console.log(`[UNIFIED-BACKTEST] Starting backtest with ${candles.length} candles`);
+    if (!candles || candles.length === 0) {
+      return this.calculateResults(
+        this.config.initialBalance,
+        this.config.initialBalance,
+        [],
+        [],
+        0
+      );
+    }
+    // Ensure chronological order
+    candles = [...candles].sort((a, b) => (a.open_time ?? a.timestamp ?? 0) - (b.open_time ?? b.timestamp ?? 0));
     
     let balance = this.config.initialBalance;
     let position: Trade | null = null;
@@ -52,8 +70,19 @@ export class UnifiedBacktestEngine {
     // Initialize trailing stop manager
     let trailingStopManager = this.createTrailingStopManager();
     
-    // Main backtest loop - START AT 100 for more data (softer entry criteria)
-    for (let i = 100; i < candles.length; i++) {
+    // Determine safe warm-up window (min 200 bars)
+    const startIndex = Math.min(candles.length, Math.max(200, 0));
+
+    // Prepare exchange constraints
+    const symbol = this.config.symbol || 'BTCUSDT';
+    const exchangeType = this.config.exchangeType || 'bybit';
+    const constraints = exchangeType === 'binance' ? getBinanceConstraints(symbol) : getBybitConstraints(symbol);
+    const stepSize = constraints.stepSize;
+    const minQty = constraints.minQty;
+    const minNotional = constraints.minNotional;
+
+    // Main backtest loop
+    for (let i = startIndex; i < candles.length; i++) {
       const currentCandle = candles[i];
       const executionPrice = this.config.executionTiming === 'open' 
         ? currentCandle.open 
@@ -102,19 +131,36 @@ export class UnifiedBacktestEngine {
         
         if (signal.signal_type) {
           const evaluation = this.evaluateSignal(signal, candles, i);
-          const positionSize = this.calculatePositionSize(evaluation, balance);
-          
-          if (positionSize > 0) {
+          // Ensure TTL present
+          signal.time_to_expire = signal.time_to_expire ?? evaluation.time_to_expire;
+
+          // Convert position size% to USD exposure
+          const usdExposure = this.calculatePositionSize(evaluation, balance) * Math.max(1, this.config.leverage || 1);
+          // Convert to base qty and quantize
+          let baseQty = floorToStep(safeDiv(usdExposure, executionPrice), stepSize);
+
+          const notional = baseQty * executionPrice;
+          const qtyValid = Number.isFinite(baseQty) && baseQty >= minQty && notional >= minNotional;
+
+          if (!qtyValid || baseQty <= 0) {
+            console.log('[UNIFIED-BACKTEST] Skip entry', {
+              reason: !Number.isFinite(baseQty) || baseQty <= 0 ? 'SIZE_TOO_SMALL' : 'EXCHANGE_CONSTRAINT',
+              baseQty,
+              minQty,
+              notional,
+              minNotional
+            });
+          } else {
             position = this.openPosition(
-              signal, 
-              executionPrice, 
-              positionSize, 
+              signal,
+              executionPrice,
+              baseQty,
               currentCandle.open_time || currentCandle.timestamp || 0
             );
             
-            if (this.config.trailingStopPercent) {
+            if (this.config.trailingStopPercent && trailingStopManager) {
               trailingStopManager.initialize(
-                position.entry_price, 
+                position.entry_price,
                 position.type
               );
             }
@@ -128,7 +174,7 @@ export class UnifiedBacktestEngine {
         maxBalance = currentBalance;
       }
       
-      const drawdown = (maxBalance - currentBalance) / maxBalance;
+      const drawdown = maxBalance > 0 ? (maxBalance - currentBalance) / maxBalance : 0;
       if (drawdown > maxDrawdown) {
         maxDrawdown = drawdown;
       }
@@ -216,7 +262,7 @@ export class UnifiedBacktestEngine {
 
   // Evaluate signal quality
   private evaluateSignal(signal: BaseSignal, candles: Candle[], index: number): StrategyEvaluation {
-    const confidence = signal.confidence || 50;
+    const confidence = clamp(signal.confidence ?? 50, 30, 100);
     const regimeMultiplier = this.adaptiveParams.regime_multipliers[this.marketRegime.type];
     const confidenceMultiplier = this.getConfidenceMultiplier(confidence);
     
@@ -232,11 +278,11 @@ export class UnifiedBacktestEngine {
 
   // Calculate position size based on evaluation
   private calculatePositionSize(evaluation: StrategyEvaluation, balance: number): number {
-    const baseSize = (balance * evaluation.position_size) / 100;
-    const maxSize = balance * 0.1; // Max 10% of balance
+    const baseSize = safeDiv(balance * evaluation.position_size, 100);
+    const maxSize = balance * 0.10; // Max 10% of balance
     const minSize = balance * 0.01; // Min 1% of balance
-    
-    return Math.max(minSize, Math.min(maxSize, baseSize));
+    const clamped = clamp(baseSize, minSize, maxSize);
+    return Number.isFinite(clamped) ? clamped : 0;
   }
 
   // Open position
