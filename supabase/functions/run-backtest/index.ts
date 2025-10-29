@@ -2319,6 +2319,7 @@ async function runSMACrossoverBacktest(
   // Calculate performance metrics
   const totalReturn = ((balance - initialBalance) / initialBalance) * 100;
   const winTrades = trades.filter(t => (t.profit || 0) > 0).length;
+  const loseTrades = totalTrades - winTrades;
   const totalTrades = trades.length;
   const winRate = totalTrades > 0 ? (winTrades / totalTrades) * 100 : 0;
   const avgWin = trades.filter(t => (t.profit || 0) > 0).reduce((sum, t) => sum + (t.profit || 0), 0) / Math.max(winTrades, 1);
@@ -2345,10 +2346,11 @@ async function runSMACrossoverBacktest(
       final_balance: balance,
       total_return: totalReturn,
       total_trades: totalTrades,
+      winning_trades: winTrades,
+      losing_trades: loseTrades,
       win_rate: winRate,
       max_drawdown: maxDrawdown,
       profit_factor: profitFactor,
-      trades: trades,
       balance_history: balanceHistory
     });
 
@@ -2732,18 +2734,25 @@ async function runMTFMomentumBacktest(
     }
     
     if (mtfLongCondition) {
-      // Position sizing (simplified like 4h Reentry)
+      // Position sizing (margin-based)
       const positionSizePercent = strategy.position_size_percent || 100;
-      const positionSize = availableBalance * (positionSizePercent / 100);
+      const margin = availableBalance * (positionSizePercent / 100);
       
       const entryPrice = currentPrice * (1 + slippage);
-      let quantity = (positionSize / entryPrice) / leverage;
+      let quantity = (margin * leverage) / entryPrice;
       quantity = Math.floor(quantity / stepSize) * stepSize;
       
-      const entryNotional = quantity * entryPrice;
+      let entryNotional = quantity * entryPrice;
+      let marginRequired = entryNotional / leverage;
+      
+      if (marginRequired > availableBalance) {
+        const maxExposure = availableBalance * leverage;
+        quantity = Math.floor((maxExposure / entryPrice) / stepSize) * stepSize;
+        entryNotional = quantity * entryPrice;
+        marginRequired = entryNotional / leverage;
+      }
       
       if (quantity >= minQty && entryNotional >= minNotional) {
-        const marginRequired = (entryNotional) / leverage;
         
         if (marginRequired <= availableBalance) {
           // Calculate SL/TP based on user parameters
@@ -2785,18 +2794,25 @@ async function runMTFMomentumBacktest(
     
     // Handle SHORT entry (new SELL position)
     if (mtfShortCondition) {
-      // Position sizing (simplified like 4h Reentry)
+      // Position sizing (margin-based)
       const positionSizePercent = strategy.position_size_percent || 100;
-      const positionSize = availableBalance * (positionSizePercent / 100);
+      const margin = availableBalance * (positionSizePercent / 100);
       
       const entryPrice = currentPrice * (1 - slippage); // Better price for SHORT
-      let quantity = (positionSize / entryPrice) / leverage;
+      let quantity = (margin * leverage) / entryPrice;
       quantity = Math.floor(quantity / stepSize) * stepSize;
       
-      const entryNotional = quantity * entryPrice;
+      let entryNotional = quantity * entryPrice;
+      let marginRequired = entryNotional / leverage;
+      
+      if (marginRequired > availableBalance) {
+        const maxExposure = availableBalance * leverage;
+        quantity = Math.floor((maxExposure / entryPrice) / stepSize) * stepSize;
+        entryNotional = quantity * entryPrice;
+        marginRequired = entryNotional / leverage;
+      }
       
       if (quantity >= minQty && entryNotional >= minNotional) {
-        const marginRequired = (entryNotional) / leverage;
         
         if (marginRequired <= availableBalance) {
           // Calculate SL/TP based on user parameters
