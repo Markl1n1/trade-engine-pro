@@ -1,5 +1,6 @@
 // FVG Scalping Strategy Backtest Helper
 import { evaluateFVGStrategy, FVGConfig, isWithinTradingWindow } from './fvg-scalping-strategy.ts';
+import { getStrategyBacktestConfig } from './strategy-config-loader.ts';
 
 interface Candle {
   open: number;
@@ -56,15 +57,8 @@ export async function runFVGScalpingBacktest(
   const activeFVGs: (any & { candleIndex: number })[] = [];
   const maxActiveFVGs = 3;
 
-  // FVG Strategy Configuration
-  const config: FVGConfig = {
-    keyTimeStart: strategy.fvg_key_candle_time?.split('-')[0] || "09:30",
-    keyTimeEnd: strategy.fvg_key_candle_time?.split('-')[1] || "09:35",
-    keyTimeframe: strategy.fvg_key_timeframe || "5m",
-    analysisTimeframe: strategy.fvg_analysis_timeframe || "1m",
-    riskRewardRatio: strategy.fvg_risk_reward_ratio || 3.0,
-    tickSize: strategy.fvg_tick_size || 0.01
-  };
+  // Get unified strategy configuration from database
+  const config = getStrategyBacktestConfig(strategy, 'fvg_scalping');
 
   const symbol = strategy.symbol || 'BTCUSDT';
 

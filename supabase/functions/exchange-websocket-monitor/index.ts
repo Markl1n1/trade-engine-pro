@@ -5,6 +5,7 @@ import {
   markSignalAsDelivered 
 } from '../helpers/signal-utils.ts';
 import { evaluateATHGuardStrategy } from '../helpers/ath-guard-strategy.ts';
+import { getStrategyMonitorConfig } from '../helpers/strategy-config-loader.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -327,26 +328,8 @@ async function evaluateStrategy(
   let reason = '';
 
   if (strategy.strategy_type === 'ath_guard_scalping') {
-    const athSignal = evaluateATHGuardStrategy(candles, {
-      ema_slope_threshold: strategy.ath_guard_ema_slope_threshold || 0.15,
-      pullback_tolerance: strategy.ath_guard_pullback_tolerance || 0.15,
-      volume_multiplier: strategy.ath_guard_volume_multiplier || 1.8,
-      stoch_oversold: strategy.ath_guard_stoch_oversold || 25,
-      stoch_overbought: strategy.ath_guard_stoch_overbought || 75,
-      atr_sl_multiplier: strategy.ath_guard_atr_sl_multiplier || 1.5,
-      atr_tp1_multiplier: strategy.ath_guard_atr_tp1_multiplier || 1.0,
-      atr_tp2_multiplier: strategy.ath_guard_atr_tp2_multiplier || 2.0,
-      ath_safety_distance: strategy.ath_guard_ath_safety_distance || 0.2,
-      rsi_threshold: strategy.ath_guard_rsi_threshold || 70,
-      adx_threshold: 25,
-      bollinger_period: 20,
-      bollinger_std: 2.0,
-      trailing_stop_percent: 20,
-      momentum_threshold: 30,
-      max_position_time: 240,
-      min_volume_spike: 1.5,
-      support_resistance_lookback: 50
-    }, liveState.position_open);
+    const config = getStrategyMonitorConfig(strategy, 'ath_guard_scalping');
+    const athSignal = evaluateATHGuardStrategy(candles, config, liveState.position_open);
 
     if (athSignal.signal_type) {
       signalType = athSignal.signal_type;

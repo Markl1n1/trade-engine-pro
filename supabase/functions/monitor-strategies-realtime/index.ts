@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
+import { getStrategyMonitorConfig } from '../helpers/strategy-config-loader.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -104,22 +105,7 @@ serve(async (req) => {
         switch (strategy.strategy_type) {
           case 'sma_crossover': {
             const { evaluateSMACrossoverStrategy } = await import('../helpers/sma-crossover-strategy.ts');
-            const config = strategy.config || {
-              sma_fast_period: 20,
-              sma_slow_period: 200,
-              rsi_period: 14,
-              rsi_overbought: 75,
-              rsi_oversold: 25,
-              volume_multiplier: 1.3,
-              atr_sl_multiplier: 2.5,
-              atr_tp_multiplier: 4.0,
-              adx_threshold: 25,
-              bollinger_period: 20,
-              bollinger_std: 2,
-              trailing_stop_percent: 1.0,
-              max_position_time: 240,
-              min_trend_strength: 0.6
-            };
+            const config = getStrategyMonitorConfig(strategy, 'sma_crossover');
             signal = evaluateSMACrossoverStrategy(formattedCandles, config, false);
             break;
           }
@@ -172,14 +158,7 @@ serve(async (req) => {
               close: parseFloat(c.close), volume: parseFloat(c.volume), timestamp: c.open_time
             }));
             
-            const config = strategy.config || {
-              rsi_period: 14,
-              rsi_entry_threshold: 50,
-              macd_fast: 8,
-              macd_slow: 21,
-              macd_signal: 5,
-              volume_multiplier: 1.1
-            };
+            const config = getStrategyMonitorConfig(strategy, 'mtf_momentum');
             
             signal = evaluateMTFMomentum(formatted1m, formatted5m, formatted15m, config, false);
             break;
@@ -193,40 +172,14 @@ serve(async (req) => {
           
           case 'ath_guard': {
             const { evaluateATHGuardStrategy } = await import('../helpers/ath-guard-strategy.ts');
-            const config = strategy.config || {
-              ema_slope_threshold: 0.01,
-              pullback_tolerance: 0.5,
-              volume_multiplier: 1.5,
-              stoch_oversold: 20,
-              stoch_overbought: 80,
-              atr_sl_multiplier: 1.5,
-              atr_tp1_multiplier: 2.0,
-              atr_tp2_multiplier: 3.0,
-              ath_safety_distance: 0.2,
-              rsi_threshold: 70,
-              adx_threshold: 25,
-              bollinger_period: 20,
-              bollinger_std: 2,
-              trailing_stop_percent: 0.5,
-              max_position_time: 30,
-              min_volume_spike: 1.2,
-              momentum_threshold: 10,
-              support_resistance_lookback: 20
-            };
+            const config = getStrategyMonitorConfig(strategy, 'ath_guard_scalping');
             signal = evaluateATHGuardStrategy(formattedCandles, config, false);
             break;
           }
           
           case 'fvg_scalping': {
             const { evaluateFVGStrategy } = await import('../helpers/fvg-scalping-strategy.ts');
-            const config = {
-              keyTimeStart: strategy.fvg_key_candle_time?.split('-')[0] || "09:30",
-              keyTimeEnd: strategy.fvg_key_candle_time?.split('-')[1] || "09:35",
-              keyTimeframe: strategy.fvg_key_timeframe || "5m",
-              analysisTimeframe: strategy.fvg_analysis_timeframe || "1m",
-              riskRewardRatio: strategy.fvg_risk_reward_ratio || 3.0,
-              tickSize: strategy.fvg_tick_size || 0.01
-            };
+            const config = getStrategyMonitorConfig(strategy, 'fvg_scalping');
             signal = evaluateFVGStrategy(formattedCandles, config, false);
             break;
           }

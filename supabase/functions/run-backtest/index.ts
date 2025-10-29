@@ -16,6 +16,7 @@ import { AdaptiveStrategyManager, defaultAdaptiveParameters } from '../helpers/a
 import { EnhancedReporting } from '../helpers/enhanced-reporting.ts';
 import { BaseConfig, BacktestConfig, MarketRegime } from '../helpers/strategy-interfaces.ts';
 import { runFVGScalpingBacktest } from '../helpers/fvg-backtest-helper.ts';
+import { getStrategyBacktestConfig } from '../helpers/strategy-config-loader.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -118,26 +119,8 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
   // Exchange constraints
   const { stepSize, minQty, minNotional } = getBybitConstraints(strategy.symbol);
 
-  const athGuardConfig = {
-    ema_slope_threshold: strategy.ath_guard_ema_slope_threshold || 0.15, 
-    pullback_tolerance: strategy.ath_guard_pullback_tolerance || 0.15, 
-    volume_multiplier: strategy.ath_guard_volume_multiplier || 1.8, 
-    stoch_oversold: strategy.ath_guard_stoch_oversold || 25, 
-    stoch_overbought: strategy.ath_guard_stoch_overbought || 75, 
-    atr_sl_multiplier: 1.5, 
-    atr_tp1_multiplier: 1.0, 
-    atr_tp2_multiplier: 2.0, 
-    ath_safety_distance: 0.2, 
-    rsi_threshold: 70,
-    adx_threshold: 20,
-    bollinger_period: 20,
-    bollinger_std: 2.0,
-    trailing_stop_percent: 0.5,
-    max_position_time: 60,
-    min_volume_spike: 1.2,
-    momentum_threshold: 15,
-    support_resistance_lookback: 20
-  };
+  // Get unified strategy configuration from database
+  const athGuardConfig = getStrategyBacktestConfig(strategy, 'ath_guard_scalping');
 
   // Pre-calculate all indicators once (CPU optimization)
   console.log(`[ATH-GUARD] Pre-calculating indicators...`);
@@ -1872,24 +1855,8 @@ async function runSMACrossoverBacktest(
   const { stepSize, minQty, minNotional } = constraints;
   console.log(`[SMA-BACKTEST] Using ${exchangeType} constraints:`, { stepSize, minQty, minNotional });
 
-  // Enhanced strategy configuration optimized for 15m timeframe
-  const config = {
-    sma_fast_period: strategy.sma_fast_period || 20,
-    sma_slow_period: strategy.sma_slow_period || 200,
-    rsi_period: strategy.rsi_period || 14,
-    rsi_overbought: strategy.rsi_overbought || 80,           // Relaxed from 75 to 80
-    rsi_oversold: strategy.rsi_oversold || 20,               // Relaxed from 25 to 20
-    volume_multiplier: strategy.volume_multiplier || 1.1,     // Relaxed from 1.3 to 1.1
-    atr_sl_multiplier: strategy.atr_sl_multiplier || 2.5,     // Larger stop loss for 15m
-    atr_tp_multiplier: strategy.atr_tp_multiplier || 4.0,     // Larger take profit for 15m
-    // New enhanced parameters
-    adx_threshold: strategy.adx_threshold || 20,              // Relaxed from 25 to 20
-    bollinger_period: strategy.bollinger_period || 20,         // Bollinger Bands period
-    bollinger_std: strategy.bollinger_std || 2,                // Bollinger Bands standard deviation
-    trailing_stop_percent: strategy.trailing_stop_percent || 1.0, // Trailing stop for trends
-    max_position_time: strategy.max_position_time || 240,      // Max time in position (4 hours)
-    min_trend_strength: strategy.min_trend_strength || 0.4     // Relaxed from 0.6 to 0.4
-  };
+  // Get unified strategy configuration from database
+  const config = getStrategyBacktestConfig(strategy, strategy.strategy_type);
 
   console.log(`[SMA-BACKTEST] Processing ${candles.length} candles`);
   console.log(`[SMA-BACKTEST] Strategy config:`, config);
@@ -2450,21 +2417,8 @@ async function runMTFMomentumBacktest(
   const { stepSize, minQty, minNotional } = constraints;
   console.log(`[MTF-BACKTEST] Using ${exchangeType} constraints:`, { stepSize, minQty, minNotional });
 
-  // Optimized strategy configuration for ETH scalping
-  const config = {
-    mtf_rsi_period: strategy.mtf_rsi_period || 14,
-    mtf_rsi_entry_threshold: strategy.mtf_rsi_entry_threshold || 50,  // Reduced from 55 for more signals
-    mtf_macd_fast: strategy.mtf_macd_fast || 8,                       // Faster for scalping
-    mtf_macd_slow: strategy.mtf_macd_slow || 21,                      // Faster for scalping
-    mtf_macd_signal: strategy.mtf_macd_signal || 5,                    // Faster for scalping
-    mtf_volume_multiplier: strategy.mtf_volume_multiplier || 1.1,     // Reduced from 1.3 for more signals
-    // New parameters for enhanced scalping
-    atr_sl_multiplier: strategy.atr_sl_multiplier || 1.5,             // ATR-based stop loss
-    atr_tp_multiplier: strategy.atr_tp_multiplier || 2.0,             // ATR-based take profit
-    trailing_stop_percent: strategy.trailing_stop_percent || 0.5,      // Fast trailing stop
-    max_position_time: strategy.max_position_time || 30,              // Max time in position (minutes)
-    min_profit_percent: strategy.min_profit_percent || 0.2            // Min profit for trailing activation
-  };
+  // Get unified strategy configuration from database
+  const config = getStrategyBacktestConfig(strategy, 'mtf_momentum');
 
   const startTime = Date.now();
   console.log(`[MTF-BACKTEST] Starting optimization: ${candles.length} 1m candles`);
@@ -3509,23 +3463,13 @@ async function run4hReentryBacktest(
   const minQty = 0.001;
   const minNotional = 10;
 
+  // Get unified strategy configuration from database
+  const enhancedConfig = getStrategyBacktestConfig(strategy, '4h_reentry');
+  
   // Session parameters (NY time 00:00-03:59)
   const sessionStart = "00:00";
   const sessionEnd = "03:59";
-  const riskRewardRatio = 2;
-  
-  // Enhanced parameters for 4h Reentry strategy
-  const enhancedConfig = {
-    adx_threshold: 20,
-    bollinger_period: 20,
-    bollinger_std: 2.0,
-    rsi_oversold: 30,
-    rsi_overbought: 70,
-    momentum_threshold: 10,
-    volume_multiplier: 1.2,
-    session_strength_threshold: 0.5,
-    max_position_time: 240 // 4 hours
-  };
+  const riskRewardRatio = enhancedConfig.riskRewardRatio || 2;
 
   // State tracking for 4h range
   let currentDayRange: { date: string; H_4h: number; L_4h: number } | null = null;
