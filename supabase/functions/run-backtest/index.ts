@@ -2495,7 +2495,8 @@ async function runMTFMomentumBacktest(
   // Validate minimum data requirements
   const minRequiredCandles = Math.max(config.mtf_rsi_period, config.mtf_macd_slow) + 10;
   if (candles1m.length < minRequiredCandles || candles5m.length < minRequiredCandles || candles15m.length < minRequiredCandles) {
-    console.log(`[MTF-BACKTEST] ❌ Insufficient data: 1m=${candles1m.length}, 5m=${candles5m.length}, 15m=${candles15m.length}, required=${minRequiredCandles}`);
+    const debugPayload = { type: 'debug', scope: 'MTF-BACKTEST', event: 'INDICATOR_WINDOW_MISSING', candles1m: candles1m.length, candles5m: candles5m.length, candles15m: candles15m.length, required: minRequiredCandles };
+    try { if ((Deno.env.get('DEBUG_MODE') || '').toLowerCase() === 'true') console.log(JSON.stringify(debugPayload)); } catch {}
     return new Response(JSON.stringify({ success: false, error: 'Insufficient data for MTF analysis' }), { headers: corsHeaders });
   }
 
@@ -2536,7 +2537,8 @@ async function runMTFMomentumBacktest(
     
     // Guard against missing windows
     if (index5m >= candles5m.length || index15m >= candles15m.length) {
-      console.log(`[MTF-BACKTEST] ⚠️ Skipping candle ${i}: Missing higher timeframe data (5m: ${index5m}/${candles5m.length}, 15m: ${index15m}/${candles15m.length})`);
+      const debugPayload2 = { type: 'debug', scope: 'MTF-BACKTEST', event: 'INDICATOR_WINDOW_MISSING', i, index5m, index15m, len5m: candles5m.length, len15m: candles15m.length };
+      try { if ((Deno.env.get('DEBUG_MODE') || '').toLowerCase() === 'true') console.log(JSON.stringify(debugPayload2)); } catch {}
       continue;
     }
     const currentTime = currentCandle.open_time;

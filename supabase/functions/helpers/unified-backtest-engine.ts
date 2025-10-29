@@ -143,13 +143,8 @@ export class UnifiedBacktestEngine {
           const qtyValid = Number.isFinite(baseQty) && baseQty >= minQty && notional >= minNotional;
 
           if (!qtyValid || baseQty <= 0) {
-            console.log('[UNIFIED-BACKTEST] Skip entry', {
-              reason: !Number.isFinite(baseQty) || baseQty <= 0 ? 'SIZE_TOO_SMALL' : 'EXCHANGE_CONSTRAINT',
-              baseQty,
-              minQty,
-              notional,
-              minNotional
-            });
+            const reason = !Number.isFinite(baseQty) || baseQty <= 0 ? 'SIZE_TOO_SMALL' : 'EXCHANGE_CONSTRAINT';
+            this.debug('SKIP_ENTRY', { reason, baseQty, minQty, notional, minNotional, price: executionPrice });
           } else {
             position = this.openPosition(
               signal,
@@ -341,6 +336,20 @@ export class UnifiedBacktestEngine {
     };
     
     return { trade, netProfit };
+  }
+
+  // Debug logging helpers (enabled via DEBUG_MODE env)
+  private get debugEnabled(): boolean {
+    try { return (Deno.env.get('DEBUG_MODE') || '').toLowerCase() === 'true'; } catch { return false; }
+  }
+
+  private debug(event: string, data: Record<string, unknown>): void {
+    if (!this.debugEnabled) return;
+    try {
+      console.log(JSON.stringify({ type: 'debug', scope: 'UNIFIED-BACKTEST', event, ...data }));
+    } catch {
+      // no-op
+    }
   }
 
   // Check trailing stop
