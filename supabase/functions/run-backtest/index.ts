@@ -2280,18 +2280,6 @@ async function runSMACrossoverBacktest(
     }
   }
 
-  // Debug summary
-  console.log(`[SMA-BACKTEST] Summary:
-    - Total candles: ${candles.length}
-    - Golden crosses detected: ${goldenCrossCount}
-    - Death crosses detected: ${deathCrossCount}
-    - Total crossovers: ${goldenCrossCount + deathCrossCount}
-    - RSI rejections: ${rsiRejections}
-    - Volume rejections: ${volumeRejections}
-    - Exchange constraint rejections: ${constraintRejections}
-    - Trades executed: ${trades.length}
-    - Filter pass rate: ${((trades.length / (goldenCrossCount + deathCrossCount)) * 100).toFixed(2)}%`);
-
   // Close any remaining position
   if (position) {
     const finalCandle = candles[candles.length - 1];
@@ -2312,6 +2300,18 @@ async function runSMACrossoverBacktest(
     
     console.log(`Final SELL at ${exitPrice.toFixed(2)} - P&L: ${netProfit.toFixed(2)}, Final Balance: ${balance.toFixed(2)}`);
   }
+
+  // Debug summary (moved AFTER final position is closed)
+  console.log(`[SMA-BACKTEST] Summary:
+    - Total candles: ${candles.length}
+    - Golden crosses detected: ${goldenCrossCount}
+    - Death crosses detected: ${deathCrossCount}
+    - Total crossovers: ${goldenCrossCount + deathCrossCount}
+    - RSI rejections: ${rsiRejections}
+    - Volume rejections: ${volumeRejections}
+    - Exchange constraint rejections: ${constraintRejections}
+    - Trades executed: ${trades.length}
+    - Filter pass rate: ${((trades.length / (goldenCrossCount + deathCrossCount)) * 100).toFixed(2)}%`);
 
   // Calculate performance metrics
   const totalTrades = trades.length;
