@@ -2136,18 +2136,26 @@ async function runSMACrossoverBacktest(
         volumeRejections++;
         console.log(`[${i}] ❌ BUY rejected: Volume too low (${currentCandle.volume.toFixed(0)} < ${(volumeAvg * config.volume_multiplier).toFixed(0)})`);
       } else {
-        // Position sizing (simplified like 4h Reentry)
+        // Position sizing (margin-based). Margin = % of available balance; Exposure = margin * leverage
         const positionSizePercent = strategy.position_size_percent || 100;
-        const positionSize = availableBalance * (positionSizePercent / 100);
+        const margin = availableBalance * (positionSizePercent / 100);
         
         const entryPrice = currentPrice * (1 + slippage);
-        let quantity = (positionSize / entryPrice) / leverage;
+        let quantity = (margin * leverage) / entryPrice; // convert exposure to base qty
         quantity = Math.floor(quantity / stepSize) * stepSize;
         
-        const entryNotional = quantity * entryPrice;
+        let entryNotional = quantity * entryPrice;
+        let marginRequired = entryNotional / leverage;
+        
+        // Guard: if rounding made margin exceed available, shrink to fit
+        if (marginRequired > availableBalance) {
+          const maxExposure = availableBalance * leverage;
+          quantity = Math.floor((maxExposure / entryPrice) / stepSize) * stepSize;
+          entryNotional = quantity * entryPrice;
+          marginRequired = entryNotional / leverage;
+        }
         
         if (quantity >= minQty && entryNotional >= minNotional) {
-        const marginRequired = (entryNotional) / leverage;
         
         if (marginRequired <= availableBalance) {
           // Calculate SL/TP based on user parameters
@@ -2198,18 +2206,26 @@ async function runSMACrossoverBacktest(
         volumeRejections++;
         console.log(`[${i}] ❌ SHORT rejected: Volume too low (${currentCandle.volume.toFixed(0)} < ${(volumeAvg * config.volume_multiplier).toFixed(0)})`);
       } else {
-        // Position sizing (simplified like 4h Reentry)
+        // Position sizing (margin-based). Margin = % of available balance; Exposure = margin * leverage
         const positionSizePercent = strategy.position_size_percent || 100;
-        const positionSize = availableBalance * (positionSizePercent / 100);
+        const margin = availableBalance * (positionSizePercent / 100);
         
         const entryPrice = currentPrice * (1 - slippage); // Better price for SHORT
-        let quantity = (positionSize / entryPrice) / leverage;
+        let quantity = (margin * leverage) / entryPrice; // convert exposure to base qty
         quantity = Math.floor(quantity / stepSize) * stepSize;
         
-        const entryNotional = quantity * entryPrice;
+        let entryNotional = quantity * entryPrice;
+        let marginRequired = entryNotional / leverage;
+        
+        // Guard: shrink if rounding exceeds available margin
+        if (marginRequired > availableBalance) {
+          const maxExposure = availableBalance * leverage;
+          quantity = Math.floor((maxExposure / entryPrice) / stepSize) * stepSize;
+          entryNotional = quantity * entryPrice;
+          marginRequired = entryNotional / leverage;
+        }
         
         if (quantity >= minQty && entryNotional >= minNotional) {
-        const marginRequired = (entryNotional) / leverage;
         
         if (marginRequired <= availableBalance) {
           // Calculate SL/TP based on user parameters
