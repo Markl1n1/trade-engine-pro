@@ -2432,17 +2432,34 @@ async function runMTFMomentumBacktest(
   console.log(`[MTF-BACKTEST] Using ${exchangeType} constraints:`, { stepSize, minQty, minNotional });
 
   // Get unified strategy configuration from database
+  console.log(`[MTF-BACKTEST] 🔍 DEBUG: About to get strategy config...`);
   const config = getStrategyBacktestConfig(strategy, 'mtf_momentum');
+  console.log(`[MTF-BACKTEST] 🔍 DEBUG: Strategy config loaded successfully`);
 
   // Apply data sampling for large datasets - FORCE SAMPLING TO ALWAYS RUN
-  const MAX_CANDLES = 5000;
-  console.log(`[MTF-BACKTEST] 🔍 DEBUG: Original candles: ${candles.length}, MAX_CANDLES: ${MAX_CANDLES}`);
-  console.log(`[MTF-BACKTEST] 🔍 DEBUG: sampleCandles function exists: ${typeof sampleCandles}`);
-  
-  // FORCE SAMPLING - Always sample to prevent CPU timeout
-  console.log(`[MTF-BACKTEST] 🔍 DEBUG: FORCING sampling to prevent CPU timeout...`);
-  candles = sampleCandles(candles, MAX_CANDLES);
-  console.log(`[MTF-BACKTEST] 🔍 DEBUG: After FORCED sampling: ${candles.length} candles`);
+  try {
+    const MAX_CANDLES = 5000;
+    console.log(`[MTF-BACKTEST] 🔍 DEBUG: Original candles: ${candles.length}, MAX_CANDLES: ${MAX_CANDLES}`);
+    console.log(`[MTF-BACKTEST] 🔍 DEBUG: sampleCandles function exists: ${typeof sampleCandles}`);
+    
+    // FORCE SAMPLING - Always sample to prevent CPU timeout
+    console.log(`[MTF-BACKTEST] 🔍 DEBUG: FORCING sampling to prevent CPU timeout...`);
+    candles = sampleCandles(candles, MAX_CANDLES);
+    console.log(`[MTF-BACKTEST] 🔍 DEBUG: After FORCED sampling: ${candles.length} candles`);
+  } catch (error) {
+    console.error(`[MTF-BACKTEST] 🔍 ERROR in sampling:`, error);
+    // Fallback: manually limit candles to prevent CPU timeout
+    if (candles.length > 5000) {
+      console.log(`[MTF-BACKTEST] 🔍 FALLBACK: Manually limiting candles from ${candles.length} to 5000`);
+      candles = candles.slice(0, 5000);
+    }
+  }
+
+  // FINAL SAFETY CHECK: Always limit candles to prevent CPU timeout
+  if (candles.length > 5000) {
+    console.log(`[MTF-BACKTEST] 🔍 FINAL SAFETY: Limiting candles from ${candles.length} to 5000`);
+    candles = candles.slice(0, 5000);
+  }
 
   const startTime = Date.now();
   console.log(`[MTF-BACKTEST] Starting optimization: ${candles.length} 1m candles`);
