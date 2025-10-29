@@ -384,19 +384,19 @@ export type Database = {
           final_balance: number
           id: string
           initial_balance: number
-          losing_trades: number
-          max_drawdown: number
+          losing_trades: number | null
+          max_drawdown: number | null
           momentum_avg: number | null
           profit_factor: number | null
           session_strength_avg: number | null
           sharpe_ratio: number | null
           start_date: string
           strategy_id: string
-          total_return: number
-          total_trades: number
+          total_return: number | null
+          total_trades: number | null
           trades: Json | null
-          win_rate: number
-          winning_trades: number
+          win_rate: number | null
+          winning_trades: number | null
         }
         Insert: {
           adx_avg?: number | null
@@ -409,19 +409,19 @@ export type Database = {
           final_balance: number
           id?: string
           initial_balance: number
-          losing_trades: number
-          max_drawdown: number
+          losing_trades?: number | null
+          max_drawdown?: number | null
           momentum_avg?: number | null
           profit_factor?: number | null
           session_strength_avg?: number | null
           sharpe_ratio?: number | null
           start_date: string
           strategy_id: string
-          total_return: number
-          total_trades: number
+          total_return?: number | null
+          total_trades?: number | null
           trades?: Json | null
-          win_rate: number
-          winning_trades: number
+          win_rate?: number | null
+          winning_trades?: number | null
         }
         Update: {
           adx_avg?: number | null
@@ -434,19 +434,19 @@ export type Database = {
           final_balance?: number
           id?: string
           initial_balance?: number
-          losing_trades?: number
-          max_drawdown?: number
+          losing_trades?: number | null
+          max_drawdown?: number | null
           momentum_avg?: number | null
           profit_factor?: number | null
           session_strength_avg?: number | null
           sharpe_ratio?: number | null
           start_date?: string
           strategy_id?: string
-          total_return?: number
-          total_trades?: number
+          total_return?: number | null
+          total_trades?: number | null
           trades?: Json | null
-          win_rate?: number
-          winning_trades?: number
+          win_rate?: number | null
+          winning_trades?: number | null
         }
         Relationships: [
           {
