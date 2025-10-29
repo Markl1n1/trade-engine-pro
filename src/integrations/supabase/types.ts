@@ -209,6 +209,7 @@ export type Database = {
       }
       strategies: {
         Row: {
+          adx_threshold: number | null
           ath_guard_ath_safety_distance: number | null
           ath_guard_atr_sl_multiplier: number | null
           ath_guard_atr_tp1_multiplier: number | null
@@ -222,6 +223,8 @@ export type Database = {
           atr_sl_multiplier: number | null
           atr_tp_multiplier: number | null
           benchmark_symbol: string | null
+          bollinger_period: number | null
+          bollinger_std: number | null
           created_at: string
           description: string | null
           fvg_analysis_timeframe: string | null
@@ -231,6 +234,11 @@ export type Database = {
           fvg_tick_size: number | null
           id: string
           initial_capital: number | null
+          max_position_time: number | null
+          min_profit_percent: number | null
+          min_trend_strength: number | null
+          min_volume_spike: number | null
+          momentum_threshold: number | null
           mstg_exit_threshold: number | null
           mstg_extreme_threshold: number | null
           mstg_long_threshold: number | null
@@ -255,14 +263,17 @@ export type Database = {
           status: string
           stop_loss_percent: number | null
           strategy_type: string | null
+          support_resistance_lookback: number | null
           symbol: string
           take_profit_percent: number | null
           timeframe: string
+          trailing_stop_percent: number | null
           updated_at: string
           user_id: string
           volume_multiplier: number | null
         }
         Insert: {
+          adx_threshold?: number | null
           ath_guard_ath_safety_distance?: number | null
           ath_guard_atr_sl_multiplier?: number | null
           ath_guard_atr_tp1_multiplier?: number | null
@@ -276,6 +287,8 @@ export type Database = {
           atr_sl_multiplier?: number | null
           atr_tp_multiplier?: number | null
           benchmark_symbol?: string | null
+          bollinger_period?: number | null
+          bollinger_std?: number | null
           created_at?: string
           description?: string | null
           fvg_analysis_timeframe?: string | null
@@ -285,6 +298,11 @@ export type Database = {
           fvg_tick_size?: number | null
           id?: string
           initial_capital?: number | null
+          max_position_time?: number | null
+          min_profit_percent?: number | null
+          min_trend_strength?: number | null
+          min_volume_spike?: number | null
+          momentum_threshold?: number | null
           mstg_exit_threshold?: number | null
           mstg_extreme_threshold?: number | null
           mstg_long_threshold?: number | null
@@ -309,14 +327,17 @@ export type Database = {
           status?: string
           stop_loss_percent?: number | null
           strategy_type?: string | null
+          support_resistance_lookback?: number | null
           symbol?: string
           take_profit_percent?: number | null
           timeframe?: string
+          trailing_stop_percent?: number | null
           updated_at?: string
           user_id: string
           volume_multiplier?: number | null
         }
         Update: {
+          adx_threshold?: number | null
           ath_guard_ath_safety_distance?: number | null
           ath_guard_atr_sl_multiplier?: number | null
           ath_guard_atr_tp1_multiplier?: number | null
@@ -330,6 +351,8 @@ export type Database = {
           atr_sl_multiplier?: number | null
           atr_tp_multiplier?: number | null
           benchmark_symbol?: string | null
+          bollinger_period?: number | null
+          bollinger_std?: number | null
           created_at?: string
           description?: string | null
           fvg_analysis_timeframe?: string | null
@@ -339,6 +362,11 @@ export type Database = {
           fvg_tick_size?: number | null
           id?: string
           initial_capital?: number | null
+          max_position_time?: number | null
+          min_profit_percent?: number | null
+          min_trend_strength?: number | null
+          min_volume_spike?: number | null
+          momentum_threshold?: number | null
           mstg_exit_threshold?: number | null
           mstg_extreme_threshold?: number | null
           mstg_long_threshold?: number | null
@@ -363,9 +391,11 @@ export type Database = {
           status?: string
           stop_loss_percent?: number | null
           strategy_type?: string | null
+          support_resistance_lookback?: number | null
           symbol?: string
           take_profit_percent?: number | null
           timeframe?: string
+          trailing_stop_percent?: number | null
           updated_at?: string
           user_id?: string
           volume_multiplier?: number | null
