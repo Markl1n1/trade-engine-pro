@@ -3785,10 +3785,14 @@ async function run4hReentryBacktest(
           const entryFee = actualNotional * (takerFee / 100);
           
           position = {
+            id: trades.length + 1, // Add unique ID
             type: shouldEnterLong ? 'buy' : 'sell',
             entry_price: priceWithSlippage,
             entry_time: currentCandle.open_time,
             quantity,
+            stopLossPrice,
+            takeProfitPrice,
+            entryFee,
           };
           
           // Store dynamic SL/TP and entry fee in position metadata
@@ -3925,6 +3929,8 @@ async function run4hReentryBacktest(
         position.exit_price = exitPriceWithSlippage;
         position.exit_time = currentCandle.open_time;
         position.profit = netProfit;
+        position.profit_percent = (netProfit / (position.quantity * position.entry_price)) * 100;
+        position.exit_reason = exitReason;
         
         // Return funds
         if (productType === 'futures') {
@@ -3980,6 +3986,8 @@ async function run4hReentryBacktest(
     position.exit_price = exitPrice;
     position.exit_time = lastCandle.open_time;
     position.profit = netProfit;
+    position.profit_percent = (netProfit / (position.quantity * position.entry_price)) * 100;
+    position.exit_reason = 'END_OF_BACKTEST';
     
     if (productType === 'futures') {
       availableBalance += (lockedMargin + netProfit);
