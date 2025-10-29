@@ -2436,8 +2436,12 @@ async function runMTFMomentumBacktest(
 
   // Apply data sampling for large datasets
   const MAX_CANDLES = 5000;
+  console.log(`[MTF-BACKTEST] Original candles: ${candles.length}, MAX_CANDLES: ${MAX_CANDLES}`);
   if (candles.length > MAX_CANDLES) {
     candles = sampleCandles(candles, MAX_CANDLES);
+    console.log(`[MTF-BACKTEST] After sampling: ${candles.length} candles`);
+  } else {
+    console.log(`[MTF-BACKTEST] No sampling needed: ${candles.length} <= ${MAX_CANDLES}`);
   }
 
   const startTime = Date.now();
@@ -2641,6 +2645,9 @@ async function runMTFMomentumBacktest(
           trailingStopManager.reset();
         }
         
+        // Track balance on trade exit
+        balanceHistory.push({ time: currentTime, balance });
+        
         console.log(`[${i}] MTF ${exitReason} at ${exitPriceWithSlippage.toFixed(2)} - P&L: ${netProfit.toFixed(2)}, Balance: ${balance.toFixed(2)}`);
         continue;
       }
@@ -2829,6 +2836,9 @@ async function runMTFMomentumBacktest(
           
           console.log(`[${i}] MTF BUY at ${entryPrice.toFixed(2)} - SL: ${stopLossPrice.toFixed(2)}, TP: ${takeProfitPrice.toFixed(2)}`);
           consecutiveInsufficientBalance = 0; // Reset counter on successful trade
+          
+          // Track balance on trade entry
+          balanceHistory.push({ time: currentTime, balance: availableBalance + lockedMargin });
         }
       }
       // Removed verbose rejection logging to prevent CPU timeout
@@ -2889,6 +2899,9 @@ async function runMTFMomentumBacktest(
           
           console.log(`[${i}] MTF SHORT at ${entryPrice.toFixed(2)} - SL: ${stopLossPrice.toFixed(2)}, TP: ${takeProfitPrice.toFixed(2)}`);
           consecutiveInsufficientBalance = 0;
+          
+          // Track balance on trade entry
+          balanceHistory.push({ time: currentTime, balance: availableBalance + lockedMargin });
         }
       } else {
         consecutiveInsufficientBalance++;
@@ -2900,7 +2913,9 @@ async function runMTFMomentumBacktest(
 
     // Update balance tracking
     balance = availableBalance + lockedMargin;
-    balanceHistory.push({ time: currentTime, balance });
+    
+    // Only track balance on significant events (trades, not every candle)
+    // balanceHistory.push({ time: currentTime, balance }); // Removed to prevent CPU timeout
     
     if (balance > maxBalance) maxBalance = balance;
     maxDrawdown = Math.max(maxDrawdown, ((maxBalance - balance) / maxBalance) * 100);
@@ -2923,6 +2938,9 @@ async function runMTFMomentumBacktest(
     (position as any).exit_reason = 'END_OF_BACKTEST';
     
     trades.push(position);
+    
+    // Track balance on final position closure
+    balanceHistory.push({ time: finalCandle.open_time, balance });
     
     console.log(`Final SELL at ${exitPrice.toFixed(2)} - P&L: ${netProfit.toFixed(2)}, Final Balance: ${balance.toFixed(2)}`);
   }
