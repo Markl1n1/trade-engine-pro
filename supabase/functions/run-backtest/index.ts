@@ -2434,15 +2434,15 @@ async function runMTFMomentumBacktest(
   // Get unified strategy configuration from database
   const config = getStrategyBacktestConfig(strategy, 'mtf_momentum');
 
-  // Apply data sampling for large datasets
+  // Apply data sampling for large datasets - FORCE SAMPLING TO ALWAYS RUN
   const MAX_CANDLES = 5000;
-  console.log(`[MTF-BACKTEST] Original candles: ${candles.length}, MAX_CANDLES: ${MAX_CANDLES}`);
-  if (candles.length > MAX_CANDLES) {
-    candles = sampleCandles(candles, MAX_CANDLES);
-    console.log(`[MTF-BACKTEST] After sampling: ${candles.length} candles`);
-  } else {
-    console.log(`[MTF-BACKTEST] No sampling needed: ${candles.length} <= ${MAX_CANDLES}`);
-  }
+  console.log(`[MTF-BACKTEST] 🔍 DEBUG: Original candles: ${candles.length}, MAX_CANDLES: ${MAX_CANDLES}`);
+  console.log(`[MTF-BACKTEST] 🔍 DEBUG: sampleCandles function exists: ${typeof sampleCandles}`);
+  
+  // FORCE SAMPLING - Always sample to prevent CPU timeout
+  console.log(`[MTF-BACKTEST] 🔍 DEBUG: FORCING sampling to prevent CPU timeout...`);
+  candles = sampleCandles(candles, MAX_CANDLES);
+  console.log(`[MTF-BACKTEST] 🔍 DEBUG: After FORCED sampling: ${candles.length} candles`);
 
   const startTime = Date.now();
   console.log(`[MTF-BACKTEST] Starting optimization: ${candles.length} 1m candles`);
@@ -2957,6 +2957,17 @@ async function runMTFMomentumBacktest(
   const executionTime = ((Date.now() - startTime) / 1000).toFixed(2);
   console.log(`[MTF-BACKTEST] ✅ Completed in ${executionTime}s (${(candles.length / parseFloat(executionTime)).toFixed(0)} candles/sec)`);
   
+  // Debug: Check balanceHistory size
+  console.log(`[MTF-BACKTEST] 🔍 DEBUG: balanceHistory size: ${balanceHistory.length} entries`);
+  console.log(`[MTF-BACKTEST] 🔍 DEBUG: trades size: ${trades.length} entries`);
+  
+  // Limit balanceHistory to prevent CPU timeout during serialization
+  if (balanceHistory.length > 1000) {
+    console.log(`[MTF-BACKTEST] 🔍 DEBUG: Limiting balanceHistory from ${balanceHistory.length} to 1000 entries`);
+    const step = Math.ceil(balanceHistory.length / 1000);
+    balanceHistory.splice(0, balanceHistory.length, ...balanceHistory.filter((_, index) => index % step === 0));
+  }
+  
   console.log(`MTF Momentum Backtest Results:`);
   console.log(`- Total Return: ${totalReturn.toFixed(2)}%`);
   console.log(`- Total Trades: ${totalTrades}`);
@@ -2980,7 +2991,7 @@ async function runMTFMomentumBacktest(
       win_rate: winRate,
       max_drawdown: maxDrawdown,
       profit_factor: profitFactor,
-      balance_history: balanceHistory,
+      // balance_history: balanceHistory, // Removed to prevent CPU timeout
       trades: trades
     });
 
@@ -3001,7 +3012,7 @@ async function runMTFMomentumBacktest(
         win_rate: winRate,
         max_drawdown: maxDrawdown,
         profit_factor: profitFactor,
-        balance_history: balanceHistory,
+        // balance_history: balanceHistory, // Removed to prevent CPU timeout
         trades: trades
       }
     }),
