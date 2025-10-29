@@ -1975,12 +1975,20 @@ async function runSMACrossoverBacktest(
   let rsiRejections = 0;
   let volumeRejections = 0;
   let constraintRejections = 0;
+  let consecutiveInsufficientBalance = 0;
+  const MAX_INSUFFICIENT_BALANCE_CANDLES = 500; // Terminate if can't trade for 500 candles
 
   const startIdx = Math.max(config.sma_slow_period, config.rsi_period);
   for (let i = startIdx; i < candles.length; i++) {
     const currentCandle = candles[i];
     const currentPrice = executionTiming === 'open' ? currentCandle.open : currentCandle.close;
     const currentTime = currentCandle.open_time;
+    
+    // Early termination if balance too low for too long
+    if (!position && consecutiveInsufficientBalance >= MAX_INSUFFICIENT_BALANCE_CANDLES) {
+      console.log(`[SMA-BACKTEST] ⚠️ Terminating early: Insufficient balance for ${MAX_INSUFFICIENT_BALANCE_CANDLES} consecutive candles`);
+      break;
+    }
     
     // Check SL/TP first (priority over trailing stop)
     if (position) {
@@ -2197,10 +2205,12 @@ async function runSMACrossoverBacktest(
           }
           
           console.log(`[${i}] 🟢 BUY at ${entryPrice.toFixed(2)} - SL: ${stopLossPrice.toFixed(2)}, TP: ${takeProfitPrice.toFixed(2)}`);
+          consecutiveInsufficientBalance = 0; // Reset counter on successful trade
         }
         } else {
           constraintRejections++;
-          console.log(`[${i}] ❌ BUY rejected: Exchange constraints - qty=${quantity.toFixed(5)} (min=${minQty}), notional=${entryNotional.toFixed(2)} (min=${minNotional})`);
+          consecutiveInsufficientBalance++; // Increment counter when can't trade
+          // Removed verbose rejection logging to prevent CPU timeout
         }
       }
     }
@@ -2275,10 +2285,12 @@ async function runSMACrossoverBacktest(
           }
           
           console.log(`[${i}] 🔴 SHORT at ${entryPrice.toFixed(2)} - SL: ${stopLossPrice.toFixed(2)}, TP: ${takeProfitPrice.toFixed(2)}`);
+          consecutiveInsufficientBalance = 0; // Reset counter on successful trade
         }
         } else {
           constraintRejections++;
-          console.log(`[${i}] ❌ SHORT rejected: Exchange constraints - qty=${quantity.toFixed(5)} (min=${minQty}), notional=${entryNotional.toFixed(2)} (min=${minNotional})`);
+          consecutiveInsufficientBalance++; // Increment counter when can't trade
+          // Removed verbose rejection logging to prevent CPU timeout
         }
       }
     }
@@ -2333,10 +2345,10 @@ async function runSMACrossoverBacktest(
   }
 
   // Calculate performance metrics
+  const totalTrades = trades.length;
   const totalReturn = ((balance - initialBalance) / initialBalance) * 100;
   const winTrades = trades.filter(t => (t.profit || 0) > 0).length;
   const loseTrades = totalTrades - winTrades;
-  const totalTrades = trades.length;
   const winRate = totalTrades > 0 ? (winTrades / totalTrades) * 100 : 0;
   const avgWin = trades.filter(t => (t.profit || 0) > 0).reduce((sum, t) => sum + (t.profit || 0), 0) / Math.max(winTrades, 1);
   const avgLoss = trades.filter(t => (t.profit || 0) < 0).reduce((sum, t) => sum + (t.profit || 0), 0) / Math.max(totalTrades - winTrades, 1);
@@ -2542,7 +2554,16 @@ async function runMTFMomentumBacktest(
   // FIXED: Remove pre-calculated volumeSMA as it's now calculated per candle
   console.log(`[MTF-BACKTEST] ✅ Indicators ready, starting backtest loop...`);
 
+  // Early termination tracking
+  let consecutiveInsufficientBalance = 0;
+  const MAX_INSUFFICIENT_BALANCE_CANDLES = 500;
+
   for (let i = Math.max(config.mtf_rsi_period, config.mtf_macd_slow); i < candles.length; i++) {
+    // Early termination if balance too low
+    if (!position && consecutiveInsufficientBalance >= MAX_INSUFFICIENT_BALANCE_CANDLES) {
+      console.log(`[MTF-BACKTEST] ⚠️ Terminating early: Insufficient balance for ${MAX_INSUFFICIENT_BALANCE_CANDLES} candles`);
+      break;
+    }
     const currentCandle = candles[i];
     const currentPrice = executionTiming === 'open' ? currentCandle.open : currentCandle.close;
     const currentTime = currentCandle.open_time;
@@ -2744,10 +2765,7 @@ async function runMTFMomentumBacktest(
     const mtfLongCondition = !position && mtfSignal.signal_type === 'BUY';
     const mtfShortCondition = !position && mtfSignal.signal_type === 'SELL';
     
-    // Debug logging for signal analysis
-    if (i % 100 === 0) { // Log every 100 candles to avoid spam
-      console.log(`[MTF-DEBUG] Candle ${i}: Signal=${mtfSignal.signal_type || 'NONE'}, Reason=${mtfSignal.reason}`);
-    }
+    // Removed debug logging to prevent CPU timeout
     
     if (mtfLongCondition) {
       // Position sizing (margin-based)
@@ -2802,10 +2820,10 @@ async function runMTFMomentumBacktest(
           }
           
           console.log(`[${i}] MTF BUY at ${entryPrice.toFixed(2)} - SL: ${stopLossPrice.toFixed(2)}, TP: ${takeProfitPrice.toFixed(2)}`);
+          consecutiveInsufficientBalance = 0; // Reset counter on successful trade
         }
-      } else {
-        console.log(`[${i}] ❌ MTF LONG rejected: qty=${quantity.toFixed(5)} (min=${minQty}), notional=${entryNotional.toFixed(2)} (min=${minNotional})`);
       }
+      // Removed verbose rejection logging to prevent CPU timeout
     }
     
     // Handle SHORT entry (new SELL position)
@@ -2862,9 +2880,11 @@ async function runMTFMomentumBacktest(
           }
           
           console.log(`[${i}] MTF SHORT at ${entryPrice.toFixed(2)} - SL: ${stopLossPrice.toFixed(2)}, TP: ${takeProfitPrice.toFixed(2)}`);
+          consecutiveInsufficientBalance = 0;
         }
       } else {
-        warnings.push(`[${new Date(currentTime).toISOString()}] MTF Momentum SHORT rejected: quantity=${quantity.toFixed(5)} (min=${minQty}) | notional=${(quantity * currentPrice).toFixed(2)} (min=${minNotional})`);
+        consecutiveInsufficientBalance++;
+        // Removed verbose rejection logging to prevent CPU timeout
       }
     }
     
