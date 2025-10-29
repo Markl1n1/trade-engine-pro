@@ -18,23 +18,8 @@ verify_jwt = true
 [functions.get-account-data]
 verify_jwt = true
 
-[functions.check-binance-positions-cron]
-verify_jwt = true
-
 # MARKET DATA COLLECTION
-[functions.bybit-market-data]
-verify_jwt = false
-
 [functions.binance-ticker]
-verify_jwt = false
-
-[functions.exchange-websocket-monitor]
-verify_jwt = false
-
-[functions.get-hybrid-market-data]
-verify_jwt = true
-
-[functions.refresh-market-data]
 verify_jwt = false
 
 [functions.load-market-data]
@@ -44,19 +29,12 @@ verify_jwt = false
 verify_jwt = false
 
 # MONITORING AND QUALITY
-[functions.data-quality-monitor]
-verify_jwt = false
-
 [functions.get-audit-logs]
 verify_jwt = true
 
 # UTILITY FUNCTIONS
-[functions.instant-signals]
-verify_jwt = false
-
 [functions.test-exchange]
 verify_jwt = true
-
 
 [functions.monitor-strategies-realtime]
 verify_jwt = true
