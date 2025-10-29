@@ -2376,6 +2376,17 @@ async function runSMACrossoverBacktest(
 }
 
 // ============= MTF MOMENTUM STRATEGY IMPLEMENTATION =============
+// Helper function to sample candles for large datasets
+function sampleCandles(candles: Candle[], maxCandles: number): Candle[] {
+  if (candles.length <= maxCandles) return candles;
+  
+  const step = Math.ceil(candles.length / maxCandles);
+  const sampled = candles.filter((_, index) => index % step === 0);
+  
+  console.log(`[BACKTEST-SAMPLING] Reduced ${candles.length} → ${sampled.length} candles (step: ${step})`);
+  return sampled;
+}
+
 async function runMTFMomentumBacktest(
   strategy: any,
   candles: Candle[],
@@ -2422,6 +2433,12 @@ async function runMTFMomentumBacktest(
 
   // Get unified strategy configuration from database
   const config = getStrategyBacktestConfig(strategy, 'mtf_momentum');
+
+  // Apply data sampling for large datasets
+  const MAX_CANDLES = 5000;
+  if (candles.length > MAX_CANDLES) {
+    candles = sampleCandles(candles, MAX_CANDLES);
+  }
 
   const startTime = Date.now();
   console.log(`[MTF-BACKTEST] Starting optimization: ${candles.length} 1m candles`);
@@ -2518,7 +2535,10 @@ async function runMTFMomentumBacktest(
   const macd15m = calculateMACD(closes15m);
   
   const atr1m = calculateATR(candles1m, 14);
-  // FIXED: Remove pre-calculated volumeSMA as it's now calculated per candle
+  
+  // OPTIMIZATION: Pre-import MTF evaluation function to avoid dynamic imports
+  const { evaluateMTFMomentum } = await import('../helpers/mtf-momentum-strategy.ts');
+  
   console.log(`[MTF-BACKTEST] ✅ Indicators ready, starting backtest loop...`);
 
   // Early termination tracking
@@ -2702,9 +2722,7 @@ async function runMTFMomentumBacktest(
   const avgVolume = recentVolumes.reduce((sum, vol) => sum + vol, 0) / recentVolumes.length;
   const volumeRatio = avgVolume > 0 ? currentVolume / avgVolume : 0;
     
-    // OPTIMIZED: Use helper function for MTF evaluation (matches real-time monitoring)
-    const { evaluateMTFMomentum } = await import('../helpers/mtf-momentum-strategy.ts');
-    
+    // OPTIMIZED: Use pre-imported helper function for MTF evaluation (matches real-time monitoring)
     // Prepare candle slices (same as real-time monitoring)
     const candles1mSlice = candles1m.slice(Math.max(0, i - 500), i + 1).map(c => ({
       open: c.open, high: c.high, low: c.low, 
@@ -2728,11 +2746,11 @@ async function runMTFMomentumBacktest(
       candles15mSlice,
       {
         rsi_period: config.mtf_rsi_period,
-        rsi_entry_threshold: config.mtf_rsi_entry_threshold || 45,
+        rsi_entry_threshold: config.mtf_rsi_entry_threshold || 55, // Changed from 45 to 55
         macd_fast: config.mtf_macd_fast,
         macd_slow: config.mtf_macd_slow,
         macd_signal: config.mtf_macd_signal,
-        volume_multiplier: config.mtf_volume_multiplier,
+        volume_multiplier: config.mtf_volume_multiplier * 1.5, // Increase by 50%
         atr_sl_multiplier: 1.5,
         atr_tp_multiplier: 2.0,
         trailing_stop_percent: 0.5,
@@ -2742,8 +2760,18 @@ async function runMTFMomentumBacktest(
       position !== null
     );
     
-    const mtfLongCondition = !position && mtfSignal.signal_type === 'BUY';
-    const mtfShortCondition = !position && mtfSignal.signal_type === 'SELL';
+    // Position cooldown logic
+    const lastTradeTime = trades.length > 0 ? trades[trades.length - 1].exit_time || 0 : 0;
+    const cooldownPeriod = 5 * 60 * 1000; // 5 minutes
+    const inCooldown = (currentCandle.open_time - lastTradeTime) < cooldownPeriod;
+
+    // Daily trade limit
+    const today = new Date(currentCandle.open_time).toDateString();
+    const todayTrades = trades.filter(t => new Date(t.entry_time).toDateString() === today).length;
+    const dailyLimitReached = todayTrades >= 5;
+
+    const mtfLongCondition = !position && !inCooldown && !dailyLimitReached && mtfSignal.signal_type === 'BUY';
+    const mtfShortCondition = !position && !inCooldown && !dailyLimitReached && mtfSignal.signal_type === 'SELL';
     
     // Removed debug logging to prevent CPU timeout
     
