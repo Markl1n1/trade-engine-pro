@@ -98,15 +98,7 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
   const [athGuardAthSafetyDistance, setAthGuardAthSafetyDistance] = useState(70);
   const [athGuardRsiThreshold, setAthGuardRsiThreshold] = useState(70);
 
-  // MSTG (Multi-Strategy)
-  const [mstgWeightMomentum, setMstgWeightMomentum] = useState(0.25);
-  const [mstgWeightTrend, setMstgWeightTrend] = useState(0.35);
-  const [mstgWeightVolatility, setMstgWeightVolatility] = useState(0.20);
-  const [mstgWeightRelative, setMstgWeightRelative] = useState(0.20);
-  const [mstgLongThreshold, setMstgLongThreshold] = useState(30);
-  const [mstgShortThreshold, setMstgShortThreshold] = useState(-30);
-  const [mstgExitThreshold, setMstgExitThreshold] = useState(0);
-  const [mstgExtremeThreshold, setMstgExtremeThreshold] = useState(60);
+  
 
   // UI State
   const [saving, setSaving] = useState(false);
@@ -199,15 +191,7 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
       setAthGuardAthSafetyDistance(editStrategy.ath_guard_ath_safety_distance || 70);
       setAthGuardRsiThreshold(editStrategy.ath_guard_rsi_threshold || 70);
 
-      // MSTG
-      setMstgWeightMomentum(editStrategy.mstg_weight_momentum || 0.25);
-      setMstgWeightTrend(editStrategy.mstg_weight_trend || 0.35);
-      setMstgWeightVolatility(editStrategy.mstg_weight_volatility || 0.20);
-      setMstgWeightRelative(editStrategy.mstg_weight_relative || 0.20);
-      setMstgLongThreshold(editStrategy.mstg_long_threshold || 30);
-      setMstgShortThreshold(editStrategy.mstg_short_threshold || -30);
-      setMstgExitThreshold(editStrategy.mstg_exit_threshold || 0);
-      setMstgExtremeThreshold(editStrategy.mstg_extreme_threshold || 60);
+      
 
       setHasUnsavedChanges(false);
     }
@@ -266,14 +250,7 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
     setAthGuardAtrTp2Multiplier(0.2);
     setAthGuardAthSafetyDistance(70);
     setAthGuardRsiThreshold(70);
-    setMstgWeightMomentum(0.25);
-    setMstgWeightTrend(0.35);
-    setMstgWeightVolatility(0.20);
-    setMstgWeightRelative(0.20);
-    setMstgLongThreshold(30);
-    setMstgShortThreshold(-30);
-    setMstgExitThreshold(0);
-    setMstgExtremeThreshold(60);
+    
     setValidationErrors({});
     setHasUnsavedChanges(false);
   };
@@ -516,15 +493,7 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
         ath_guard_ath_safety_distance: athGuardAthSafetyDistance,
         ath_guard_rsi_threshold: athGuardRsiThreshold,
 
-        // MSTG
-        mstg_weight_momentum: mstgWeightMomentum,
-        mstg_weight_trend: mstgWeightTrend,
-        mstg_weight_volatility: mstgWeightVolatility,
-        mstg_weight_relative: mstgWeightRelative,
-        mstg_long_threshold: mstgLongThreshold,
-        mstg_short_threshold: mstgShortThreshold,
-        mstg_exit_threshold: mstgExitThreshold,
-        mstg_extreme_threshold: mstgExtremeThreshold,
+        
 
         updated_at: new Date().toISOString()
       };
@@ -914,30 +883,7 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
               </AccordionItem>
             )}
 
-            {/* MSTG */}
-            <AccordionItem value="mstg">
-              <AccordionTrigger className="text-left">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold">Multi-Strategy (MSTG) Settings</span>
-                </div>
-              </AccordionTrigger>
-              <AccordionContent>
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                      {renderField("Weight Momentum", "mstgWeightMomentum", mstgWeightMomentum, setMstgWeightMomentum, "number", undefined, false, 0, 1, 0.01)}
-                      {renderField("Weight Trend", "mstgWeightTrend", mstgWeightTrend, setMstgWeightTrend, "number", undefined, false, 0, 1, 0.01)}
-                      {renderField("Weight Volatility", "mstgWeightVolatility", mstgWeightVolatility, setMstgWeightVolatility, "number", undefined, false, 0, 1, 0.01)}
-                      {renderField("Weight Relative", "mstgWeightRelative", mstgWeightRelative, setMstgWeightRelative, "number", undefined, false, 0, 1, 0.01)}
-                      {renderField("Long Threshold", "mstgLongThreshold", mstgLongThreshold, setMstgLongThreshold, "number", undefined, false, -100, 100)}
-                      {renderField("Short Threshold", "mstgShortThreshold", mstgShortThreshold, setMstgShortThreshold, "number", undefined, false, -100, 100)}
-                      {renderField("Exit Threshold", "mstgExitThreshold", mstgExitThreshold, setMstgExitThreshold, "number", undefined, false, -100, 100)}
-                      {renderField("Extreme Threshold", "mstgExtremeThreshold", mstgExtremeThreshold, setMstgExtremeThreshold, "number", undefined, false, 0, 100)}
-                    </div>
-                  </CardContent>
-                </Card>
-              </AccordionContent>
-            </AccordionItem>
+            
 
           </Accordion>
         </div>

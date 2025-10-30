@@ -57,15 +57,7 @@ export function StrategyCloner({ strategy, onCloneComplete }: StrategyClonerProp
           mtf_macd_slow: strategy.mtf_macd_slow,
           mtf_macd_signal: strategy.mtf_macd_signal,
           mtf_volume_multiplier: strategy.mtf_volume_multiplier,
-          // MSTG settings
-          mstg_weight_momentum: strategy.mstg_weight_momentum,
-          mstg_weight_trend: strategy.mstg_weight_trend,
-          mstg_weight_volatility: strategy.mstg_weight_volatility,
-          mstg_weight_relative: strategy.mstg_weight_relative,
-          mstg_long_threshold: strategy.mstg_long_threshold,
-          mstg_short_threshold: strategy.mstg_short_threshold,
-          mstg_exit_threshold: strategy.mstg_exit_threshold,
-          mstg_extreme_threshold: strategy.mstg_extreme_threshold,
+          
           // ATH Guard settings
           ath_guard_ema_slope_threshold: strategy.ath_guard_ema_slope_threshold,
           ath_guard_pullback_tolerance: strategy.ath_guard_pullback_tolerance,
