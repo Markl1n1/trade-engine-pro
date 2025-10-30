@@ -535,7 +535,7 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
 
         if (error) throw error;
 
-        await logStrategyCreate(strategyData.name, strategyData.strategy_type);
+        await logStrategyCreate(strategyData);
         
         toast({
           title: "Success",

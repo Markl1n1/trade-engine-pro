@@ -14,21 +14,36 @@ serve(async (req) => {
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-    const supabase = createClient(supabaseUrl, supabaseKey);
-
-    // Get user from auth header
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    
+    // Get user from auth header using anon key client for proper JWT validation
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
-      throw new Error('No authorization header');
+      console.error('[REALTIME-MONITOR] No authorization header provided');
+      return new Response(
+        JSON.stringify({ success: false, error: 'Unauthorized', timestamp: new Date().toISOString() }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+    // Create client with anon key to validate JWT
+    const anonClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } }
+    });
+    
+    const { data: { user }, error: userError } = await anonClient.auth.getUser();
 
     if (userError || !user) {
-      throw new Error('Unauthorized');
+      console.error('[REALTIME-MONITOR] Auth error:', userError?.message || 'No user found');
+      return new Response(
+        JSON.stringify({ success: false, error: 'Unauthorized', timestamp: new Date().toISOString() }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
+
+    // Now use service role client for database operations
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     console.log(`[REALTIME-MONITOR] Checking strategies for user: ${user.id}`);
 

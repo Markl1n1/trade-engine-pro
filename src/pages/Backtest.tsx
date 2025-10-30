@@ -128,9 +128,8 @@ const Backtest = () => {
         return;
       }
 
-      if (data?.debug_mode !== undefined) {
-        setDebugMode(data.debug_mode);
-      }
+      // Debug mode can be toggled in the UI, default to false
+      setDebugMode(false);
     } catch (error: any) {
       console.warn('Error loading user settings:', error);
     }
