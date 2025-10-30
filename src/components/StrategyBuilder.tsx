@@ -36,7 +36,7 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
   const [status, setStatus] = useState("active");
   const [initialCapital, setInitialCapital] = useState(1000);
   const [positionSizePercent, setPositionSizePercent] = useState(5);
-  const [benchmarkSymbol, setBenchmarkSymbol] = useState("BTCUSDT");
+  
 
   // Risk Management
   const [stopLossPercent, setStopLossPercent] = useState(1);
@@ -134,7 +134,7 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
       setStatus(editStrategy.status || "active");
       setInitialCapital(editStrategy.initial_capital || 1000);
       setPositionSizePercent(editStrategy.position_size_percent || 5);
-      setBenchmarkSymbol(editStrategy.benchmark_symbol || "BTCUSDT");
+      
 
       // Risk Management
       setStopLossPercent(editStrategy.stop_loss_percent || 1);
@@ -223,7 +223,7 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
     setStatus("active");
     setInitialCapital(1000);
     setPositionSizePercent(5);
-    setBenchmarkSymbol("BTCUSDT");
+    
     setStopLossPercent(1);
     setTakeProfitPercent(2);
     setTrailingStopPercent(0.5);
@@ -454,7 +454,6 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
         status: status,
         initial_capital: initialCapital,
         position_size_percent: positionSizePercent,
-        benchmark_symbol: benchmarkSymbol.trim() || null,
 
         // Risk Management
         stop_loss_percent: stopLossPercent,
@@ -727,7 +726,7 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
                       ])}
                       {renderField("Initial Capital", "initialCapital", initialCapital, setInitialCapital, "number", undefined, true, 1)}
                       {renderField("Position Size %", "positionSizePercent", positionSizePercent, setPositionSizePercent, "number", undefined, true, 0, 100)}
-                      {renderField("Benchmark Symbol", "benchmarkSymbol", benchmarkSymbol, setBenchmarkSymbol, "text")}
+                      
                     </div>
                     <div className="mt-4">
                       {renderField("Description", "description", description, setDescription, "textarea")}
