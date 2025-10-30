@@ -232,6 +232,7 @@ export type Database = {
           fvg_key_timeframe: string | null
           fvg_risk_reward_ratio: number | null
           fvg_tick_size: number | null
+          general_filter_flags: Json | null
           id: string
           initial_capital: number | null
           max_position_time: number | null
@@ -296,6 +297,7 @@ export type Database = {
           fvg_key_timeframe?: string | null
           fvg_risk_reward_ratio?: number | null
           fvg_tick_size?: number | null
+          general_filter_flags?: Json | null
           id?: string
           initial_capital?: number | null
           max_position_time?: number | null
@@ -360,6 +362,7 @@ export type Database = {
           fvg_key_timeframe?: string | null
           fvg_risk_reward_ratio?: number | null
           fvg_tick_size?: number | null
+          general_filter_flags?: Json | null
           id?: string
           initial_capital?: number | null
           max_position_time?: number | null
