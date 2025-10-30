@@ -240,14 +240,6 @@ export type Database = {
           min_trend_strength: number | null
           min_volume_spike: number | null
           momentum_threshold: number | null
-          mstg_exit_threshold: number | null
-          mstg_extreme_threshold: number | null
-          mstg_long_threshold: number | null
-          mstg_short_threshold: number | null
-          mstg_weight_momentum: number | null
-          mstg_weight_relative: number | null
-          mstg_weight_trend: number | null
-          mstg_weight_volatility: number | null
           mtf_macd_fast: number | null
           mtf_macd_signal: number | null
           mtf_macd_slow: number | null
@@ -305,14 +297,6 @@ export type Database = {
           min_trend_strength?: number | null
           min_volume_spike?: number | null
           momentum_threshold?: number | null
-          mstg_exit_threshold?: number | null
-          mstg_extreme_threshold?: number | null
-          mstg_long_threshold?: number | null
-          mstg_short_threshold?: number | null
-          mstg_weight_momentum?: number | null
-          mstg_weight_relative?: number | null
-          mstg_weight_trend?: number | null
-          mstg_weight_volatility?: number | null
           mtf_macd_fast?: number | null
           mtf_macd_signal?: number | null
           mtf_macd_slow?: number | null
@@ -370,14 +354,6 @@ export type Database = {
           min_trend_strength?: number | null
           min_volume_spike?: number | null
           momentum_threshold?: number | null
-          mstg_exit_threshold?: number | null
-          mstg_extreme_threshold?: number | null
-          mstg_long_threshold?: number | null
-          mstg_short_threshold?: number | null
-          mstg_weight_momentum?: number | null
-          mstg_weight_relative?: number | null
-          mstg_weight_trend?: number | null
-          mstg_weight_volatility?: number | null
           mtf_macd_fast?: number | null
           mtf_macd_signal?: number | null
           mtf_macd_slow?: number | null
