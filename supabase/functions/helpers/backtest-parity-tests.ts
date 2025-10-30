@@ -130,7 +130,7 @@ export async function testSLBeforeTP(): Promise<ParityTestResult> {
     
     return {
       testName,
-      passed: hasTrade && exitReason?.includes('SL'),
+      passed: hasTrade && (exitReason?.includes('SL') ?? false),
       expected: 'Trade closed by SL (not TP)',
       actual: `${result.total_trades} trades, exit reason: ${exitReason}`,
       details: 'Price hit SL at 99.0 before reaching TP at 101.0'

@@ -2534,7 +2534,7 @@ async function runMTFMomentumBacktest(
   // Validate minimum data requirements
   const minRequiredCandles = Math.max(config.mtf_rsi_period, config.mtf_macd_slow) + 10;
   if (candles1m.length < minRequiredCandles || candles5m.length < minRequiredCandles || candles15m.length < minRequiredCandles) {
-    const debugMode = userSettings?.debug_mode || false;
+    const debugMode = false; // Debug mode disabled
     if (debugMode) {
       console.log(JSON.stringify({ type: 'debug', scope: 'MTF-BACKTEST', event: 'INDICATOR_WINDOW_MISSING', candles1m: candles1m.length, candles5m: candles5m.length, candles15m: candles15m.length, required: minRequiredCandles }));
     }
@@ -2581,7 +2581,7 @@ async function runMTFMomentumBacktest(
     
     // Guard against missing windows
     if (index5m >= candles5m.length || index15m >= candles15m.length) {
-      const debugMode = userSettings?.debug_mode || false;
+      const debugMode = false; // Debug mode disabled
       if (debugMode) {
         console.log(JSON.stringify({ type: 'debug', scope: 'MTF-BACKTEST', event: 'INDICATOR_WINDOW_MISSING', i, index5m, index15m, len5m: candles5m.length, len15m: candles15m.length }));
       }
@@ -3785,7 +3785,6 @@ async function run4hReentryBacktest(
           const entryFee = actualNotional * (takerFee / 100);
           
           position = {
-            id: trades.length + 1, // Add unique ID
             type: shouldEnterLong ? 'buy' : 'sell',
             entry_price: priceWithSlippage,
             entry_time: currentCandle.open_time,
@@ -3793,9 +3792,10 @@ async function run4hReentryBacktest(
             stopLossPrice,
             takeProfitPrice,
             entryFee,
-          };
+          } as any;
           
           // Store dynamic SL/TP and entry fee in position metadata
+          (position as any).id = trades.length + 1;
           (position as any).stopLossPrice = stopLossPrice;
           (position as any).takeProfitPrice = takeProfitPrice;
           (position as any).entryFee = entryFee; // FIXED: Store entry fee
@@ -3929,8 +3929,8 @@ async function run4hReentryBacktest(
         position.exit_price = exitPriceWithSlippage;
         position.exit_time = currentCandle.open_time;
         position.profit = netProfit;
-        position.profit_percent = (netProfit / (position.quantity * position.entry_price)) * 100;
-        position.exit_reason = exitReason;
+        (position as any).profit_percent = (netProfit / (position.quantity * position.entry_price)) * 100;
+        (position as any).exit_reason = exitReason;
         
         // Return funds
         if (productType === 'futures') {
@@ -3986,8 +3986,8 @@ async function run4hReentryBacktest(
     position.exit_price = exitPrice;
     position.exit_time = lastCandle.open_time;
     position.profit = netProfit;
-    position.profit_percent = (netProfit / (position.quantity * position.entry_price)) * 100;
-    position.exit_reason = 'END_OF_BACKTEST';
+    (position as any).profit_percent = (netProfit / (position.quantity * position.entry_price)) * 100;
+    (position as any).exit_reason = 'END_OF_BACKTEST';
     
     if (productType === 'futures') {
       availableBalance += (lockedMargin + netProfit);
