@@ -8,6 +8,9 @@ project_id = "wnkjtkigpyfnthnfmdlk"
 [functions.monitor-strategies-cron]
 verify_jwt = false
 
+[functions.cleanup-market-data]
+verify_jwt = false
+
 [functions.run-backtest]
 verify_jwt = true
 
