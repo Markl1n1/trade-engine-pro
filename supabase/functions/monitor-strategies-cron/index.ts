@@ -7,7 +7,8 @@ import {
 } from '../helpers/signal-utils.ts';
 import { evaluateATHGuardStrategy } from '../helpers/ath-guard-strategy.ts';
 import { evaluate4hReentry } from '../helpers/4h-reentry-strategy.ts';
-import { evaluateSMACrossoverStrategy, defaultSMACrossoverConfig } from '../helpers/sma-crossover-strategy.ts';
+import { evaluateSMACrossoverStrategy } from '../helpers/sma-crossover-strategy.ts';
+import { getStrategyBacktestConfig } from '../helpers/strategy-config-loader.ts';
 import { evaluateMTFMomentum, defaultMTFMomentumConfig } from '../helpers/mtf-momentum-strategy.ts';
 import { enhancedTelegramSignaler, TradingSignal } from '../helpers/enhanced-telegram-signaler.ts';
 
@@ -657,27 +658,7 @@ Deno.serve(async (req) => {
 
         // Check if this is an ATH Guard Scalping strategy
         if (strategy.strategy_type === 'ath_guard_scalping') {
-          // Updated ATH Guard config with 1:2 ratio defaults
-          const athGuardConfig = {
-            ema_slope_threshold: strategy.ath_guard_ema_slope_threshold || 0.15,
-            pullback_tolerance: strategy.ath_guard_pullback_tolerance || 0.15,
-            volume_multiplier: strategy.ath_guard_volume_multiplier || 1.8,
-            stoch_oversold: strategy.ath_guard_stoch_oversold || 25,
-            stoch_overbought: strategy.ath_guard_stoch_overbought || 75,
-            atr_sl_multiplier: strategy.ath_guard_atr_sl_multiplier || 1.0,
-            atr_tp1_multiplier: strategy.ath_guard_atr_tp1_multiplier || 1.0,
-            atr_tp2_multiplier: strategy.ath_guard_atr_tp2_multiplier || 2.0,
-            ath_safety_distance: strategy.ath_guard_ath_safety_distance || 0.2,
-            rsi_threshold: strategy.ath_guard_rsi_threshold || 70,
-            adx_threshold: 25,
-            bollinger_period: 20,
-            bollinger_std: 2.0,
-            trailing_stop_percent: 20,
-            max_position_time: 240,
-            min_volume_spike: 1.5,
-            momentum_threshold: 30,
-            support_resistance_lookback: 50
-          };
+          const athGuardConfig = getStrategyBacktestConfig(strategy, 'ath_guard_scalping');
 
           // Reduced logging - only log when signal is generated or error occurs
           
@@ -852,6 +833,7 @@ Deno.serve(async (req) => {
 
           // Support code-defined strategies: SMA 20/200 with RSI filter (scalping)
           if (strategy.strategy_type === 'sma_20_200_rsi') {
+            const smaConfig = getStrategyBacktestConfig(strategy, 'sma_20_200_rsi');
             const smaSignal = evaluateSMACrossoverStrategy(
               candles.map(c => ({
                 open: c.open,
@@ -861,7 +843,7 @@ Deno.serve(async (req) => {
                 volume: c.volume,
                 timestamp: c.timestamp,
               })),
-              defaultSMACrossoverConfig,
+              smaConfig,
               false
             );
             if (smaSignal.signal_type) {

@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Sparkles, AlertTriangle, CheckCircle, XCircle } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
@@ -58,6 +59,12 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
   const [minVolumeSpike, setMinVolumeSpike] = useState(1.1);
   const [atrSlMultiplier, setAtrSlMultiplier] = useState(1.5);
   const [atrTpMultiplier, setAtrTpMultiplier] = useState(2.0);
+
+  // General Filter Toggles
+  const [rsiEnabled, setRsiEnabled] = useState(true);
+  const [volumeEnabled, setVolumeEnabled] = useState(true);
+  const [trendEnabled, setTrendEnabled] = useState(true);
+  const [timeWindowEnabled, setTimeWindowEnabled] = useState(true);
 
   // SMA Crossover
   const [smaFastPeriod, setSmaFastPeriod] = useState(20);
@@ -150,6 +157,13 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
       setMinVolumeSpike(editStrategy.min_volume_spike || 1.1);
       setAtrSlMultiplier(editStrategy.atr_sl_multiplier || 1.5);
       setAtrTpMultiplier(editStrategy.atr_tp_multiplier || 2.0);
+
+      // General Filter Flags
+      const flags = editStrategy.general_filter_flags || {};
+      setRsiEnabled(flags.rsi !== false);
+      setVolumeEnabled(flags.volume !== false);
+      setTrendEnabled(flags.trend !== false);
+      setTimeWindowEnabled(flags.timeWindow !== false);
 
       // SMA Crossover
       setSmaFastPeriod(editStrategy.sma_fast_period || 20);
@@ -464,6 +478,14 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
         atr_sl_multiplier: atrSlMultiplier,
         atr_tp_multiplier: atrTpMultiplier,
 
+        // General Filter Flags
+        general_filter_flags: {
+          rsi: rsiEnabled,
+          volume: volumeEnabled,
+          trend: trendEnabled,
+          timeWindow: timeWindowEnabled,
+        },
+
         // SMA Crossover
         sma_fast_period: smaFastPeriod,
         sma_slow_period: smaSlowPeriod,
@@ -748,6 +770,24 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
               <AccordionContent>
                 <Card>
                   <CardContent className="pt-6">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                      <div className="flex items-center justify-between p-3 rounded-md border">
+                        <Label className="text-sm">Enable RSI Filter</Label>
+                        <Switch checked={rsiEnabled} onCheckedChange={(v) => handleFieldChange('rsiEnabled', v, setRsiEnabled)} />
+                      </div>
+                      <div className="flex items-center justify-between p-3 rounded-md border">
+                        <Label className="text-sm">Enable Volume Filter</Label>
+                        <Switch checked={volumeEnabled} onCheckedChange={(v) => handleFieldChange('volumeEnabled', v, setVolumeEnabled)} />
+                      </div>
+                      <div className="flex items-center justify-between p-3 rounded-md border">
+                        <Label className="text-sm">Enable Trend Filter</Label>
+                        <Switch checked={trendEnabled} onCheckedChange={(v) => handleFieldChange('trendEnabled', v, setTrendEnabled)} />
+                      </div>
+                      <div className="flex items-center justify-between p-3 rounded-md border">
+                        <Label className="text-sm">Enable Time Window</Label>
+                        <Switch checked={timeWindowEnabled} onCheckedChange={(v) => handleFieldChange('timeWindowEnabled', v, setTimeWindowEnabled)} />
+                      </div>
+                    </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                       {renderField("RSI Period", "rsiPeriod", rsiPeriod, setRsiPeriod, "number", undefined, false, 1)}
                       {renderField("RSI Overbought", "rsiOverbought", rsiOverbought, setRsiOverbought, "number", undefined, false, 0, 100)}

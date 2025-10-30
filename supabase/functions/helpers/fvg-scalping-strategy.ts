@@ -11,6 +11,8 @@ export interface FVGConfig {
   analysisTimeframe: string; // e.g., "1m"
   riskRewardRatio: number; // default 3.0
   tickSize: number; // default 0.01
+  // extension: allow disabling time window via config loader flags
+  disableTimeWindow?: boolean;
 }
 
 export interface FVGZone {
@@ -297,7 +299,7 @@ export function evaluateFVGStrategy(
   const isFutures = symbol?.includes('ES') || symbol?.includes('NQ');
   const isCrypto = symbol?.includes('BTC') || symbol?.includes('ETH') || symbol?.includes('USDT');
   
-  if (!isBacktest && isFutures && !isCrypto) {
+  if (!config.disableTimeWindow && !isBacktest && isFutures && !isCrypto) {
     const currentTime = new Date();
     if (!isWithinTradingWindow(currentTime, config)) {
       return {

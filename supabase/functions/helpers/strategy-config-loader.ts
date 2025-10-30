@@ -68,6 +68,9 @@ export interface UnifiedStrategyConfig {
   mstg_short_threshold?: number;
   mstg_exit_threshold?: number;
   mstg_extreme_threshold?: number;
+  // Flags-derived helpers
+  __general_filter_flags__?: Record<string, boolean>;
+  isFilterEnabled?: (name: 'rsi' | 'volume' | 'trend' | 'timeWindow') => boolean;
 }
 
 // Global default values (from DeepSeek recommendations)
@@ -113,6 +116,15 @@ export function getUnifiedStrategyConfig(strategy: any): UnifiedStrategyConfig {
   }
 
   // Build configuration with strategy-specific values and global defaults
+  const flags: Record<string, boolean> | null = strategy.general_filter_flags || null;
+
+  const isFilterEnabled = (name: 'rsi' | 'volume' | 'trend' | 'timeWindow'): boolean => {
+    // Missing flags default to enabled for backward compatibility
+    if (!flags) return true;
+    const v = flags[name];
+    return v !== false;
+  };
+
   const config: UnifiedStrategyConfig = {
     // Global defaults (can be overridden by strategy-specific values)
     ...GLOBAL_DEFAULTS,
@@ -181,7 +193,9 @@ export function getUnifiedStrategyConfig(strategy: any): UnifiedStrategyConfig {
     mstg_long_threshold: strategy.mstg_long_threshold,
     mstg_short_threshold: strategy.mstg_short_threshold,
     mstg_exit_threshold: strategy.mstg_exit_threshold,
-    mstg_extreme_threshold: strategy.mstg_extreme_threshold
+    mstg_extreme_threshold: strategy.mstg_extreme_threshold,
+    __general_filter_flags__: flags || undefined,
+    isFilterEnabled
   };
 
   return config;
@@ -197,35 +211,41 @@ export function getUnifiedStrategyConfig(strategy: any): UnifiedStrategyConfig {
  */
 export function getStrategyBacktestConfig(strategy: any, strategyType: string): any {
   const unifiedConfig = getUnifiedStrategyConfig(strategy);
+  const flags = unifiedConfig.__general_filter_flags__ || {};
+  const isEnabled = unifiedConfig.isFilterEnabled || ((_: any) => true);
   
   switch (strategyType) {
     case 'sma_crossover':
     case 'sma_20_200_rsi':
-      return {
+      // Build SMA config, then relax gates based on flags
+      {
+        const base = {
         sma_fast_period: unifiedConfig.sma_fast_period || 20,
         sma_slow_period: unifiedConfig.sma_slow_period || 200,
         rsi_period: unifiedConfig.rsi_period,
-        rsi_overbought: unifiedConfig.rsi_overbought,
-        rsi_oversold: unifiedConfig.rsi_oversold,
-        volume_multiplier: unifiedConfig.volume_multiplier,
+        rsi_overbought: isEnabled('rsi') ? unifiedConfig.rsi_overbought : 100,
+        rsi_oversold: isEnabled('rsi') ? unifiedConfig.rsi_oversold : 0,
+        volume_multiplier: isEnabled('volume') ? unifiedConfig.volume_multiplier : 0,
         atr_sl_multiplier: unifiedConfig.atr_sl_multiplier,
         atr_tp_multiplier: unifiedConfig.atr_tp_multiplier,
-        adx_threshold: unifiedConfig.adx_threshold,
+        adx_threshold: isEnabled('trend') ? unifiedConfig.adx_threshold : 0,
         bollinger_period: unifiedConfig.bollinger_period,
         bollinger_std: unifiedConfig.bollinger_std,
         trailing_stop_percent: unifiedConfig.trailing_stop_percent,
         max_position_time: unifiedConfig.max_position_time,
-        min_trend_strength: unifiedConfig.min_trend_strength
+        min_trend_strength: isEnabled('trend') ? unifiedConfig.min_trend_strength : 0
       };
+        return base;
+      }
       
     case 'mtf_momentum':
       return {
         mtf_rsi_period: unifiedConfig.mtf_rsi_period || 14,
-        mtf_rsi_entry_threshold: unifiedConfig.mtf_rsi_entry_threshold || 50,
+        mtf_rsi_entry_threshold: isEnabled('rsi') ? (unifiedConfig.mtf_rsi_entry_threshold || 50) : 0,
         mtf_macd_fast: unifiedConfig.mtf_macd_fast || 8,
         mtf_macd_slow: unifiedConfig.mtf_macd_slow || 21,
         mtf_macd_signal: unifiedConfig.mtf_macd_signal || 5,
-        mtf_volume_multiplier: unifiedConfig.mtf_volume_multiplier || 1.1,
+        mtf_volume_multiplier: isEnabled('volume') ? (unifiedConfig.mtf_volume_multiplier || 1.1) : 0,
         atr_sl_multiplier: unifiedConfig.atr_sl_multiplier,
         atr_tp_multiplier: unifiedConfig.atr_tp_multiplier,
         trailing_stop_percent: unifiedConfig.trailing_stop_percent,
@@ -237,17 +257,17 @@ export function getStrategyBacktestConfig(strategy: any, strategyType: string): 
       return {
         ema_slope_threshold: unifiedConfig.ath_guard_ema_slope_threshold || 0.10,
         pullback_tolerance: unifiedConfig.ath_guard_pullback_tolerance || 0.20,
-        volume_multiplier: unifiedConfig.ath_guard_volume_multiplier || 1.2,
+        volume_multiplier: isEnabled('volume') ? (unifiedConfig.ath_guard_volume_multiplier || 1.2) : 0,
         stoch_oversold: unifiedConfig.ath_guard_stoch_oversold || 25,
         stoch_overbought: unifiedConfig.ath_guard_stoch_overbought || 75,
         atr_sl_multiplier: unifiedConfig.ath_guard_atr_sl_multiplier || 1.2,
         atr_tp1_multiplier: unifiedConfig.ath_guard_atr_tp1_multiplier || 0.8,
         atr_tp2_multiplier: unifiedConfig.ath_guard_atr_tp2_multiplier || 1.5,
         ath_safety_distance: unifiedConfig.ath_guard_ath_safety_distance || 0.2,
-        rsi_threshold: unifiedConfig.ath_guard_rsi_threshold || 75,
+        rsi_threshold: isEnabled('rsi') ? (unifiedConfig.ath_guard_rsi_threshold || 75) : 0,
         trailing_stop_percent: unifiedConfig.trailing_stop_percent,
         max_position_time: unifiedConfig.max_position_time,
-        adx_threshold: unifiedConfig.adx_threshold,
+        adx_threshold: isEnabled('trend') ? unifiedConfig.adx_threshold : 0,
         min_volume_spike: unifiedConfig.min_volume_spike,
         momentum_threshold: unifiedConfig.momentum_threshold,
         support_resistance_lookback: unifiedConfig.support_resistance_lookback
@@ -261,6 +281,8 @@ export function getStrategyBacktestConfig(strategy: any, strategyType: string): 
         analysisTimeframe: unifiedConfig.fvg_analysis_timeframe || "1m",
         riskRewardRatio: unifiedConfig.fvg_risk_reward_ratio || 2.0,
         tickSize: unifiedConfig.fvg_tick_size || 0.01,
+        // custom extension for gating time window without breaking signature consumers
+        disableTimeWindow: !isEnabled('timeWindow'),
         max_position_time: unifiedConfig.max_position_time
       };
       
