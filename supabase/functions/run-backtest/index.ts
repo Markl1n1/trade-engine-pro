@@ -17,6 +17,7 @@ import { EnhancedReporting } from '../helpers/enhanced-reporting.ts';
 import { BaseConfig, BacktestConfig, MarketRegime } from '../helpers/strategy-interfaces.ts';
 import { runFVGScalpingBacktest } from '../helpers/fvg-backtest-helper.ts';
 import { getStrategyBacktestConfig } from '../helpers/strategy-config-loader.ts';
+import { runEMACrossoverBacktest } from '../helpers/ema-crossover-backtest-helper.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -1317,6 +1318,32 @@ serve(async (req) => {
         stopLossPercent,
         takeProfitPercent,
         userSettings?.debug_mode || false
+      );
+    }
+
+    // Check if this is EMA Crossover Scalping strategy
+    const isEMACrossover = strategy.strategy_type === 'ema_crossover_scalping';
+    
+    if (isEMACrossover) {
+      console.log('Running EMA Crossover Scalping strategy backtest...');
+      return await runEMACrossoverBacktest(
+        strategy,
+        candles,
+        initialBalance,
+        productType,
+        leverage,
+        makerFee,
+        takerFee,
+        slippage,
+        executionTiming,
+        supabaseClient,
+        strategyId,
+        startDate,
+        endDate,
+        corsHeaders,
+        trailingStopPercent,
+        stopLossPercent,
+        takeProfitPercent
       );
     }
 

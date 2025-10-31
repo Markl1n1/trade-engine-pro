@@ -681,6 +681,7 @@ export const StrategyBuilder = ({ open, onOpenChange, onSuccess, editStrategy }:
                         { value: "1d", label: "1 Day" }
                       ], true)}
                       {renderField("Strategy Type", "strategyType", strategyType, setStrategyType, "select", [
+                        { value: "ema_crossover_scalping", label: "EMA Crossover Scalping (Simplified)" },
                         { value: "sma_crossover", label: "SMA 20/200 Crossover" },
                         { value: "sma_20_200_rsi", label: "SMA 20/200 RSI" },
                         { value: "mtf_momentum", label: "MTF Momentum" },
