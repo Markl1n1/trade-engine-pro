@@ -181,7 +181,7 @@ serve(async (req) => {
             break;
           }
           
-          case 'ath_guard': {
+          case 'ath_guard_scalping': {
             const { evaluateATHGuardStrategy } = await import('../helpers/ath-guard-strategy.ts');
             const config = getStrategyMonitorConfig(strategy, 'ath_guard_scalping');
             signal = evaluateATHGuardStrategy(formattedCandles, config, false);
@@ -192,13 +192,30 @@ serve(async (req) => {
             const { evaluateFVGStrategy } = await import('../helpers/fvg-scalping-strategy.ts');
             const config = getStrategyMonitorConfig(strategy, 'fvg_scalping');
             signal = evaluateFVGStrategy(formattedCandles, config, false);
-            break;
-          }
-          
-          default:
-            console.log(`[REALTIME-MONITOR] Unknown strategy type: ${strategy.strategy_type}`);
-            continue;
+          break;
         }
+
+        case 'ema_crossover_scalping': {
+          const { evaluateEMACrossoverScalping } = await import('../helpers/ema-crossover-scalping-strategy.ts');
+          const config = {
+            fast_period: strategy.sma_fast_period || 9,
+            slow_period: strategy.sma_slow_period || 21,
+            atr_period: 14,
+            atr_sl_multiplier: strategy.atr_sl_multiplier || 1.5,
+            atr_tp_multiplier: strategy.atr_tp_multiplier || 2.0,
+            use_rsi_filter: true,
+            rsi_period: strategy.rsi_period || 14,
+            rsi_overbought: strategy.rsi_overbought || 70,
+            rsi_oversold: strategy.rsi_oversold || 30
+          };
+          signal = evaluateEMACrossoverScalping(formattedCandles, formattedCandles.length - 1, config, false);
+          break;
+        }
+
+        default:
+          console.log(`[REALTIME-MONITOR] Unknown strategy type: ${strategy.strategy_type}`);
+          continue;
+      }
 
         // Check if signal is valid and actionable
         if (signal && signal.signal_type && signal.signal_type !== null) {

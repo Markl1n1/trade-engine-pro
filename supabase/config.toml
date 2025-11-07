@@ -11,6 +11,10 @@ verify_jwt = false
 [functions.cleanup-market-data]
 verify_jwt = false
 
+[functions.cleanup-market-data.schedule]
+enabled = true
+cron = "0 2 * * *"
+
 [functions.run-backtest]
 verify_jwt = true
 
