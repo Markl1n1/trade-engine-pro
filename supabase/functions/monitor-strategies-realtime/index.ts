@@ -70,6 +70,18 @@ serve(async (req) => {
       );
     }
 
+    // Map strategy timeframes to database numeric format
+    const TIMEFRAME_MAP: Record<string, string> = {
+      '1m': '1',
+      '5m': '5',
+      '15m': '15',
+      '30m': '30',
+      '1h': '60',
+      '4h': '240',
+      '1d': 'D',
+      'D': 'D'
+    };
+
     // Evaluate strategies directly without calling instant-signals
     const generatedSignals = [];
     
@@ -77,12 +89,16 @@ serve(async (req) => {
       try {
         console.log(`[REALTIME-MONITOR] Evaluating strategy: ${strategy.name} (${strategy.id})`);
         
+        // Map strategy timeframe to database format
+        const dbTimeframe = TIMEFRAME_MAP[strategy.timeframe] || strategy.timeframe;
+        console.log(`[REALTIME-MONITOR] Mapping timeframe ${strategy.timeframe} -> ${dbTimeframe}`);
+        
         // Fetch market data for this strategy
         const { data: candles, error: candlesError } = await supabase
           .from('market_data')
           .select('*')
           .eq('symbol', strategy.symbol)
-          .eq('timeframe', strategy.timeframe)
+          .eq('timeframe', dbTimeframe)
           .order('open_time', { ascending: false })
           .limit(500);
 
@@ -198,15 +214,25 @@ serve(async (req) => {
         case 'ema_crossover_scalping': {
           const { evaluateEMACrossoverScalping } = await import('../helpers/ema-crossover-scalping-strategy.ts');
           const config = {
-            fast_period: strategy.sma_fast_period || 9,
-            slow_period: strategy.sma_slow_period || 21,
+            fast_ema_period: strategy.sma_fast_period || 9,
+            slow_ema_period: strategy.sma_slow_period || 21,
             atr_period: 14,
-            atr_sl_multiplier: strategy.atr_sl_multiplier || 1.5,
-            atr_tp_multiplier: strategy.atr_tp_multiplier || 2.0,
-            use_rsi_filter: true,
+            atr_sl_multiplier: strategy.atr_sl_multiplier || 1.0,
+            atr_tp_multiplier: strategy.atr_tp_multiplier || 1.5,
+            use_rsi_filter: false,
             rsi_period: strategy.rsi_period || 14,
+            rsi_long_threshold: 40,
+            rsi_short_threshold: 60,
+            max_position_time: 900,
+            // BaseConfig fields
+            adx_threshold: strategy.adx_threshold || 20,
+            bollinger_period: strategy.bollinger_period || 20,
+            bollinger_std: strategy.bollinger_std || 2.0,
+            rsi_oversold: strategy.rsi_oversold || 30,
             rsi_overbought: strategy.rsi_overbought || 70,
-            rsi_oversold: strategy.rsi_oversold || 30
+            momentum_threshold: strategy.momentum_threshold || 12,
+            volume_multiplier: strategy.volume_multiplier || 1.2,
+            trailing_stop_percent: strategy.trailing_stop_percent || 0.75
           };
           signal = evaluateEMACrossoverScalping(formattedCandles, formattedCandles.length - 1, config, false);
           break;

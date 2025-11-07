@@ -236,7 +236,7 @@ serve(async (req) => {
               
               return {
                 symbol: symbol.trim(), // Ensure no whitespace
-                timeframe: timeframe.trim(), // Ensure no whitespace
+                timeframe: BYBIT_INTERVALS[timeframe] || timeframe.trim(), // Store numeric format
                 exchange_type: 'bybit',
                 open_time: openTime,
                 open: parseFloat(k[1]) || 0,
