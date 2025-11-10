@@ -253,14 +253,14 @@ export async function runFVGScalpingBacktest(
       
       // Detect NEW FVGs if no position and room for more
       if (!position && activeFVGs.length < maxActiveFVGs) {
-        const { detectFairValueGap } = await import('./fvg-scalping-strategy.ts');
+        const { detectFairValueGapRelaxed } = await import('./fvg-scalping-strategy.ts');
         const recentCandles = candles.slice(Math.max(0, i - 10), i + 1).map(c => ({
           ...c,
           timestamp: c.open_time  // Add timestamp field
         }));
         
         console.log(`[FVG-BACKTEST] 🔍 Checking candle ${i}/${candles.length} for FVG (${activeFVGs.length}/${maxActiveFVGs} active)`);
-        const newFVG = detectFairValueGap(recentCandles, config.tickSize);
+        const newFVG = detectFairValueGapRelaxed(recentCandles);
         
         if (newFVG) {
           fvgsDetectedCount++;
@@ -359,7 +359,17 @@ export async function runFVGScalpingBacktest(
     profit_factor: profitFactor,
     sharpe_ratio: 0, // Simplified for now
     trades: trades,
-    balance_history: balanceHistory
+    balance_history: balanceHistory,
+    // Strategy diagnostics
+    diagnostics: {
+      fvgs_detected: fvgsDetectedCount,
+      retest_attempts: retestAttempts,
+      engulfment_success: engulfmentSuccess,
+      engulfment_failures: engulfmentFailures,
+      detection_rate: candles.length > 0 ? (fvgsDetectedCount / candles.length * 100) : 0,
+      retest_rate: fvgsDetectedCount > 0 ? (retestAttempts / fvgsDetectedCount * 100) : 0,
+      entry_rate: retestAttempts > 0 ? (engulfmentSuccess / retestAttempts * 100) : 0
+    }
   };
 
   console.log(`[FVG-BACKTEST] Complete: ${trades.length} trades, Win Rate: ${winRate.toFixed(1)}%, PF: ${profitFactor.toFixed(2)}`);
@@ -380,7 +390,8 @@ export async function runFVGScalpingBacktest(
       win_rate: results.win_rate,
       max_drawdown: results.max_drawdown,
       trades: results.trades,
-      balance_history: results.balance_history
+      balance_history: results.balance_history,
+      diagnostics: results.diagnostics
     });
 
   if (insertError) {

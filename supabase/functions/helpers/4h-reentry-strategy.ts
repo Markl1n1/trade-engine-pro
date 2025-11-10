@@ -361,22 +361,30 @@ export function evaluate4hReentry(
   const volumeConfirmed = calculateVolumeConfirmation(candles, 20);
   const momentumScore = calculateMomentumScore(candles, rsi);
   
+  // Calculate 4h EMA for trend filtering
+  const ema20 = calculateEMA(closes, 20);
+  const currentEMA20 = ema20[ema20.length - 1];
+  const isBullishTrend = currentCandle.close > currentEMA20;
+  const isBearishTrend = currentCandle.close < currentEMA20;
+  
   console.log('[4H-REENTRY] Enhanced indicators calculated:', {
     rsi: currentRSI.toFixed(2),
     adx: currentADX.toFixed(2),
     bollingerPosition: bollingerPosition.toFixed(3),
     volumeConfirmed,
-    momentumScore: momentumScore.toFixed(2)
+    momentumScore: momentumScore.toFixed(2),
+    ema20: currentEMA20.toFixed(2),
+    trend: isBullishTrend ? 'BULLISH' : isBearishTrend ? 'BEARISH' : 'NEUTRAL'
   });
 
   // Get strategy config with defaults
   const sessionStart = strategy.reentry_session_start || "00:00";
   const sessionEnd = strategy.reentry_session_end || "03:59";
-  const riskRewardRatio = strategy.reentry_risk_reward || 2;
+  const riskRewardRatio = strategy.reentry_risk_reward || 3;
   
-  // Use UI parameters or fallback to strategy defaults
-  const slPercent = stopLossPercent || strategy.stop_loss_percent || 1.0;
-  const tpPercent = takeProfitPercent || strategy.take_profit_percent || 2.0;
+  // Use UI parameters or fallback to improved strategy defaults (3:1 R:R)
+  const slPercent = stopLossPercent || strategy.stop_loss_percent || 2.5;
+  const tpPercent = takeProfitPercent || strategy.take_profit_percent || 7.5;
 
   console.log('[4H-REENTRY] Strategy config:', { sessionStart, sessionEnd, riskRewardRatio, slPercent, tpPercent });
 
@@ -494,23 +502,25 @@ export function evaluate4hReentry(
 
   // LONG setup: C_{t-1} < L_4h AND C_t >= L_4h
   if (C_prev < rangeLow && C_curr >= rangeLow) {
-    // Enhanced confirmation filters
+    // Enhanced confirmation filters with trend
     const adxConfirmed = currentADX >= 20;
     const rsiConfirmed = currentRSI > 30 && currentRSI < 70;
     const momentumConfirmed = Math.abs(momentumScore) >= 10;
     const bollingerConfirmed = bollingerPosition > 0.1 && bollingerPosition < 0.9;
+    const trendConfirmed = isBullishTrend; // Only LONG if above EMA20
     
     console.log('[4H-REENTRY] 🔍 LONG reentry filters:', {
       adx: `${currentADX.toFixed(2)} (need ≥20): ${adxConfirmed ? '✅' : '❌'}`,
       rsi: `${currentRSI.toFixed(2)} (need 30-70): ${rsiConfirmed ? '✅' : '❌'}`,
       momentum: `${momentumScore.toFixed(2)} (need ≥10): ${momentumConfirmed ? '✅' : '❌'}`,
       bollinger: `${bollingerPosition.toFixed(3)} (need 0.1-0.9): ${bollingerConfirmed ? '✅' : '❌'}`,
-      volume: volumeConfirmed ? '✅' : '❌'
+      volume: volumeConfirmed ? '✅' : '❌',
+      trend: `Close ${currentCandle.close.toFixed(2)} > EMA20 ${currentEMA20.toFixed(2)}: ${trendConfirmed ? '✅' : '❌'}`
     });
     
-    if (!adxConfirmed || !rsiConfirmed || !momentumConfirmed || !bollingerConfirmed || !volumeConfirmed) {
+    if (!adxConfirmed || !rsiConfirmed || !momentumConfirmed || !bollingerConfirmed || !volumeConfirmed || !trendConfirmed) {
       console.log('[4H-REENTRY] ❌ LONG reentry filters not met');
-      return { signal_type: null, reason: 'LONG reentry filters not met' };
+      return { signal_type: null, reason: 'LONG reentry filters not met (trend or indicators)' };
     }
     
     const entryPrice = C_curr;
@@ -553,23 +563,25 @@ export function evaluate4hReentry(
 
   // Enhanced SHORT setup with additional filters
   if (C_prev > rangeHigh && C_curr <= rangeHigh) {
-    // Enhanced confirmation filters
+    // Enhanced confirmation filters with trend
     const adxConfirmed = currentADX >= 20;
     const rsiConfirmed = currentRSI > 30 && currentRSI < 70;
     const momentumConfirmed = Math.abs(momentumScore) >= 10;
     const bollingerConfirmed = bollingerPosition > 0.1 && bollingerPosition < 0.9;
+    const trendConfirmed = isBearishTrend; // Only SHORT if below EMA20
     
     console.log('[4H-REENTRY] 🔍 SHORT reentry filters:', {
       adx: `${currentADX.toFixed(2)} (need ≥20): ${adxConfirmed ? '✅' : '❌'}`,
       rsi: `${currentRSI.toFixed(2)} (need 30-70): ${rsiConfirmed ? '✅' : '❌'}`,
       momentum: `${momentumScore.toFixed(2)} (need ≥10): ${momentumConfirmed ? '✅' : '❌'}`,
       bollinger: `${bollingerPosition.toFixed(3)} (need 0.1-0.9): ${bollingerConfirmed ? '✅' : '❌'}`,
-      volume: volumeConfirmed ? '✅' : '❌'
+      volume: volumeConfirmed ? '✅' : '❌',
+      trend: `Close ${currentCandle.close.toFixed(2)} < EMA20 ${currentEMA20.toFixed(2)}: ${trendConfirmed ? '✅' : '❌'}`
     });
     
-    if (!adxConfirmed || !rsiConfirmed || !momentumConfirmed || !bollingerConfirmed || !volumeConfirmed) {
+    if (!adxConfirmed || !rsiConfirmed || !momentumConfirmed || !bollingerConfirmed || !volumeConfirmed || !trendConfirmed) {
       console.log('[4H-REENTRY] ❌ SHORT reentry filters not met');
-      return { signal_type: null, reason: 'SHORT reentry filters not met' };
+      return { signal_type: null, reason: 'SHORT reentry filters not met (trend or indicators)' };
     }
     
     const entryPrice = C_curr;

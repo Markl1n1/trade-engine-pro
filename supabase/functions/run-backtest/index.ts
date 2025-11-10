@@ -1301,8 +1301,6 @@ serve(async (req) => {
     }
 
     // Check if this is FVG Scalping strategy
-    const isFVGScalping = strategy.strategy_type === 'fvg_scalping';
-    
     if (isFVGScalping) {
       console.log('Running FVG Scalping strategy backtest...');
       return await runFVGScalpingBacktest(

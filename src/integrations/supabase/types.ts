@@ -389,6 +389,7 @@ export type Database = {
           balance_history: Json | null
           confidence_avg: number | null
           created_at: string
+          diagnostics: Json | null
           end_date: string
           final_balance: number
           id: string
@@ -414,6 +415,7 @@ export type Database = {
           balance_history?: Json | null
           confidence_avg?: number | null
           created_at?: string
+          diagnostics?: Json | null
           end_date: string
           final_balance: number
           id?: string
@@ -439,6 +441,7 @@ export type Database = {
           balance_history?: Json | null
           confidence_avg?: number | null
           created_at?: string
+          diagnostics?: Json | null
           end_date?: string
           final_balance?: number
           id?: string
