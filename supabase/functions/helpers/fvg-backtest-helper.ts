@@ -260,7 +260,7 @@ export async function runFVGScalpingBacktest(
         }));
         
         console.log(`[FVG-BACKTEST] 🔍 Checking candle ${i}/${candles.length} for FVG (${activeFVGs.length}/${maxActiveFVGs} active)`);
-        const newFVG = detectFairValueGap(recentCandles);
+        const newFVG = detectFairValueGap(recentCandles, config.tickSize);
         
         if (newFVG) {
           fvgsDetectedCount++;

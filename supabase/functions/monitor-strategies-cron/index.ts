@@ -8,7 +8,7 @@ import {
 import { evaluateATHGuardStrategy } from '../helpers/ath-guard-strategy.ts';
 import { evaluate4hReentry } from '../helpers/4h-reentry-strategy.ts';
 import { evaluateSMACrossoverStrategy } from '../helpers/sma-crossover-strategy.ts';
-import { getStrategyBacktestConfig } from '../helpers/strategy-config-loader.ts';
+import { getStrategyBacktestConfig, getStrategyMonitorConfig } from '../helpers/strategy-config-loader.ts';
 import { evaluateMTFMomentum, defaultMTFMomentumConfig } from '../helpers/mtf-momentum-strategy.ts';
 import { enhancedTelegramSignaler, TradingSignal } from '../helpers/enhanced-telegram-signaler.ts';
 
@@ -617,10 +617,16 @@ Deno.serve(async (req) => {
         const useTestnet = userSettings?.use_testnet || false;
         // For Hybrid Live mode, always use mainnet data (useTestnet = false)
         const useMainnetData = tradingMode === 'hybrid_live' ? false : useTestnet;
+        
+        // For FVG strategy, use analysis timeframe instead of strategy timeframe
+        const timeframe = strategy.strategy_type === 'fvg_scalping' 
+          ? (strategy.fvg_analysis_timeframe || '1m')
+          : strategy.timeframe;
+        
         const candles = await getCandlesWithHistory(
           supabase, 
           strategy.symbol, 
-          strategy.timeframe, 
+          timeframe, 
           exchangeType, 
           useMainnetData
         );
@@ -780,6 +786,34 @@ Deno.serve(async (req) => {
             console.log(`[CRON] ✅ MTF signal: ${signalType} - ${signalReason}`);
           }
           // No logging when no signal - reduces noise
+        }
+        else if (strategy.strategy_type === 'fvg_scalping') {
+          const { evaluateFVGStrategy } = await import('../helpers/fvg-scalping-strategy.ts');
+          const config = getStrategyMonitorConfig(strategy, 'fvg_scalping');
+          
+          const fvgSignal = evaluateFVGStrategy(
+            candles.map(c => ({
+              open: c.open,
+              high: c.high,
+              low: c.low,
+              close: c.close,
+              volume: c.volume,
+              timestamp: c.timestamp,
+            })),
+            config,
+            false,
+            strategy.symbol
+          );
+
+          if (fvgSignal.signal_type) {
+            signalType = fvgSignal.signal_type;
+            signalReason = fvgSignal.reason;
+            signalStopLoss = fvgSignal.stop_loss;
+            signalTakeProfit = fvgSignal.take_profit;
+            console.log(`[CRON] ✅ FVG signal generated: ${signalType} - ${signalReason}`);
+          } else {
+            console.log(`[CRON] ⏸️ FVG: ${fvgSignal.reason}`);
+          }
         }
         else if (!liveState.position_open) {
           // Check if position already exists on exchange before generating entry signal

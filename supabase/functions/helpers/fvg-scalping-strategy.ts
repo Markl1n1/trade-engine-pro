@@ -41,7 +41,7 @@ export function isWithinTradingWindow(currentTime: Date, config: FVGConfig): boo
 }
 
 // Detect Fair Value Gap between three consecutive candles (RELAXED LOGIC)
-export function detectFairValueGap(candles: Candle[]): FVGZone | null {
+export function detectFairValueGap(candles: Candle[], tickSize: number = 0.01): FVGZone | null {
   if (candles.length < 3) {
     return null;
   }
@@ -53,7 +53,6 @@ export function detectFairValueGap(candles: Candle[]): FVGZone | null {
 
   // Calculate minimum gap size based on tick size and price
   const currentPrice = next.close;
-  const tickSize = 0.01; // Default tick size for most pairs
   const minGapSize = Math.max(tickSize * 2, currentPrice * 0.001); // At least 2 ticks or 0.1% of price
   
   // Bullish FVG: gap exists AND middle doesn't FULLY CLOSE the gap
@@ -314,7 +313,7 @@ export function evaluateFVGStrategy(
   // For futures, only trade during market hours
 
   // Step 1: Detect FVG in recent candles
-  const fvg = detectFairValueGap(candles);
+  const fvg = detectFairValueGap(candles, config.tickSize);
   
   if (!fvg) {
     return {

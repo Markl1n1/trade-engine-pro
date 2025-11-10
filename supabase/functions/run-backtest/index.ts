@@ -848,19 +848,25 @@ serve(async (req) => {
     const batchSize = 1000;
     let hasMore = true;
 
-    log(`Fetching market data`, { startDate, endDate, symbol: strategy.symbol, timeframe: strategy.timeframe });
+    // For FVG strategy, use analysis timeframe instead of strategy timeframe
+    const isFVGScalping = strategy.strategy_type === 'fvg_scalping';
+    const timeframe = isFVGScalping 
+      ? (strategy.fvg_analysis_timeframe || '1m')
+      : strategy.timeframe;
+
+    log(`Fetching market data`, { startDate, endDate, symbol: strategy.symbol, timeframe });
 
     // First, check what data exists for this symbol/timeframe
     const { data: dataCheck, error: checkError } = await supabaseClient
       .from('market_data')
       .select('*')
       .eq('symbol', strategy.symbol)
-      .eq('timeframe', strategy.timeframe)
+      .eq('timeframe', timeframe)
       .limit(1);
     
     log(`Data availability check`, { 
       symbol: strategy.symbol, 
-      timeframe: strategy.timeframe, 
+      timeframe, 
       hasData: dataCheck && dataCheck.length > 0,
       checkError: checkError?.message 
     });
@@ -918,7 +924,7 @@ serve(async (req) => {
         .from('market_data')
         .select('*')
         .eq('symbol', strategy.symbol)
-        .eq('timeframe', strategy.timeframe)
+        .eq('timeframe', timeframe)
         .gte('open_time', new Date(startDate).getTime())
         .lte('open_time', new Date(endDate).getTime())
         .order('open_time', { ascending: true })
@@ -956,7 +962,7 @@ serve(async (req) => {
           .from('market_data')
           .select('*')
           .eq('symbol', strategy.symbol)
-          .eq('timeframe', strategy.timeframe)
+          .eq('timeframe', timeframe)
           .eq('exchange_type', 'bybit')
           .gte('open_time', new Date(startDate).getTime())
           .lte('open_time', new Date(endDate).getTime())
@@ -975,7 +981,7 @@ serve(async (req) => {
     // No Binance fallback - Bybit only
 
     if (!marketData || marketData.length === 0) {
-      throw new Error(`No Bybit market data available for ${strategy.symbol} ${strategy.timeframe}. Please ensure Bybit data is loaded for the specified date range.`);
+      throw new Error(`No Bybit market data available for ${strategy.symbol} ${timeframe}. Please ensure Bybit data is loaded for the specified date range.`);
     }
 
     // Validate data integrity
@@ -985,7 +991,7 @@ serve(async (req) => {
       for (let i = 1; i < marketData.length; i++) {
         const prevTime = marketData[i-1].open_time;
         const currTime = marketData[i].open_time;
-        const expectedInterval = getIntervalMs(strategy.timeframe);
+        const expectedInterval = getIntervalMs(timeframe);
         const actualInterval = currTime - prevTime;
         
         if (actualInterval > expectedInterval * 1.5) {
@@ -1049,12 +1055,12 @@ serve(async (req) => {
     const timeframeToHours: Record<string, number> = {
       '1m': 1/60, '5m': 5/60, '15m': 15/60, '30m': 0.5, '1h': 1, '2h': 2, '4h': 4, '1d': 24
     };
-    const hoursPerCandle = timeframeToHours[strategy.timeframe] || 1;
+    const hoursPerCandle = timeframeToHours[timeframe] || 1;
     const minimumDays = Math.ceil((requiredCandles * hoursPerCandle) / 24);
     
     log(`Required minimum for strategy`, { 
       strategyType, 
-      timeframe: strategy.timeframe, 
+      timeframe, 
       requiredCandles, 
       minimumDays 
     });
@@ -1076,7 +1082,7 @@ serve(async (req) => {
           debug: {
             available_candles: marketData.length,
             required_candles: requiredCandles,
-            timeframe: strategy.timeframe,
+            timeframe: timeframe,
             strategy_type: strategyType,
             current_date_range_days: Math.floor((new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)),
             recommended_minimum_days: minimumDays,

@@ -191,7 +191,33 @@ serve(async (req) => {
           case 'fvg_scalping': {
             const { evaluateFVGStrategy } = await import('../helpers/fvg-scalping-strategy.ts');
             const config = getStrategyMonitorConfig(strategy, 'fvg_scalping');
-            signal = evaluateFVGStrategy(formattedCandles, config, false);
+            
+            // For FVG strategy, use analysis timeframe instead of strategy timeframe
+            const analysisTimeframe = strategy.fvg_analysis_timeframe || '1m';
+            const { data: fvgCandles, error: fvgCandlesError } = await supabase
+              .from('market_data')
+              .select('*')
+              .eq('symbol', strategy.symbol)
+              .eq('timeframe', analysisTimeframe)
+              .order('open_time', { ascending: false })
+              .limit(500);
+
+            if (fvgCandlesError || !fvgCandles || fvgCandles.length === 0) {
+              console.log(`[REALTIME-MONITOR] No candles available for ${strategy.symbol} ${analysisTimeframe}`);
+              continue;
+            }
+
+            const sortedFvgCandles = fvgCandles.sort((a, b) => a.open_time - b.open_time);
+            const formattedFvgCandles = sortedFvgCandles.map(c => ({
+              open: parseFloat(c.open),
+              high: parseFloat(c.high),
+              low: parseFloat(c.low),
+              close: parseFloat(c.close),
+              volume: parseFloat(c.volume),
+              timestamp: c.open_time
+            }));
+            
+            signal = evaluateFVGStrategy(formattedFvgCandles, config, false, strategy.symbol);
             break;
           }
           
