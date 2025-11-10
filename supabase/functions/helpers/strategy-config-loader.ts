@@ -279,9 +279,13 @@ export function getStrategyBacktestConfig(strategy: any, strategyType: string): 
         keyTimeEnd: unifiedConfig.fvg_key_candle_time?.split('-')[1] || "09:35",
         keyTimeframe: unifiedConfig.fvg_key_timeframe || "5m",
         analysisTimeframe: unifiedConfig.fvg_analysis_timeframe || "1m",
-        riskRewardRatio: unifiedConfig.fvg_risk_reward_ratio || 2.0,
+        riskRewardRatio: unifiedConfig.fvg_risk_reward_ratio || 3.0,
         tickSize: unifiedConfig.fvg_tick_size || 0.01,
-        // custom extension for gating time window without breaking signature consumers
+        min_fvg_size_percent: 0.3, // Phase 2: Minimum 0.3% gap size
+        require_trend_alignment: true, // Phase 3: Require EMA trend alignment
+        min_volume_ratio: 1.5, // Phase 4: Require 1.5x average volume
+        prefer_50_percent_fill: true, // Phase 6: Prefer 50% mitigation
+        avoid_low_liquidity_hours: true, // Phase 7: Avoid 00:00-04:00 UTC
         disableTimeWindow: !isEnabled('timeWindow'),
         max_position_time: unifiedConfig.max_position_time
       };

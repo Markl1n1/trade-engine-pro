@@ -1,8 +1,9 @@
-// FVG (Fair Value Gap) Scalping Strategy
+// FVG (Fair Value Gap) Scalping Strategy - ENHANCED
 // Detects fair value gaps and trades retests with 3:1 R:R
-// Trading window: 9:30-9:35 AM EST only
+// Includes RSI momentum, EMA trend, quality scoring, volume confirmation
 
 import { Candle, BaseSignal } from './strategy-interfaces.ts';
+import { calculateRSI, calculateEMA, calculateSMA } from '../indicators/all-indicators.ts';
 
 export interface FVGConfig {
   keyTimeStart: string; // e.g., "09:30"
@@ -11,6 +12,16 @@ export interface FVGConfig {
   analysisTimeframe: string; // e.g., "1m"
   riskRewardRatio: number; // default 3.0
   tickSize: number; // default 0.01
+  // Phase 2: Minimum FVG size
+  min_fvg_size_percent: number; // default 0.3
+  // Phase 3: Trend filter
+  require_trend_alignment: boolean; // default true
+  // Phase 4: Volume multiplier
+  min_volume_ratio: number; // default 1.5
+  // Phase 6: 50% mitigation
+  prefer_50_percent_fill: boolean; // default true
+  // Phase 7: Low liquidity filter
+  avoid_low_liquidity_hours: boolean; // default true
   // extension: allow disabling time window via config loader flags
   disableTimeWindow?: boolean;
 }
@@ -121,29 +132,34 @@ export function detectFairValueGap(candles: Candle[], tickSize: number = 0.01): 
   return null;
 }
 
-// Relaxed FVG detection for crypto scalping (more permissive)
-export function detectFairValueGapRelaxed(candles: Candle[]): FVGZone | null {
+// PHASE 2: Relaxed FVG detection with configurable minimum size
+export function detectFairValueGapRelaxed(candles: Candle[], config: FVGConfig): FVGZone | null {
   if (candles.length < 3) return null;
 
   const prev = candles[candles.length - 3];
   const middle = candles[candles.length - 2];
   const next = candles[candles.length - 1];
 
+  const currentPrice = next.close;
+  const minGapSize = Math.max(0.15, currentPrice * (config.min_fvg_size_percent / 100));
+  const minRemainingGap = Math.max(0.08, currentPrice * 0.002);
+
   // Bullish FVG: Look for upward gap with incomplete fill
   const upwardGap = next.low > prev.high;
   const gapSize = next.low - prev.high;
   
-  if (upwardGap && gapSize >= 0.05) {
+  if (upwardGap && gapSize >= minGapSize) {
     // Check if middle candle leaves some gap unfilled
     const filledTop = Math.min(next.low, middle.high);
     const filledBottom = Math.max(prev.high, middle.low);
     const remainingGap = filledTop - filledBottom;
     
-    if (remainingGap > 0.02) {
+    if (remainingGap > minRemainingGap) {
       console.log('[FVG-RELAXED] ✅ Bullish FVG detected:', {
         gapSize: gapSize.toFixed(2),
         remainingGap: remainingGap.toFixed(2),
-        fvgZone: `${filledBottom.toFixed(2)}-${filledTop.toFixed(2)}`
+        fvgZone: `${filledBottom.toFixed(2)}-${filledTop.toFixed(2)}`,
+        minRequired: minGapSize.toFixed(2)
       });
       return {
         type: 'bullish',
@@ -159,16 +175,17 @@ export function detectFairValueGapRelaxed(candles: Candle[]): FVGZone | null {
   const downwardGap = next.high < prev.low;
   const gapSizeBear = prev.low - next.high;
   
-  if (downwardGap && gapSizeBear >= 0.05) {
+  if (downwardGap && gapSizeBear >= minGapSize) {
     const filledTop = Math.min(prev.low, middle.high);
     const filledBottom = Math.max(next.high, middle.low);
     const remainingGap = filledTop - filledBottom;
     
-    if (remainingGap > 0.02) {
+    if (remainingGap > minRemainingGap) {
       console.log('[FVG-RELAXED] ✅ Bearish FVG detected:', {
         gapSize: gapSizeBear.toFixed(2),
         remainingGap: remainingGap.toFixed(2),
-        fvgZone: `${filledBottom.toFixed(2)}-${filledTop.toFixed(2)}`
+        fvgZone: `${filledBottom.toFixed(2)}-${filledTop.toFixed(2)}`,
+        minRequired: minGapSize.toFixed(2)
       });
       return {
         type: 'bearish',
@@ -183,26 +200,34 @@ export function detectFairValueGapRelaxed(candles: Candle[]): FVGZone | null {
   return null;
 }
 
-// Check if candle retests the FVG zone (RELAXED)
-export function detectRetestCandle(fvg: FVGZone, candle: Candle): boolean {
-  if (!fvg.detected) return false;
+// PHASE 6: Check if candle retests the FVG zone with 50% mitigation preference
+export function detectRetestCandle(fvg: FVGZone, candle: Candle, config: FVGConfig): { isRetest: boolean; touches50Percent: boolean } {
+  if (!fvg.detected) return { isRetest: false, touches50Percent: false };
+
+  const fvgMid = (fvg.top + fvg.bottom) / 2;
+  const tolerance = fvg.bottom * 0.0005;
+  let touches50Percent = false;
 
   if (fvg.type === 'bullish') {
-    // More lenient: candle touches or comes close to FVG zone (within 0.05% tolerance)
-    const tolerance = fvg.bottom * 0.0005; // 0.05% tolerance
-    return (candle.low <= fvg.top + tolerance && candle.low >= fvg.bottom - tolerance) ||
+    // Check if touches 50% midpoint
+    touches50Percent = candle.low <= fvgMid && candle.high >= fvgMid;
+    
+    const isRetest = (candle.low <= fvg.top + tolerance && candle.low >= fvg.bottom - tolerance) ||
            (candle.high <= fvg.top + tolerance && candle.high >= fvg.bottom - tolerance) ||
            (candle.low < fvg.bottom - tolerance && candle.high > fvg.top + tolerance) ||
-           // Also check if candle is very close to FVG zone
            (Math.abs(candle.low - fvg.bottom) <= tolerance || Math.abs(candle.high - fvg.top) <= tolerance);
+    
+    return { isRetest, touches50Percent };
   } else {
-    // More lenient: candle touches or comes close to FVG zone (within 0.05% tolerance)
-    const tolerance = fvg.bottom * 0.0005; // 0.05% tolerance
-    return (candle.high >= fvg.bottom - tolerance && candle.high <= fvg.top + tolerance) ||
+    // Check if touches 50% midpoint
+    touches50Percent = candle.high >= fvgMid && candle.low <= fvgMid;
+    
+    const isRetest = (candle.high >= fvg.bottom - tolerance && candle.high <= fvg.top + tolerance) ||
            (candle.low >= fvg.bottom - tolerance && candle.low <= fvg.top + tolerance) ||
            (candle.high > fvg.top + tolerance && candle.low < fvg.bottom - tolerance) ||
-           // Also check if candle is very close to FVG zone
            (Math.abs(candle.high - fvg.top) <= tolerance || Math.abs(candle.low - fvg.bottom) <= tolerance);
+    
+    return { isRetest, touches50Percent };
   }
 }
 
@@ -252,30 +277,140 @@ export function calculateEntry(
   }
 }
 
-// Calculate confidence score based on FVG quality
-export function calculateConfidence(fvg: FVGZone, candle: Candle): number {
-  let confidence = 50;
-  
-  // Larger gap = higher confidence
+// PHASE 5: Gap Quality Score - Comprehensive scoring system
+export function calculateFVGQualityScore(
+  fvg: FVGZone, 
+  candle: Candle, 
+  volumeRatio: number,
+  rsiChange: number,
+  trendAligned: boolean
+): number {
   const gapSize = fvg.top - fvg.bottom;
   const pricePercent = (gapSize / candle.close) * 100;
   
-  if (pricePercent > 0.5) confidence += 15;
-  else if (pricePercent > 0.3) confidence += 10;
-  else if (pricePercent > 0.1) confidence += 5;
+  // Gap Size Score (30%) - normalized to 0-30
+  const gapSizeScore = Math.min(30, pricePercent * 60); // 0.5% = 30 points
   
-  // Volume confirmation
-  if (candle.volume > 0) confidence += 10;
+  // Volume Score (25%) - normalized to 0-25
+  const volumeScore = Math.min(25, volumeRatio * 16.67); // 1.5x = 25 points
+  
+  // Momentum Score (25%) - based on RSI change
+  const momentumScore = Math.min(25, Math.abs(rsiChange) * 2.5); // 10 change = 25 points
+  
+  // Trend Score (20%) - binary
+  const trendScore = trendAligned ? 20 : 0;
+  
+  const totalScore = gapSizeScore + volumeScore + momentumScore + trendScore;
+  
+  console.log('[FVG-QUALITY]', {
+    gapSize: gapSizeScore.toFixed(1),
+    volume: volumeScore.toFixed(1),
+    momentum: momentumScore.toFixed(1),
+    trend: trendScore,
+    total: totalScore.toFixed(1)
+  });
+  
+  return totalScore;
+}
+
+// PHASE 4: Enhanced confidence with volume confirmation
+export function calculateConfidence(
+  fvg: FVGZone, 
+  candle: Candle, 
+  candles: Candle[],
+  touches50Percent: boolean,
+  qualityScore: number
+): number {
+  let confidence = 30;
+  
+  // Add quality score (up to 50 points)
+  confidence += Math.min(50, qualityScore * 0.5);
+  
+  // PHASE 6: Bonus for 50% mitigation
+  if (touches50Percent) {
+    confidence += 15;
+    console.log('[FVG-CONFIDENCE] +15 for 50% mitigation');
+  }
+  
+  // Volume confirmation (up to 20 points)
+  const recentCandles = candles.slice(-20);
+  const avgVolume = recentCandles.reduce((sum, c) => sum + c.volume, 0) / recentCandles.length;
+  const volumeRatio = candle.volume / avgVolume;
+  
+  if (volumeRatio > 1.5) confidence += 20;
+  else if (volumeRatio > 1.2) confidence += 10;
+  else if (volumeRatio < 0.9) confidence -= 10;
   
   // Engulfment strength
   const bodySize = Math.abs(candle.close - candle.open);
   const candleRange = candle.high - candle.low;
   const bodyRatio = bodySize / candleRange;
   
-  if (bodyRatio > 0.7) confidence += 15;
-  else if (bodyRatio > 0.5) confidence += 10;
+  if (bodyRatio > 0.7) confidence += 10;
+  else if (bodyRatio > 0.5) confidence += 5;
   
-  return Math.min(100, confidence);
+  return Math.min(100, Math.max(0, confidence));
+}
+
+// PHASE 1: RSI Momentum Filter
+function checkRSIMomentum(rsi: number[], fvgType: 'bullish' | 'bearish'): { passes: boolean; rsiChange: number } {
+  if (rsi.length < 4) return { passes: false, rsiChange: 0 };
+  
+  const currentRSI = rsi[rsi.length - 1];
+  const prevRSI = rsi[rsi.length - 4];
+  const rsiChange = currentRSI - prevRSI;
+  
+  if (fvgType === 'bullish') {
+    // Bullish: RSI < 45 OR RSI rose >10 in last 3 candles
+    const passes = currentRSI < 45 || rsiChange > 10;
+    console.log('[FVG-RSI] Bullish check:', { currentRSI: currentRSI.toFixed(1), rsiChange: rsiChange.toFixed(1), passes });
+    return { passes, rsiChange };
+  } else {
+    // Bearish: RSI > 55 OR RSI fell >10 in last 3 candles
+    const passes = currentRSI > 55 || rsiChange < -10;
+    console.log('[FVG-RSI] Bearish check:', { currentRSI: currentRSI.toFixed(1), rsiChange: rsiChange.toFixed(1), passes });
+    return { passes, rsiChange };
+  }
+}
+
+// PHASE 3: EMA Trend Filter
+function checkTrendAlignment(candles: Candle[], fvgType: 'bullish' | 'bearish'): boolean {
+  const closes = candles.map(c => c.close);
+  const ema20 = calculateEMA(closes, 20);
+  const ema50 = calculateEMA(closes, 50);
+  
+  const currentPrice = closes[closes.length - 1];
+  const currentEMA20 = ema20[ema20.length - 1];
+  const currentEMA50 = ema50[ema50.length - 1];
+  
+  if (isNaN(currentEMA20) || isNaN(currentEMA50)) return false;
+  
+  if (fvgType === 'bullish') {
+    const aligned = currentPrice > currentEMA20 && currentEMA20 > currentEMA50;
+    console.log('[FVG-TREND] Bullish check:', { price: currentPrice.toFixed(2), ema20: currentEMA20.toFixed(2), ema50: currentEMA50.toFixed(2), aligned });
+    return aligned;
+  } else {
+    const aligned = currentPrice < currentEMA20 && currentEMA20 < currentEMA50;
+    console.log('[FVG-TREND] Bearish check:', { price: currentPrice.toFixed(2), ema20: currentEMA20.toFixed(2), ema50: currentEMA50.toFixed(2), aligned });
+    return aligned;
+  }
+}
+
+// PHASE 7: Low Liquidity Hours Filter (for crypto)
+function isLowLiquidityHour(timestamp: number, isCrypto: boolean, config: FVGConfig): boolean {
+  if (!isCrypto || !config.avoid_low_liquidity_hours) return false;
+  
+  const date = new Date(timestamp);
+  const hour = date.getUTCHours();
+  
+  // Avoid 00:00-04:00 UTC for crypto (low liquidity)
+  const isLowLiquidity = hour >= 0 && hour < 4;
+  
+  if (isLowLiquidity) {
+    console.log('[FVG-TIME] Low liquidity hour:', hour);
+  }
+  
+  return isLowLiquidity;
 }
 
 export function evaluateFVGStrategy(
@@ -286,17 +421,26 @@ export function evaluateFVGStrategy(
 ): BaseSignal {
   console.log('[FVG-STRATEGY] Evaluating with', candles.length, 'candles');
   
-  if (candles.length < 10) {
+  if (candles.length < 60) {
     return {
       signal_type: null,
-      reason: 'Not enough candle data (need at least 10 candles)',
+      reason: 'Not enough candle data (need at least 60 candles for indicators)',
       confidence: 0
     };
   }
 
-  // Only enforce time window for ES/NQ futures (not crypto)
   const isFutures = symbol?.includes('ES') || symbol?.includes('NQ');
-  const isCrypto = symbol?.includes('BTC') || symbol?.includes('ETH') || symbol?.includes('USDT');
+  const isCrypto = !!(symbol?.includes('BTC') || symbol?.includes('ETH') || symbol?.includes('USDT'));
+  
+  // PHASE 7: Check low liquidity hours
+  const currentTimestamp = candles[candles.length - 1].timestamp || candles[candles.length - 1].open_time || Date.now();
+  if (isLowLiquidityHour(currentTimestamp, isCrypto, config)) {
+    return {
+      signal_type: null,
+      reason: 'Low liquidity hours (00:00-04:00 UTC)',
+      confidence: 0
+    };
+  }
   
   if (!config.disableTimeWindow && !isBacktest && isFutures && !isCrypto) {
     const currentTime = new Date();
@@ -308,36 +452,72 @@ export function evaluateFVGStrategy(
       };
     }
   }
-  
-  // For crypto (BTCUSDT, ETHUSDT, etc.), trade 24/7 - no time restriction
-  // For futures, only trade during market hours
 
-  // Step 1: Detect FVG in recent candles
-  const fvg = detectFairValueGap(candles, config.tickSize);
+  // Step 1: Detect FVG in recent candles (PHASE 2: with size filter)
+  const fvg = detectFairValueGapRelaxed(candles, config);
   
   if (!fvg) {
     return {
       signal_type: null,
-      reason: 'No Fair Value Gap detected',
+      reason: 'No Fair Value Gap detected (or gap too small)',
       confidence: 0
     };
   }
 
   console.log('[FVG-STRATEGY] FVG detected:', fvg.type);
 
-  // Step 2: Check for retest
+  // PHASE 1: Check RSI momentum
+  const closes = candles.map(c => c.close);
+  const rsi = calculateRSI(closes, 14);
+  const { passes: rsiPasses, rsiChange } = checkRSIMomentum(rsi, fvg.type);
+  
+  if (!rsiPasses) {
+    return {
+      signal_type: null,
+      reason: `${fvg.type} FVG detected but RSI momentum insufficient`,
+      confidence: 15
+    };
+  }
+
+  // PHASE 3: Check trend alignment
+  if (config.require_trend_alignment) {
+    const trendAligned = checkTrendAlignment(candles, fvg.type);
+    if (!trendAligned) {
+      return {
+        signal_type: null,
+        reason: `${fvg.type} FVG detected but trend not aligned`,
+        confidence: 25
+      };
+    }
+  }
+
+  // Step 2: Check for retest (PHASE 6: with 50% check)
   const currentCandle = candles[candles.length - 1];
-  const isRetest = detectRetestCandle(fvg, currentCandle);
+  const { isRetest, touches50Percent } = detectRetestCandle(fvg, currentCandle, config);
 
   if (!isRetest) {
     return {
       signal_type: null,
       reason: `${fvg.type} FVG detected but no retest yet`,
-      confidence: 20
+      confidence: 30
     };
   }
 
-  console.log('[FVG-STRATEGY] Retest detected');
+  console.log('[FVG-STRATEGY] Retest detected', touches50Percent ? '(50% fill)' : '');
+
+  // PHASE 4: Check volume confirmation
+  const recentCandles = candles.slice(-20);
+  const avgVolume = recentCandles.reduce((sum, c) => sum + c.volume, 0) / recentCandles.length;
+  const volumeRatio = currentCandle.volume / avgVolume;
+  
+  if (volumeRatio < config.min_volume_ratio * 0.6) {
+    console.log('[FVG-VOLUME] Volume too low:', { ratio: volumeRatio.toFixed(2), required: (config.min_volume_ratio * 0.6).toFixed(2) });
+    return {
+      signal_type: null,
+      reason: `${fvg.type} FVG retest but volume too low (${volumeRatio.toFixed(2)}x)`,
+      confidence: 35
+    };
+  }
 
   // Step 3: Check for engulfment confirmation
   const hasEngulfment = checkEngulfment(currentCandle, fvg);
@@ -346,27 +526,40 @@ export function evaluateFVGStrategy(
     return {
       signal_type: null,
       reason: `${fvg.type} FVG retest but no engulfment confirmation`,
-      confidence: 40
+      confidence: 45
     };
   }
 
   console.log('[FVG-STRATEGY] Engulfment confirmed');
 
+  // PHASE 5: Calculate quality score
+  const trendAligned = config.require_trend_alignment ? checkTrendAlignment(candles, fvg.type) : true;
+  const qualityScore = calculateFVGQualityScore(fvg, currentCandle, volumeRatio, Math.abs(rsiChange), trendAligned);
+  
+  if (qualityScore < 65) {
+    console.log('[FVG-QUALITY] Quality score too low:', qualityScore.toFixed(1));
+    return {
+      signal_type: null,
+      reason: `${fvg.type} FVG quality score too low (${qualityScore.toFixed(1)}/100)`,
+      confidence: 50
+    };
+  }
+
   // Step 4: Calculate entry, SL, TP
   const { entry, stopLoss, takeProfit } = calculateEntry(currentCandle, fvg, config);
-  const confidence = calculateConfidence(fvg, currentCandle);
+  const confidence = calculateConfidence(fvg, currentCandle, candles, touches50Percent, qualityScore);
 
   // Generate signal
   const signal: BaseSignal = {
     signal_type: fvg.type === 'bullish' ? 'BUY' : 'SELL',
-    reason: `${fvg.type.toUpperCase()} FVG retest with engulfment. Gap: ${fvg.bottom.toFixed(2)}-${fvg.top.toFixed(2)}. Entry: ${entry.toFixed(2)}, SL: ${stopLoss.toFixed(2)}, TP: ${takeProfit.toFixed(2)} (R:R ${config.riskRewardRatio}:1)`,
+    reason: `${fvg.type.toUpperCase()} FVG (Q:${qualityScore.toFixed(0)}, V:${volumeRatio.toFixed(1)}x${touches50Percent ? ', 50%' : ''}). Entry: ${entry.toFixed(2)}, SL: ${stopLoss.toFixed(2)}, TP: ${takeProfit.toFixed(2)}`,
     stop_loss: stopLoss,
     take_profit: takeProfit,
     confidence,
-    time_to_expire: 30 // 30 minutes max position time for scalping
+    time_to_expire: 30
   };
 
-  console.log('[FVG-STRATEGY] Signal generated:', signal);
+  console.log('[FVG-STRATEGY] ✅ High-quality signal generated:', signal);
 
   return signal;
 }

@@ -198,7 +198,8 @@ export async function runFVGScalpingBacktest(
         // Check if current candle retests this FVG
         const { detectRetestCandle, checkEngulfment, calculateEntry, calculateConfidence } = await import('./fvg-scalping-strategy.ts');
         
-        if (detectRetestCandle(fvg, currentCandle)) {
+        const retestResult = detectRetestCandle(fvg, currentCandle, config);
+        if (retestResult.isRetest) {
           retestAttempts++;
           console.log(`[FVG-BACKTEST] 🎯 Retest attempt #${retestAttempts} at candle ${i} for ${fvg.type} FVG (${fvg.bottom.toFixed(2)}-${fvg.top.toFixed(2)})`);
           
@@ -218,7 +219,9 @@ export async function runFVGScalpingBacktest(
             console.log(`[FVG-BACKTEST] Retest confirmed at candle ${i} for ${fvg.type} FVG from candle ${fvg.candleIndex}`);
             
             const { entry, stopLoss, takeProfit } = calculateEntry(currentCandle, fvg, config);
-            const confidence = calculateConfidence(fvg, currentCandle);
+            // For backtest, use simpler confidence calculation
+            const recentCandles = candles.slice(Math.max(0, i - 20), i + 1);
+            const confidence = calculateConfidence(fvg, currentCandle, recentCandles, retestResult.touches50Percent, 70);
             
             const entryPrice = entry * (1 + (fvg.type === 'bullish' ? slippage : -slippage) / 100);
             const positionSizePercent = strategy.position_size_percent || 100;
@@ -260,7 +263,7 @@ export async function runFVGScalpingBacktest(
         }));
         
         console.log(`[FVG-BACKTEST] 🔍 Checking candle ${i}/${candles.length} for FVG (${activeFVGs.length}/${maxActiveFVGs} active)`);
-        const newFVG = detectFairValueGapRelaxed(recentCandles);
+        const newFVG = detectFairValueGapRelaxed(recentCandles, config);
         
         if (newFVG) {
           fvgsDetectedCount++;
