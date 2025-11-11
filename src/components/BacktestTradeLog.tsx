@@ -3,8 +3,8 @@ import { Badge } from "@/components/ui/badge";
 import { TrendingUp, TrendingDown, Clock } from "lucide-react";
 
 interface Trade {
-  id: number;
-  type: 'buy' | 'sell';
+  id?: number;
+  type?: 'buy' | 'sell';
   entry_price: number;
   exit_price?: number;
   entry_time: string | number;
@@ -75,12 +75,14 @@ export function BacktestTradeLog({ trades }: BacktestTradeLogProps) {
             <div className="flex items-start justify-between">
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-2 flex-wrap">
-                  <Badge 
-                    variant={trade.type === 'buy' ? 'default' : 'destructive'} 
-                    className={trade.type === 'sell' ? 'bg-red-500 text-white' : ''}
-                  >
-                    {trade.type.toUpperCase()}
-                  </Badge>
+                  {trade.type && (
+                    <Badge 
+                      variant={trade.type === 'buy' ? 'default' : 'destructive'} 
+                      className={trade.type === 'sell' ? 'bg-red-500 text-white' : ''}
+                    >
+                      {trade.type.toUpperCase()}
+                    </Badge>
+                  )}
                   {trade.profit !== undefined && (
                     <Badge variant={trade.profit >= 0 ? 'default' : 'destructive'}>
                       {trade.profit >= 0 ? <TrendingUp className="h-3 w-3 mr-1" /> : <TrendingDown className="h-3 w-3 mr-1" />}

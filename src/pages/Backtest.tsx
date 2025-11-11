@@ -333,6 +333,16 @@ const Backtest = () => {
       if (data.success && data.results) {
         setResults(data.results);
         
+        // Отладка: проверить структуру trades
+        if (data.results.trades) {
+          console.log('[BACKTEST] Trades structure:', data.results.trades);
+          console.log('[BACKTEST] Total trades:', data.results.trades.length);
+          if (data.results.trades.length > 0) {
+            console.log('[BACKTEST] First trade:', data.results.trades[0]);
+            console.log('[BACKTEST] Trade keys:', Object.keys(data.results.trades[0] || {}));
+          }
+        }
+        
         // Build detailed success message
         const totalTrades = data.results.total_trades || 0;
         const winRate = data.results.win_rate || 0;

@@ -6,7 +6,6 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Scatter,
   ReferenceLine,
   Customized,
 } from "recharts";
@@ -112,7 +111,7 @@ export default function PriceChartWithTrades({ candles, trades }: Props) {
           <ReferenceLine key={`vs-${i}`} x={pt.t} stroke="hsl(var(--destructive))" strokeOpacity={0.12} />
         ))}
 
-        {/* Свечи, отрисованные через Customized для доступа к шкалам */}
+        {/* Свечи и маркеры сделок, отрисованные через Customized для доступа к шкалам */}
         <Customized
           component={(props: any) => {
             const { xAxisMap, yAxisMap, offset } = props;
@@ -126,6 +125,7 @@ export default function PriceChartWithTrades({ candles, trades }: Props) {
 
             return (
               <g>
+                {/* Свечи */}
                 {data.map((d) => {
                   const isUp = d.close >= d.open;
                   const color = isUp ? "hsl(var(--success))" : "hsl(var(--destructive))";
@@ -145,51 +145,42 @@ export default function PriceChartWithTrades({ candles, trades }: Props) {
                     </g>
                   );
                 })}
-              </g>
-            );
-          }}
-        />
 
-        {/* Кастомные маркеры для BUY (зелёный треугольник вверх) */}
-        <Scatter
-          name="BUY"
-          data={buyPoints.map((pt) => ({ ...pt, p: pt.p * 0.998 }))} // Немного ниже цены для видимости
-          xKey="t"
-          yKey="p"
-          shape={(props: any) => {
-            const { cx, cy } = props;
-            const size = 12;
-            return (
-              <g>
-                <path
-                  d={`M ${cx} ${cy - size} L ${cx - size} ${cy + size} L ${cx + size} ${cy + size} Z`}
-                  fill="hsl(var(--success))"
-                  stroke="white"
-                  strokeWidth={2}
-                  opacity={0.95}
-                />
-              </g>
-            );
-          }}
-        />
-        {/* Кастомные маркеры для SELL (красный треугольник вниз) */}
-        <Scatter
-          name="SELL"
-          data={sellPoints.map((pt) => ({ ...pt, p: pt.p * 1.002 }))} // Немного выше цены для видимости
-          xKey="t"
-          yKey="p"
-          shape={(props: any) => {
-            const { cx, cy } = props;
-            const size = 12;
-            return (
-              <g>
-                <path
-                  d={`M ${cx} ${cy + size} L ${cx - size} ${cy - size} L ${cx + size} ${cy - size} Z`}
-                  fill="hsl(var(--destructive))"
-                  stroke="white"
-                  strokeWidth={2}
-                  opacity={0.95}
-                />
+                {/* Маркеры BUY (зелёные треугольники вверх) */}
+                {buyPoints.map((pt, i) => {
+                  const cx = x(pt.t);
+                  const cy = y(pt.p * 0.998); // Немного ниже цены для видимости
+                  const size = 12;
+                  return (
+                    <g key={`buy-${i}`}>
+                      <path
+                        d={`M ${cx} ${cy - size} L ${cx - size} ${cy + size} L ${cx + size} ${cy + size} Z`}
+                        fill="#22c55e"
+                        stroke="white"
+                        strokeWidth={2}
+                        opacity={0.95}
+                      />
+                    </g>
+                  );
+                })}
+
+                {/* Маркеры SELL (красные треугольники вниз) */}
+                {sellPoints.map((pt, i) => {
+                  const cx = x(pt.t);
+                  const cy = y(pt.p * 1.002); // Немного выше цены для видимости
+                  const size = 12;
+                  return (
+                    <g key={`sell-${i}`}>
+                      <path
+                        d={`M ${cx} ${cy + size} L ${cx - size} ${cy - size} L ${cx + size} ${cy - size} Z`}
+                        fill="#ef4444"
+                        stroke="white"
+                        strokeWidth={2}
+                        opacity={0.95}
+                      />
+                    </g>
+                  );
+                })}
               </g>
             );
           }}
