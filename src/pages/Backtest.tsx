@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { BacktestTradeLog } from "@/components/BacktestTradeLog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import PriceChartWithTrades from "@/components/PriceChartWithTrades";
 
 const Backtest = () => {
   const [strategies, setStrategies] = useState<any[]>([]);
@@ -36,6 +37,7 @@ const Backtest = () => {
   const [isComparing, setIsComparing] = useState(false);
   const [debugMode, setDebugMode] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(false);
+  const [candles, setCandles] = useState<any[]>([]);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -233,6 +235,42 @@ const Backtest = () => {
   };
 
   // Historical data buttons removed; backtest will fetch as needed
+
+  // Load candles for the selected strategy and date range after results are available
+  useEffect(() => {
+    const fetchCandles = async () => {
+      try {
+        if (!results) return;
+        const strategy = strategies.find(s => s.id === selectedStrategy);
+        if (!strategy?.symbol || !strategy?.timeframe) return;
+
+        const startMs = new Date(startDate).getTime();
+        const endMs = new Date(endDate).getTime();
+
+        const { data, error } = await supabase
+          .from('market_data')
+          .select('open_time, open, high, low, close')
+          .eq('symbol', strategy.symbol)
+          .eq('timeframe', strategy.timeframe)
+          .eq('exchange_type', 'bybit')
+          .gte('open_time', startMs)
+          .lte('open_time', endMs)
+          .order('open_time', { ascending: true });
+
+        if (error) {
+          console.error('[BACKTEST] Error loading candles:', error);
+          setCandles([]);
+          return;
+        }
+        setCandles(data || []);
+      } catch (e) {
+        console.error('[BACKTEST] Candles fetch fail:', e);
+        setCandles([]);
+      }
+    };
+
+    fetchCandles();
+  }, [results, selectedStrategy, startDate, endDate, strategies]);
 
   const runBacktest = async (engineOverride?: string) => {
     if (!selectedStrategy) {
@@ -857,22 +895,10 @@ const Backtest = () => {
               </TabsList>
               
               <TabsContent value="overview" className="space-y-6">
-              {/* Equity Curve */}
+              {/* Price Chart with Trades */}
               <div>
-                <h4 className="text-sm font-semibold mb-2">Equity Curve</h4>
-                <ResponsiveContainer width="100%" height={250}>
-                  <LineChart data={results.balance_history?.map((point: any) => ({
-                    time: new Date(point.time).toLocaleDateString(),
-                    balance: point.balance ? parseFloat(point.balance.toFixed(2)) : 0,
-                  })) || []}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="time" tick={{ fontSize: 10 }} />
-                    <YAxis tick={{ fontSize: 10 }} />
-                    <Tooltip />
-                    <Legend />
-                    <Line type="monotone" dataKey="balance" stroke="hsl(var(--primary))" name="Balance ($)" strokeWidth={2} />
-                  </LineChart>
-                </ResponsiveContainer>
+                <h4 className="text-sm font-semibold mb-2">Price Chart (candles) with Trades</h4>
+                <PriceChartWithTrades candles={candles} trades={results.trades || []} />
               </div>
 
               {/* Performance Metrics */}
