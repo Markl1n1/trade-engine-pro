@@ -54,7 +54,7 @@ export default function PriceChartWithTrades({ candles, trades }: Props) {
   const buyPoints = useMemo(
     () =>
       (trades || [])
-        .filter((t) => t.type === "buy")
+        .filter((t) => t.entry_time && t.entry_price !== undefined)
         .map((t) => ({
           t:
             typeof t.entry_time === "string"
@@ -150,15 +150,49 @@ export default function PriceChartWithTrades({ candles, trades }: Props) {
           }}
         />
 
-        {/* Точки входа/выхода */}
-        <Scatter name="BUY" data={buyPoints} xKey="t" yKey="p" fill="hsl(var(--success))" shape="circle" />
+        {/* Кастомные маркеры для BUY (зелёный треугольник вверх) */}
         <Scatter
-          name="SELL"
-          data={sellPoints}
+          name="BUY"
+          data={buyPoints.map((pt) => ({ ...pt, p: pt.p * 0.998 }))} // Немного ниже цены для видимости
           xKey="t"
           yKey="p"
-          fill="hsl(var(--destructive))"
-          shape="triangle"
+          shape={(props: any) => {
+            const { cx, cy } = props;
+            const size = 12;
+            return (
+              <g>
+                <path
+                  d={`M ${cx} ${cy - size} L ${cx - size} ${cy + size} L ${cx + size} ${cy + size} Z`}
+                  fill="hsl(var(--success))"
+                  stroke="white"
+                  strokeWidth={2}
+                  opacity={0.95}
+                />
+              </g>
+            );
+          }}
+        />
+        {/* Кастомные маркеры для SELL (красный треугольник вниз) */}
+        <Scatter
+          name="SELL"
+          data={sellPoints.map((pt) => ({ ...pt, p: pt.p * 1.002 }))} // Немного выше цены для видимости
+          xKey="t"
+          yKey="p"
+          shape={(props: any) => {
+            const { cx, cy } = props;
+            const size = 12;
+            return (
+              <g>
+                <path
+                  d={`M ${cx} ${cy + size} L ${cx - size} ${cy - size} L ${cx + size} ${cy - size} Z`}
+                  fill="hsl(var(--destructive))"
+                  stroke="white"
+                  strokeWidth={2}
+                  opacity={0.95}
+                />
+              </g>
+            );
+          }}
         />
       </ComposedChart>
     </ResponsiveContainer>
