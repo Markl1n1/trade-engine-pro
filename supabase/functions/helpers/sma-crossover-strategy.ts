@@ -354,50 +354,48 @@ export function evaluateSMACrossoverStrategy(
   if (!positionOpen) {
     // Golden Cross: SMA Fast crosses above SMA Slow
     if (prevSMAFast <= prevSMASlow && currentSMAFast > currentSMASlow) {
-      // OPTIMIZED: Relaxed filters for SMA Crossover to allow more trades
-      // Only log warnings, don't block signal generation
+      // OPTIMIZED: Calculate confidence based on filter quality instead of blocking
+      let confidence = 100;
+      
       if (currentRSI > config.rsi_overbought) {
-        console.log(`[SMA-CROSSOVER] ⚠️ Golden Cross detected but RSI overbought: ${currentRSI.toFixed(2)} > ${config.rsi_overbought} - continuing anyway`);
-        // Don't return null, continue with signal generation
+        console.log(`[SMA-CROSSOVER] ⚠️ RSI overbought: ${currentRSI.toFixed(2)} > ${config.rsi_overbought} (-15 confidence)`);
+        confidence -= 15;
       }
       
-      // OPTIMIZED: Relaxed volume confirmation (0.9x allows average volume)
       if (!volumeConfirmed) {
-        console.log(`[SMA-CROSSOVER] ⚠️ Golden Cross detected but volume insufficient: ${volumeRatio.toFixed(2)}x < ${config.volume_multiplier}x - continuing anyway`);
-        // Don't return null, continue with signal generation
+        console.log(`[SMA-CROSSOVER] ⚠️ Volume insufficient: ${volumeRatio.toFixed(2)}x < ${config.volume_multiplier}x (-10 confidence)`);
+        confidence -= 10;
       }
       
-      // OPTIMIZED: Relaxed ADX filter (18 allows weaker trends)
       if (!adxConfirmed) {
-        console.log(`[SMA-CROSSOVER] ⚠️ Golden Cross detected but ADX too weak: ${currentADX.toFixed(2)} < ${config.adx_threshold} - continuing anyway`);
-        // Don't return null, continue with signal generation
+        console.log(`[SMA-CROSSOVER] ⚠️ ADX weak: ${currentADX.toFixed(2)} < ${config.adx_threshold} (-10 confidence)`);
+        confidence -= 10;
       }
       
-      // OPTIMIZED: Relaxed trend strength (0.3 allows weaker trends)
       if (trendStrength < config.min_trend_strength) {
-        console.log(`[SMA-CROSSOVER] ⚠️ Golden Cross detected but trend strength too low: ${trendStrength.toFixed(2)} < ${config.min_trend_strength} - continuing anyway`);
-        // Don't return null, continue with signal generation
+        console.log(`[SMA-CROSSOVER] ⚠️ Trend strength low: ${trendStrength.toFixed(2)} < ${config.min_trend_strength} (-15 confidence)`);
+        confidence -= 15;
       }
       
-      // All enhanced conditions met for LONG entry
+      // Calculate stop loss and take profit
       const stopLoss = currentPrice - (config.atr_sl_multiplier * currentATR);
       const takeProfit = currentPrice + (config.atr_tp_multiplier * currentATR);
-      const confidence = (trendStrength + (adxConfirmed ? 0.2 : 0) + (volumeConfirmed ? 0.1 : 0)) / 1.3;
       
-      console.log('[SMA-CROSSOVER] 🚀 ENHANCED GOLDEN CROSS BUY SIGNAL', {
-        entry: currentPrice.toFixed(2),
-        stopLoss: stopLoss.toFixed(2),
-        takeProfit: takeProfit.toFixed(2),
+      console.log('[SMA-CROSSOVER] 🚀 LONG ENTRY (Golden Cross)', {
+        smaFast: currentSMAFast.toFixed(2),
+        smaSlow: currentSMASlow.toFixed(2),
         rsi: currentRSI.toFixed(2),
         adx: currentADX.toFixed(2),
         trendStrength: trendStrength.toFixed(2),
-        confidence: confidence.toFixed(2),
-        volumeRatio: volumeRatio.toFixed(2)
+        volume: volumeRatio.toFixed(2),
+        confidence: confidence,
+        stopLoss: stopLoss.toFixed(2),
+        takeProfit: takeProfit.toFixed(2)
       });
       
       return {
         signal_type: 'BUY',
-        reason: `Enhanced Golden Cross: SMA${config.sma_fast_period} > SMA${config.sma_slow_period} with RSI ${currentRSI.toFixed(2)}, ADX ${currentADX.toFixed(2)}, trend strength ${trendStrength.toFixed(2)}`,
+        reason: 'Golden Cross: SMA Fast crossed above SMA Slow',
         stop_loss: stopLoss,
         take_profit: takeProfit,
         sma_fast: currentSMAFast,
@@ -406,57 +404,55 @@ export function evaluateSMACrossoverStrategy(
         adx: currentADX,
         bollinger_position: bollingerPosition,
         trend_strength: trendStrength,
-        confidence: confidence,
-        time_to_expire: config.max_position_time
+        confidence: confidence / 100,
+        time_to_expire: 240
       };
     }
     
-    // Enhanced Death Cross: SMA Fast crosses below SMA Slow
+    // Death Cross: SMA Fast crosses below SMA Slow
     if (prevSMAFast >= prevSMASlow && currentSMAFast < currentSMASlow) {
-      // OPTIMIZED: Relaxed filters for SMA Crossover to allow more trades
-      // Only log warnings, don't block signal generation
+      // OPTIMIZED: Calculate confidence based on filter quality instead of blocking
+      let confidenceShort = 100;
+      
       if (currentRSI < config.rsi_oversold) {
-        console.log(`[SMA-CROSSOVER] ⚠️ Death Cross detected but RSI oversold: ${currentRSI.toFixed(2)} < ${config.rsi_oversold} - continuing anyway`);
-        // Don't return null, continue with signal generation
+        console.log(`[SMA-CROSSOVER] ⚠️ RSI oversold: ${currentRSI.toFixed(2)} < ${config.rsi_oversold} (-15 confidence)`);
+        confidenceShort -= 15;
       }
       
-      // OPTIMIZED: Relaxed volume confirmation (0.9x allows average volume)
       if (!volumeConfirmed) {
-        console.log(`[SMA-CROSSOVER] ⚠️ Death Cross detected but volume insufficient: ${volumeRatio.toFixed(2)}x < ${config.volume_multiplier}x - continuing anyway`);
-        // Don't return null, continue with signal generation
+        console.log(`[SMA-CROSSOVER] ⚠️ Volume insufficient: ${volumeRatio.toFixed(2)}x < ${config.volume_multiplier}x (-10 confidence)`);
+        confidenceShort -= 10;
       }
       
-      // OPTIMIZED: Relaxed ADX filter (18 allows weaker trends)
       if (!adxConfirmed) {
-        console.log(`[SMA-CROSSOVER] ⚠️ Death Cross detected but ADX too weak: ${currentADX.toFixed(2)} < ${config.adx_threshold} - continuing anyway`);
-        // Don't return null, continue with signal generation
+        console.log(`[SMA-CROSSOVER] ⚠️ ADX weak: ${currentADX.toFixed(2)} < ${config.adx_threshold} (-10 confidence)`);
+        confidenceShort -= 10;
       }
       
-      // OPTIMIZED: Relaxed trend strength (0.3 allows weaker trends)
       if (trendStrength < config.min_trend_strength) {
-        console.log(`[SMA-CROSSOVER] ⚠️ Death Cross detected but trend strength too low: ${trendStrength.toFixed(2)} < ${config.min_trend_strength} - continuing anyway`);
-        // Don't return null, continue with signal generation
+        console.log(`[SMA-CROSSOVER] ⚠️ Trend strength low: ${trendStrength.toFixed(2)} < ${config.min_trend_strength} (-15 confidence)`);
+        confidenceShort -= 15;
       }
       
-      // All enhanced conditions met for SHORT entry
+      // Calculate stop loss and take profit
       const stopLoss = currentPrice + (config.atr_sl_multiplier * currentATR);
       const takeProfit = currentPrice - (config.atr_tp_multiplier * currentATR);
-      const confidence = (trendStrength + (adxConfirmed ? 0.2 : 0) + (volumeConfirmed ? 0.1 : 0)) / 1.3;
       
-      console.log('[SMA-CROSSOVER] 🚀 ENHANCED DEATH CROSS SELL SIGNAL', {
-        entry: currentPrice.toFixed(2),
-        stopLoss: stopLoss.toFixed(2),
-        takeProfit: takeProfit.toFixed(2),
+      console.log('[SMA-CROSSOVER] 🔻 SHORT ENTRY (Death Cross)', {
+        smaFast: currentSMAFast.toFixed(2),
+        smaSlow: currentSMASlow.toFixed(2),
         rsi: currentRSI.toFixed(2),
         adx: currentADX.toFixed(2),
         trendStrength: trendStrength.toFixed(2),
-        confidence: confidence.toFixed(2),
-        volumeRatio: volumeRatio.toFixed(2)
+        volume: volumeRatio.toFixed(2),
+        confidence: confidenceShort,
+        stopLoss: stopLoss.toFixed(2),
+        takeProfit: takeProfit.toFixed(2)
       });
       
       return {
         signal_type: 'SELL',
-        reason: `Enhanced Death Cross: SMA${config.sma_fast_period} < SMA${config.sma_slow_period} with RSI ${currentRSI.toFixed(2)}, ADX ${currentADX.toFixed(2)}, trend strength ${trendStrength.toFixed(2)}`,
+        reason: 'Death Cross: SMA Fast crossed below SMA Slow',
         stop_loss: stopLoss,
         take_profit: takeProfit,
         sma_fast: currentSMAFast,
@@ -465,8 +461,8 @@ export function evaluateSMACrossoverStrategy(
         adx: currentADX,
         bollinger_position: bollingerPosition,
         trend_strength: trendStrength,
-        confidence: confidence,
-        time_to_expire: config.max_position_time
+        confidence: confidenceShort / 100,
+        time_to_expire: 240
       };
     }
     

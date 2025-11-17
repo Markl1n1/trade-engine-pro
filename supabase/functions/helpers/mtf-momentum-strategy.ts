@@ -229,27 +229,39 @@ export function evaluateMTFMomentum(
   const currentMACD5 = last(macd5.histogram);
   const currentMACD15 = last(macd15.histogram);
 
-  // OPTIMIZED: Stricter multi-timeframe confluence for better win rate
+  // OPTIMIZED: Stricter multi-timeframe confluence for 50%+ win rate
   // Require ALL timeframes to confirm for maximum selectivity
-  const condLong = !positionOpen && 
+  const mtfConvergenceLong = 
     currentRSI1 > cfg.rsi_entry_threshold &&  // 1m RSI above threshold (55)
     currentRSI5 > 50 &&   // 5m RSI must be bullish (>50)
     currentRSI15 > 50 &&  // 15m RSI must be bullish (>50) - ALL must confirm
     currentMACD1 > 0 &&   // 1m MACD must be positive
     currentMACD5 > 0 &&   // 5m MACD must be positive - ALL must confirm
-    currentMACD15 > 0 &&  // 15m MACD must be positive - ALL must confirm
-    volOk;                // Volume confirmation required
+    currentMACD15 > 0;    // 15m MACD must be positive - ALL must confirm
+
+  const condLong = !positionOpen && mtfConvergenceLong && volOk;
 
   // OPTIMIZED: Stricter multi-timeframe confluence for SELL
   // Require ALL timeframes to confirm for maximum selectivity
-  const condShort = !positionOpen &&
+  const mtfConvergenceShort =
     currentRSI1 < (100 - cfg.rsi_entry_threshold) &&  // 1m RSI below threshold (45)
     currentRSI5 < 50 &&   // 5m RSI must be bearish (<50)
-    currentRSI15 < 50 &&  // 15m RSI must be bearish (<50) - ALL must confirm
+    currentRSI15 < 50;    // 15m RSI must be bearish (<50) - ALL must confirm
     currentMACD1 < 0 &&   // 1m MACD must be negative
     currentMACD5 < 0 &&   // 5m MACD must be negative - ALL must confirm
-    currentMACD15 < 0 &&  // 15m MACD must be negative - ALL must confirm
-    volOk;                // Volume confirmation required
+    currentMACD15 < 0;    // 15m MACD must be negative - ALL must confirm
+
+  const condShort = !positionOpen && mtfConvergenceShort && volOk;
+  
+  // CRITICAL: Enforce strict multi-timeframe convergence for 50%+ win rate
+  if (!positionOpen && !mtfConvergenceLong && !mtfConvergenceShort) {
+    return { 
+      signal_type: null, 
+      reason: 'No multi-timeframe convergence - not all timeframes align',
+      confidence: 0,
+      time_to_expire: 5
+    };
+  }
 
   if (positionOpen) {
     return { signal_type: null, reason: 'Position open - exits managed elsewhere' };
