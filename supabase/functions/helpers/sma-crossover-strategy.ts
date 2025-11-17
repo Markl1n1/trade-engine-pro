@@ -354,25 +354,26 @@ export function evaluateSMACrossoverStrategy(
   if (!positionOpen) {
     // Golden Cross: SMA Fast crosses above SMA Slow
     if (prevSMAFast <= prevSMASlow && currentSMAFast > currentSMASlow) {
-      // FIXED: More lenient RSI filter for better signal generation
+      // OPTIMIZED: Relaxed filters for SMA Crossover to allow more trades
+      // Only log warnings, don't block signal generation
       if (currentRSI > config.rsi_overbought) {
         console.log(`[SMA-CROSSOVER] ⚠️ Golden Cross detected but RSI overbought: ${currentRSI.toFixed(2)} > ${config.rsi_overbought} - continuing anyway`);
         // Don't return null, continue with signal generation
       }
       
-      // FIXED: More lenient volume confirmation
+      // OPTIMIZED: Relaxed volume confirmation (0.9x allows average volume)
       if (!volumeConfirmed) {
         console.log(`[SMA-CROSSOVER] ⚠️ Golden Cross detected but volume insufficient: ${volumeRatio.toFixed(2)}x < ${config.volume_multiplier}x - continuing anyway`);
         // Don't return null, continue with signal generation
       }
       
-      // FIXED: More lenient ADX trend strength filter
+      // OPTIMIZED: Relaxed ADX filter (18 allows weaker trends)
       if (!adxConfirmed) {
         console.log(`[SMA-CROSSOVER] ⚠️ Golden Cross detected but ADX too weak: ${currentADX.toFixed(2)} < ${config.adx_threshold} - continuing anyway`);
         // Don't return null, continue with signal generation
       }
       
-      // FIXED: More lenient trend strength filter
+      // OPTIMIZED: Relaxed trend strength (0.3 allows weaker trends)
       if (trendStrength < config.min_trend_strength) {
         console.log(`[SMA-CROSSOVER] ⚠️ Golden Cross detected but trend strength too low: ${trendStrength.toFixed(2)} < ${config.min_trend_strength} - continuing anyway`);
         // Don't return null, continue with signal generation
@@ -412,25 +413,26 @@ export function evaluateSMACrossoverStrategy(
     
     // Enhanced Death Cross: SMA Fast crosses below SMA Slow
     if (prevSMAFast >= prevSMASlow && currentSMAFast < currentSMASlow) {
-      // FIXED: More lenient RSI filter for better signal generation
+      // OPTIMIZED: Relaxed filters for SMA Crossover to allow more trades
+      // Only log warnings, don't block signal generation
       if (currentRSI < config.rsi_oversold) {
         console.log(`[SMA-CROSSOVER] ⚠️ Death Cross detected but RSI oversold: ${currentRSI.toFixed(2)} < ${config.rsi_oversold} - continuing anyway`);
         // Don't return null, continue with signal generation
       }
       
-      // FIXED: More lenient volume confirmation
+      // OPTIMIZED: Relaxed volume confirmation (0.9x allows average volume)
       if (!volumeConfirmed) {
         console.log(`[SMA-CROSSOVER] ⚠️ Death Cross detected but volume insufficient: ${volumeRatio.toFixed(2)}x < ${config.volume_multiplier}x - continuing anyway`);
         // Don't return null, continue with signal generation
       }
       
-      // FIXED: More lenient ADX trend strength filter
+      // OPTIMIZED: Relaxed ADX filter (18 allows weaker trends)
       if (!adxConfirmed) {
         console.log(`[SMA-CROSSOVER] ⚠️ Death Cross detected but ADX too weak: ${currentADX.toFixed(2)} < ${config.adx_threshold} - continuing anyway`);
         // Don't return null, continue with signal generation
       }
       
-      // FIXED: More lenient trend strength filter
+      // OPTIMIZED: Relaxed trend strength (0.3 allows weaker trends)
       if (trendStrength < config.min_trend_strength) {
         console.log(`[SMA-CROSSOVER] ⚠️ Death Cross detected but trend strength too low: ${trendStrength.toFixed(2)} < ${config.min_trend_strength} - continuing anyway`);
         // Don't return null, continue with signal generation
@@ -485,21 +487,21 @@ export function evaluateSMACrossoverStrategy(
   return { signal_type: null, reason: 'No signal' };
 }
 
-// FIXED: More lenient configuration for better signal generation
+// OPTIMIZED: Configuration for better signal generation and win rate
 export const defaultSMACrossoverConfig: SMACrossoverConfig = {
   sma_fast_period: 9,               // OPTIMIZED for scalping (was 20)
   sma_slow_period: 21,              // OPTIMIZED for scalping (was 200)
   rsi_period: 14,
-  rsi_overbought: 75,               // Less restrictive for more signals
-  rsi_oversold: 25,                 // Less restrictive for more signals
-  volume_multiplier: 0.9,           // OPTIMIZED: 90% of average volume
-  atr_sl_multiplier: 2.0,           // Standard stop loss
-  atr_tp_multiplier: 3.0,           // Standard take profit
-  // FIXED: More lenient enhanced parameters
-  adx_threshold: 20,                // Lower minimum trend strength
+  rsi_overbought: 75,               // OPTIMIZED: Relaxed (75) to allow more signals
+  rsi_oversold: 25,                 // OPTIMIZED: Relaxed (25) to allow more signals
+  volume_multiplier: 0.9,           // OPTIMIZED: 90% of average volume (allows average volume)
+  atr_sl_multiplier: 1.8,           // OPTIMIZED: Wider stop loss for trend following
+  atr_tp_multiplier: 3.0,           // OPTIMIZED: Wider take profit for trend following
+  // OPTIMIZED: Relaxed enhanced parameters for more trades
+  adx_threshold: 18,                // OPTIMIZED: Lower threshold (18) to allow weaker trends
   bollinger_period: 20,             // Bollinger Bands period
   bollinger_std: 2,                 // Bollinger Bands standard deviation
   trailing_stop_percent: 1.0,       // Trailing stop for trends
-  max_position_time: 240,           // Max time in position (4 hours)
-  min_trend_strength: 0.4           // Lower minimum trend strength score
+  max_position_time: 2880,          // OPTIMIZED: Longer position time (2880 min = 48 hours) for trend strategy
+  min_trend_strength: 0.3            // OPTIMIZED: Lower threshold (0.3) to allow weaker trends
 };

@@ -533,11 +533,14 @@ export function evaluateATHGuardStrategy(
   const avgVolume = last20Volumes.reduce((a, b) => a + b, 0) / 20;
   const volumeRatio = currentVolume / avgVolume;
   
+  // OPTIMIZED: Stricter volume confirmation (1.3 → 1.5)
+  const volumeConfirmed = volumeRatio >= config.volume_multiplier;
+  
   // NEW: Breakout Entry (Priority entry - bypasses all other filters)
   const recentHigh = Math.max(...candles.slice(-20).map(c => c.high));
   const recentLow = Math.min(...candles.slice(-20).map(c => c.low));
   const breakoutThreshold = 0.002; // 0.2% breakout
-  const volumeSpike = volumeRatio >= 1.3; // 30% volume spike
+  const volumeSpike = volumeRatio >= 1.5; // OPTIMIZED: 50% volume spike (was 1.3)
   
   if (!positionOpen && currentPrice > recentHigh * (1 + breakoutThreshold) && volumeSpike) {
     const stopLoss = currentPrice - (config.atr_sl_multiplier * currentATR);
@@ -607,24 +610,28 @@ export function evaluateATHGuardStrategy(
     return { signal_type: null, reason: 'No clear bias - EMA alignment not met' };
   }
   
-  // Step 2: SIMPLIFIED Confirmation - Removed Volume and ADX filters
-  // Only check if momentum score is significant
+  // Step 2: OPTIMIZED Confirmation - Require Volume, ADX, and Momentum
+  // Stricter filters for better win rate
   const momentumConfirmed = Math.abs(momentumScore) >= config.momentum_threshold;
+  const adxConfirmed = currentADX >= config.adx_threshold; // OPTIMIZED: Require ADX >= 25
+  const volumeConfirmedStep2 = volumeRatio >= config.volume_multiplier; // OPTIMIZED: Require volume >= 1.5
   
-  console.log(`[ATH-GUARD] 📈 Step 2 - Simplified Confirmation:`, {
+  console.log(`[ATH-GUARD] 📈 Step 2 - Optimized Confirmation:`, {
     momentum_confirmed: momentumConfirmed ? '✅ PASS' : '❌ FAIL',
+    adx_confirmed: adxConfirmed ? '✅ PASS' : '❌ FAIL',
+    volume_confirmed: volumeConfirmedStep2 ? '✅ PASS' : '❌ FAIL',
     currentVolume: currentVolume.toFixed(0),
     avgVolume: avgVolume.toFixed(0),
-    ratio: `${volumeRatio.toFixed(2)}x (info only)`,
-    adx_value: currentADX.toFixed(2) + ' (info only)',
+    ratio: `${volumeRatio.toFixed(2)}x (need ${config.volume_multiplier}x)`,
+    adx_value: `${currentADX.toFixed(2)} (need ${config.adx_threshold})`,
     momentum_score: momentumScore.toFixed(2)
   });
   
-  if (!momentumConfirmed) {
-    return { signal_type: null, reason: 'Momentum score below threshold' };
+  if (!momentumConfirmed || !adxConfirmed || !volumeConfirmedStep2) {
+    return { signal_type: null, reason: `Confirmation failed: Momentum=${momentumConfirmed}, ADX=${adxConfirmed}, Volume=${volumeConfirmedStep2}` };
   }
   
-  // Step 3: Simplified Momentum Confirmation (RSI + MACD)
+  // Step 3: OPTIMIZED Momentum Confirmation (RSI + MACD) with stricter RSI threshold
   const hasMomentum = checkMomentum(macd, rsi, bias, config);
   
   const idx = macd.macd.length - 1;
@@ -632,17 +639,23 @@ export function evaluateATHGuardStrategy(
   const currentSignal = macd.signal[idx];
   const currentHistogram = macd.histogram[idx];
   
-  console.log(`[ATH-GUARD] ⚡ Step 3 - Momentum Confirmation: ${hasMomentum ? '✅ PASS' : '❌ FAIL'}`, {
+  // OPTIMIZED: Stricter RSI check for LONG (require RSI < threshold, not just < 50)
+  const rsiCheck = bias === 'LONG' 
+    ? currentRSI < config.rsi_threshold  // OPTIMIZED: Require RSI < 80 (not overbought)
+    : currentRSI > (100 - config.rsi_threshold); // OPTIMIZED: Require RSI > 20 (not oversold)
+  
+  console.log(`[ATH-GUARD] ⚡ Step 3 - Optimized Momentum Confirmation: ${hasMomentum && rsiCheck ? '✅ PASS' : '❌ FAIL'}`, {
     bias,
-    rsi: `${currentRSI.toFixed(2)} (need ${bias === 'LONG' ? '>50' : '<50'})`,
+    rsi: `${currentRSI.toFixed(2)} (need ${bias === 'LONG' ? `<${config.rsi_threshold}` : `>${100 - config.rsi_threshold}`})`,
+    rsi_check: rsiCheck ? '✅ PASS' : '❌ FAIL',
     macd: {
       histogram: currentHistogram.toFixed(4),
       condition: bias === 'LONG' ? '>0' : '<0'
     }
   });
   
-  if (!hasMomentum) {
-    return { signal_type: null, reason: 'Momentum not aligned (RSI + MACD histogram)' };
+  if (!hasMomentum || !rsiCheck) {
+    return { signal_type: null, reason: `Momentum not aligned: MACD=${hasMomentum}, RSI=${rsiCheck}` };
   }
   
   // All conditions met - generate signal
@@ -660,7 +673,7 @@ export function evaluateATHGuardStrategy(
       currentADX, 
       momentumScore, 
       bollingerPosition,
-      volumeRatio >= 1.2, // Volume confirmed if above 1.2x
+      volumeConfirmed, // OPTIMIZED: Use strict volume confirmation (>= 1.5x)
       athDistance
     );
     
@@ -704,7 +717,7 @@ export function evaluateATHGuardStrategy(
       currentADX, 
       momentumScore, 
       bollingerPosition,
-      volumeRatio >= 1.2, // Volume confirmed if above 1.2x
+      volumeConfirmed, // OPTIMIZED: Use strict volume confirmation (>= 1.5x)
       athDistance
     );
     
@@ -771,22 +784,22 @@ export function evaluateATHGuardStrategy(
 export const defaultATHGuardConfig: ATHGuardConfig = {
   // Original parameters
   ema_slope_threshold: 0.15,
-  pullback_tolerance: 0.15,
-  volume_multiplier: 1.8,
+  pullback_tolerance: 0.25,  // OPTIMIZED: Increased from 0.15 to 0.25 for pullback confirmation
+  volume_multiplier: 1.5,   // OPTIMIZED: Stricter volume (1.5) for strong volume confirmation
   stoch_oversold: 25,
   stoch_overbought: 75,
-  atr_sl_multiplier: 1.5,
-  atr_tp1_multiplier: 1.0,
-  atr_tp2_multiplier: 2.0,
+  atr_sl_multiplier: 1.0,   // OPTIMIZED: Tighter stop loss for 1m scalping
+  atr_tp1_multiplier: 0.6,  // OPTIMIZED: Adjusted take profit 1
+  atr_tp2_multiplier: 1.2,  // OPTIMIZED: Adjusted take profit 2
   ath_safety_distance: 0.2,
-  rsi_threshold: 70,
+  rsi_threshold: 80,        // OPTIMIZED: Stricter RSI (80) for overbought confirmation
   
   // New enhanced parameters
-  adx_threshold: 20,
+  adx_threshold: 25,        // OPTIMIZED: Higher ADX (25) for stronger trend
   bollinger_period: 20,
   bollinger_std: 2.0,
   trailing_stop_percent: 0.5,
-  max_position_time: 60, // 60 minutes for 1m timeframe
+  max_position_time: 45,    // OPTIMIZED: Shorter position time (45 min) for 1m scalping
   min_volume_spike: 1.2,
   momentum_threshold: 15,
   support_resistance_lookback: 20

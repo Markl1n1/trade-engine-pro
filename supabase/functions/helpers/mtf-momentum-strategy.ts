@@ -229,23 +229,27 @@ export function evaluateMTFMomentum(
   const currentMACD5 = last(macd5.histogram);
   const currentMACD15 = last(macd15.histogram);
 
-  // RELAXED: More lenient multi-timeframe confluence for crypto
+  // OPTIMIZED: Stricter multi-timeframe confluence for better win rate
+  // Require ALL timeframes to confirm for maximum selectivity
   const condLong = !positionOpen && 
-    currentRSI1 > cfg.rsi_entry_threshold &&
-    currentRSI5 > 45 &&   // Much more lenient threshold (45 instead of 48)
-    currentRSI15 > 45 &&  // BOTH 5m AND 15m must confirm (not OR)
+    currentRSI1 > cfg.rsi_entry_threshold &&  // 1m RSI above threshold (55)
+    currentRSI5 > 50 &&   // 5m RSI must be bullish (>50)
+    currentRSI15 > 50 &&  // 15m RSI must be bullish (>50) - ALL must confirm
     currentMACD1 > 0 &&   // 1m MACD must be positive
-    (currentMACD5 > 0 || currentMACD15 > 0) && // At least one higher TF MACD confirms
-    volOk;
+    currentMACD5 > 0 &&   // 5m MACD must be positive - ALL must confirm
+    currentMACD15 > 0 &&  // 15m MACD must be positive - ALL must confirm
+    volOk;                // Volume confirmation required
 
-  // RELAXED: More lenient multi-timeframe confluence for SELL
+  // OPTIMIZED: Stricter multi-timeframe confluence for SELL
+  // Require ALL timeframes to confirm for maximum selectivity
   const condShort = !positionOpen &&
-    currentRSI1 < (100 - cfg.rsi_entry_threshold) &&
-    currentRSI5 < 55 &&   // Much more lenient threshold (55 instead of 52)
-    currentRSI15 < 55 &&  // BOTH 5m AND 15m must confirm
+    currentRSI1 < (100 - cfg.rsi_entry_threshold) &&  // 1m RSI below threshold (45)
+    currentRSI5 < 50 &&   // 5m RSI must be bearish (<50)
+    currentRSI15 < 50 &&  // 15m RSI must be bearish (<50) - ALL must confirm
     currentMACD1 < 0 &&   // 1m MACD must be negative
-    (currentMACD5 < 0 || currentMACD15 < 0) && // At least one higher TF MACD confirms
-    volOk;
+    currentMACD5 < 0 &&   // 5m MACD must be negative - ALL must confirm
+    currentMACD15 < 0 &&  // 15m MACD must be negative - ALL must confirm
+    volOk;                // Volume confirmation required
 
   if (positionOpen) {
     return { signal_type: null, reason: 'Position open - exits managed elsewhere' };
@@ -298,17 +302,17 @@ export function evaluateMTFMomentum(
 
 export const defaultMTFMomentumConfig: MTFMomentumConfig = {
   rsi_period: 14,
-  rsi_entry_threshold: 45,        // More lenient for crypto (was 50)
+  rsi_entry_threshold: 55,        // OPTIMIZED: Stricter threshold (55) for stronger momentum
   macd_fast: 8,                   // Faster for scalping
   macd_slow: 21,                  // Faster for scalping
   macd_signal: 5,                 // Faster for scalping
   supertrend_atr_period: 10,
   supertrend_multiplier: 3,
-  volume_multiplier: 1.0,         // Much more lenient (was 1.1)
-  atr_sl_multiplier: 1.5,         // ATR-based stop loss
-  atr_tp_multiplier: 2.0,         // ATR-based take profit
+  volume_multiplier: 1.3,         // OPTIMIZED: Stricter volume (1.3) for volume confirmation
+  atr_sl_multiplier: 1.2,         // OPTIMIZED: Tighter stop loss
+  atr_tp_multiplier: 1.8,         // OPTIMIZED: Adjusted take profit
   trailing_stop_percent: 0.5,     // Fast trailing stop
-  max_position_time: 30,          // Max time in position (minutes)
+  max_position_time: 20,          // OPTIMIZED: Shorter position time (20 min)
   min_profit_percent: 0.2         // Min profit for trailing activation
 };
 

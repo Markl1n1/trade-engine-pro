@@ -241,11 +241,11 @@ export function getStrategyBacktestConfig(strategy: any, strategyType: string): 
     case 'mtf_momentum':
       return {
         mtf_rsi_period: unifiedConfig.mtf_rsi_period || 14,
-        mtf_rsi_entry_threshold: isEnabled('rsi') ? (unifiedConfig.mtf_rsi_entry_threshold || 50) : 0,
+        mtf_rsi_entry_threshold: isEnabled('rsi') ? (unifiedConfig.mtf_rsi_entry_threshold || 55) : 0, // OPTIMIZED: Default 55
         mtf_macd_fast: unifiedConfig.mtf_macd_fast || 8,
         mtf_macd_slow: unifiedConfig.mtf_macd_slow || 21,
         mtf_macd_signal: unifiedConfig.mtf_macd_signal || 5,
-        mtf_volume_multiplier: isEnabled('volume') ? (unifiedConfig.mtf_volume_multiplier || 1.1) : 0,
+        mtf_volume_multiplier: isEnabled('volume') ? (unifiedConfig.mtf_volume_multiplier || 1.3) : 0, // OPTIMIZED: Default 1.3
         atr_sl_multiplier: unifiedConfig.atr_sl_multiplier,
         atr_tp_multiplier: unifiedConfig.atr_tp_multiplier,
         trailing_stop_percent: unifiedConfig.trailing_stop_percent,
@@ -256,15 +256,15 @@ export function getStrategyBacktestConfig(strategy: any, strategyType: string): 
     case 'ath_guard_scalping':
       return {
         ema_slope_threshold: unifiedConfig.ath_guard_ema_slope_threshold || 0.10,
-        pullback_tolerance: unifiedConfig.ath_guard_pullback_tolerance || 0.20,
-        volume_multiplier: isEnabled('volume') ? (unifiedConfig.ath_guard_volume_multiplier || 1.2) : 0,
+        pullback_tolerance: unifiedConfig.ath_guard_pullback_tolerance || 0.25, // OPTIMIZED: Default 0.25
+        volume_multiplier: isEnabled('volume') ? (unifiedConfig.ath_guard_volume_multiplier || 1.5) : 0, // OPTIMIZED: Default 1.5
         stoch_oversold: unifiedConfig.ath_guard_stoch_oversold || 25,
         stoch_overbought: unifiedConfig.ath_guard_stoch_overbought || 75,
-        atr_sl_multiplier: unifiedConfig.ath_guard_atr_sl_multiplier || 1.2,
-        atr_tp1_multiplier: unifiedConfig.ath_guard_atr_tp1_multiplier || 0.8,
-        atr_tp2_multiplier: unifiedConfig.ath_guard_atr_tp2_multiplier || 1.5,
+        atr_sl_multiplier: unifiedConfig.ath_guard_atr_sl_multiplier || 1.0, // OPTIMIZED: Default 1.0
+        atr_tp1_multiplier: unifiedConfig.ath_guard_atr_tp1_multiplier || 0.6, // OPTIMIZED: Default 0.6
+        atr_tp2_multiplier: unifiedConfig.ath_guard_atr_tp2_multiplier || 1.2, // OPTIMIZED: Default 1.2
         ath_safety_distance: unifiedConfig.ath_guard_ath_safety_distance || 0.2,
-        rsi_threshold: isEnabled('rsi') ? (unifiedConfig.ath_guard_rsi_threshold || 75) : 0,
+        rsi_threshold: isEnabled('rsi') ? (unifiedConfig.ath_guard_rsi_threshold || 80) : 0, // OPTIMIZED: Default 80
         trailing_stop_percent: unifiedConfig.trailing_stop_percent,
         max_position_time: unifiedConfig.max_position_time,
         adx_threshold: isEnabled('trend') ? unifiedConfig.adx_threshold : 0,
@@ -281,9 +281,9 @@ export function getStrategyBacktestConfig(strategy: any, strategyType: string): 
         analysisTimeframe: unifiedConfig.fvg_analysis_timeframe || "1m",
         riskRewardRatio: unifiedConfig.fvg_risk_reward_ratio || 3.0,
         tickSize: unifiedConfig.fvg_tick_size || 0.01,
-        min_fvg_size_percent: 0.3, // Phase 2: Minimum 0.3% gap size
+        min_fvg_size_percent: 0.5, // OPTIMIZED: Increased from 0.3% to 0.5% for larger gaps
         require_trend_alignment: true, // Phase 3: Require EMA trend alignment
-        min_volume_ratio: 1.5, // Phase 4: Require 1.5x average volume
+        min_volume_ratio: 1.8, // OPTIMIZED: Stricter volume (1.8x instead of 1.5x) for better signals
         prefer_50_percent_fill: true, // Phase 6: Prefer 50% mitigation
         avoid_low_liquidity_hours: true, // Phase 7: Avoid 00:00-04:00 UTC
         disableTimeWindow: !isEnabled('timeWindow'),

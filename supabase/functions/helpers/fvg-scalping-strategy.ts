@@ -505,16 +505,18 @@ export function evaluateFVGStrategy(
 
   console.log('[FVG-STRATEGY] Retest detected', touches50Percent ? '(50% fill)' : '');
 
-  // PHASE 4: Check volume confirmation
+  // PHASE 4: OPTIMIZED volume confirmation - stricter filter
   const recentCandles = candles.slice(-20);
   const avgVolume = recentCandles.reduce((sum, c) => sum + c.volume, 0) / recentCandles.length;
   const volumeRatio = currentCandle.volume / avgVolume;
   
-  if (volumeRatio < config.min_volume_ratio * 0.6) {
-    console.log('[FVG-VOLUME] Volume too low:', { ratio: volumeRatio.toFixed(2), required: (config.min_volume_ratio * 0.6).toFixed(2) });
+  // OPTIMIZED: Stricter volume requirement (1.8x instead of 1.5x * 0.6 = 0.9x)
+  const minVolumeRequired = config.min_volume_ratio || 1.8; // Default to 1.8 if not set
+  if (volumeRatio < minVolumeRequired) {
+    console.log('[FVG-VOLUME] Volume too low:', { ratio: volumeRatio.toFixed(2), required: minVolumeRequired.toFixed(2) });
     return {
       signal_type: null,
-      reason: `${fvg.type} FVG retest but volume too low (${volumeRatio.toFixed(2)}x)`,
+      reason: `${fvg.type} FVG retest but volume too low (${volumeRatio.toFixed(2)}x, need ${minVolumeRequired}x)`,
       confidence: 35
     };
   }
