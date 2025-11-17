@@ -181,6 +181,33 @@ serve(async (req) => {
             break;
           }
           
+          case 'ema_crossover_scalping': {
+            const { evaluateEMACrossoverScalping } = await import('../helpers/ema-crossover-scalping-strategy.ts');
+            const emaCrossoverConfig = {
+              fast_ema_period: strategy.ema_fast_period || 9,
+              slow_ema_period: strategy.ema_slow_period || 21,
+              atr_period: 14,
+              rsi_period: strategy.rsi_period || 14,
+              rsi_long_threshold: strategy.rsi_oversold || 35,
+              rsi_short_threshold: strategy.rsi_overbought || 65,
+              atr_sl_multiplier: strategy.atr_sl_multiplier || 1.5,
+              atr_tp_multiplier: strategy.atr_tp_multiplier || 2.5,
+              use_rsi_filter: true,
+              max_position_time: strategy.max_position_time || 30,
+              // BaseConfig required fields
+              adx_threshold: strategy.adx_threshold || 22,
+              bollinger_period: strategy.bollinger_period || 20,
+              bollinger_std: strategy.bollinger_std || 2.0,
+              rsi_oversold: strategy.rsi_oversold || 30,
+              rsi_overbought: strategy.rsi_overbought || 70,
+              momentum_threshold: strategy.momentum_threshold || 12,
+              volume_multiplier: strategy.volume_multiplier || 1.2,
+              trailing_stop_percent: strategy.trailing_stop_percent || 0.75
+            };
+            signal = evaluateEMACrossoverScalping(formattedCandles, formattedCandles.length - 1, emaCrossoverConfig, false);
+            break;
+          }
+          
           case 'ath_guard': {
             const { evaluateATHGuardStrategy } = await import('../helpers/ath-guard-strategy.ts');
             const config = getStrategyMonitorConfig(strategy, 'ath_guard_scalping');
