@@ -188,7 +188,8 @@ export function BacktestTradeLog({ trades }: BacktestTradeLogProps) {
                     </Badge>
                   )}
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-xs">
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
                   <div>
                     <span className="text-muted-foreground">Entry:</span> <span className="font-medium">${trade.entry_price.toFixed(2)}</span>
                   </div>
@@ -219,9 +220,9 @@ export function BacktestTradeLog({ trades }: BacktestTradeLogProps) {
                   </div>
                 )}
               </div>
-            </div>
-          </Card>
-        ))}
+            </Card>
+          );
+        })}
       </div>
     </div>
   );

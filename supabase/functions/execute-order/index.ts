@@ -284,7 +284,7 @@ Deno.serve(async (req) => {
       });
 
     // Store order execution record
-    await supabaseClient
+    const { error: insertError } = await supabaseClient
       .from('order_executions')
       .insert({
         signal_id: signal_id,
@@ -301,10 +301,12 @@ Deno.serve(async (req) => {
         exchange: 'bybit',
         testnet: use_testnet,
         created_at: new Date().toISOString()
-      }).catch(err => {
-        // Table might not exist, log but don't fail
-        console.warn('[EXECUTE-ORDER] Could not save order execution record:', err);
       });
+
+    if (insertError) {
+      // Table might not exist, log but don't fail
+      console.warn('[EXECUTE-ORDER] Could not save order execution record:', insertError);
+    }
 
     return new Response(
       JSON.stringify({
