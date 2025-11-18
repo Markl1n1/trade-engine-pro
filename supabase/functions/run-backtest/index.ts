@@ -229,6 +229,47 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
     
     // Check SL/TP first (priority over trailing stop)
     if (position) {
+      // Check max position time (from strategy config) - synchronized with real-time monitoring
+      const maxPositionTimeMs = (athGuardConfig.max_position_time || 480) * 60 * 1000; // Convert minutes to ms
+      const positionDuration = currentCandle.open_time - position.entry_time;
+      
+      if (positionDuration >= maxPositionTimeMs) {
+        // Time-based exit
+        const exitPriceWithSlippage = position.type === 'buy'
+          ? executionPrice * (1 - slippage)
+          : executionPrice * (1 + slippage);
+        
+        const pnl = position.type === 'buy'
+          ? position.quantity * (exitPriceWithSlippage - position.entry_price)
+          : position.quantity * (position.entry_price - exitPriceWithSlippage);
+        
+        const exitNotional = position.quantity * exitPriceWithSlippage;
+        const exitFee = (exitNotional * takerFee) / 100;
+        const entryFee = (position as any).entryFee || 0;
+        const netProfit = pnl - entryFee - exitFee;
+        
+        position.exit_price = exitPriceWithSlippage;
+        position.exit_time = currentCandle.open_time;
+        position.profit = netProfit;
+        (position as any).exit_reason = `MAX_TIME_EXIT (${athGuardConfig.max_position_time} min)`;
+        
+        if (productType === 'futures') {
+          const marginLocked = (position as any).marginLocked || 0;
+          balance += marginLocked + netProfit;
+        } else {
+          balance += netProfit;
+        }
+        
+        trades.push(position);
+        position = null;
+        
+        if (trailingStopManager) {
+          trailingStopManager.reset();
+        }
+        
+        continue;
+      }
+      
       const stopLossPrice = (position as any).stopLossPrice;
       const takeProfitPrice = (position as any).takeProfitPrice;
       

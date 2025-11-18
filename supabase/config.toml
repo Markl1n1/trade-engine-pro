@@ -17,6 +17,9 @@ verify_jwt = true
 [functions.close-position]
 verify_jwt = true
 
+[functions.execute-order]
+verify_jwt = true
+
 # ACCOUNT AND POSITION MANAGEMENT
 [functions.get-account-data]
 verify_jwt = true

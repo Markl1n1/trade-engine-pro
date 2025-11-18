@@ -972,9 +972,61 @@ Deno.serve(async (req) => {
           if (shouldExecuteRealTrades(tradingMode)) {
             try {
               console.log(`[CRON] Executing real trade for ${strategy.name} in ${tradingMode} mode`);
-              // Real trade execution logic would go here
+              
+              // Determine testnet/mainnet based on trading mode
+              // hybrid_live -> testnet, mainnet_only -> mainnet
+              const useTestnetForExecution = tradingMode === 'hybrid_live';
+              
+              // Map signal type to Bybit side
+              const bybitSide = signalType === 'BUY' ? 'Buy' : 'Sell';
+              
+              // Calculate position size
+              const positionSizePercent = strategy.position_size_percent || 5.0;
+              const initialCapital = strategy.initial_capital || 1000;
+              
+              // Call execute-order function
+              const executeOrderUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/execute-order`;
+              
+              // Get user's auth token for execute-order function
+              // Since this is a cron job, we need to create a service role request
+              // But execute-order requires user auth, so we'll use service role with user context
+              const executeResponse = await fetch(executeOrderUrl, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+                  'x-user-id': strategy.user_id // Pass user ID for context
+                },
+                body: JSON.stringify({
+                  signal_id: signal.id,
+                  strategy_id: strategy.id,
+                  symbol: strategy.symbol,
+                  side: bybitSide,
+                  signal_type: signalType,
+                  price: currentPrice,
+                  stop_loss: signalStopLoss,
+                  take_profit: signalTakeProfit,
+                  position_size_percent: positionSizePercent,
+                  initial_capital: initialCapital,
+                  use_testnet: useTestnetForExecution
+                })
+              });
+              
+              if (!executeResponse.ok) {
+                const errorText = await executeResponse.text();
+                throw new Error(`Execute order API error: ${errorText}`);
+              }
+              
+              const executeResult = await executeResponse.json();
+              
+              if (executeResult.success) {
+                console.log(`[CRON] ✅ Order executed successfully for ${strategy.name}: ${executeResult.order_id}`);
+              } else {
+                throw new Error(`Order execution failed: ${executeResult.error}`);
+              }
             } catch (error) {
               console.error(`[CRON] Trade execution failed for ${strategy.name}:`, error);
+              // Continue processing other strategies even if one fails
             }
           } else {
             console.log(`[CRON] Signal generated for ${strategy.name} in ${tradingMode} mode (no real execution)`);
