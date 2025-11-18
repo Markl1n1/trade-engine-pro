@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TrendingUp, TrendingDown, Clock } from "lucide-react";
@@ -96,12 +96,32 @@ interface BacktestTradeLogProps {
 }
 
 export function BacktestTradeLog({ trades }: BacktestTradeLogProps) {
+  // Debug: log trades received
+  useEffect(() => {
+    console.log('[TRADE-LOG] Received trades:', trades?.length || 0);
+    if (trades && trades.length > 0) {
+      console.log('[TRADE-LOG] First trade:', trades[0]);
+      console.log('[TRADE-LOG] Trade keys:', Object.keys(trades[0] || {}));
+    }
+  }, [trades]);
+
   // Normalize and filter trades
   const normalizedTrades = useMemo(() => {
-    if (!trades || trades.length === 0) return [];
+    if (!trades || trades.length === 0) {
+      console.log('[TRADE-LOG] No trades provided');
+      return [];
+    }
     
-    return trades
-      .filter(t => t && t.entry_time && t.entry_price !== undefined)
+    console.log('[TRADE-LOG] Processing', trades.length, 'trades');
+    
+    const normalized = trades
+      .filter(t => {
+        const hasEntry = t && t.entry_time && t.entry_price !== undefined && t.entry_price !== null;
+        if (!hasEntry) {
+          console.warn('[TRADE-LOG] Filtered out trade (missing entry):', t);
+        }
+        return hasEntry;
+      })
       .map(trade => {
         // Ensure type is present
         let type: 'buy' | 'sell' = 'buy';
@@ -127,7 +147,16 @@ export function BacktestTradeLog({ trades }: BacktestTradeLogProps) {
           profit_percent: profitPercent
         };
       })
-      .filter(t => t.entry_time !== null); // Filter out invalid trades
+      .filter(t => {
+        const isValid = t.entry_time !== null;
+        if (!isValid) {
+          console.warn('[TRADE-LOG] Filtered out trade (invalid entry_time):', t);
+        }
+        return isValid;
+      });
+    
+    console.log('[TRADE-LOG] Normalized', normalized.length, 'trades from', trades.length, 'input');
+    return normalized;
   }, [trades]);
 
   if (normalizedTrades.length === 0) {

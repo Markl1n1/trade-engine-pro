@@ -67,7 +67,10 @@ function calculateProfitPercent(
  * Normalize a single trade to unified format
  */
 function normalizeSingleTrade(trade: any): NormalizedTrade | null {
-  if (!trade) return null;
+  if (!trade) {
+    console.warn('[NORMALIZE] Trade is null or undefined');
+    return null;
+  }
   
   // Ensure type is present and valid
   let type: 'buy' | 'sell' = 'buy';
@@ -77,25 +80,48 @@ function normalizeSingleTrade(trade: any): NormalizedTrade | null {
     type = trade.side.toLowerCase() === 'sell' ? 'sell' : 'buy';
   }
   
-  // Normalize entry_time
-  const entryTime = normalizeTime(trade.entry_time);
+  // Normalize entry_time - try multiple possible field names
+  let entryTime = normalizeTime(trade.entry_time);
   if (!entryTime) {
-    console.warn('[NORMALIZE] Trade missing entry_time:', trade);
+    // Try alternative field names
+    entryTime = normalizeTime(trade.entryTime) || normalizeTime(trade.open_time) || normalizeTime(trade.timestamp);
+  }
+  
+  if (!entryTime) {
+    console.warn('[NORMALIZE] Trade missing entry_time. Trade keys:', Object.keys(trade), 'Trade:', JSON.stringify(trade).substring(0, 200));
     return null;
   }
   
-  // Ensure entry_price is present
-  const entryPrice = parseFloat(trade.entry_price);
+  // Ensure entry_price is present - try multiple possible field names
+  let entryPrice = parseFloat(trade.entry_price);
   if (isNaN(entryPrice) || entryPrice <= 0) {
-    console.warn('[NORMALIZE] Trade missing or invalid entry_price:', trade);
+    entryPrice = parseFloat(trade.entryPrice) || parseFloat(trade.price) || parseFloat(trade.open);
+  }
+  
+  if (isNaN(entryPrice) || entryPrice <= 0) {
+    console.warn('[NORMALIZE] Trade missing or invalid entry_price. Trade keys:', Object.keys(trade), 'Trade:', JSON.stringify(trade).substring(0, 200));
     return null;
   }
   
-  // Normalize exit_time (optional)
-  const exitTime = normalizeTime(trade.exit_time);
+  // Normalize exit_time (optional) - try multiple possible field names
+  let exitTime = normalizeTime(trade.exit_time);
+  if (!exitTime) {
+    exitTime = normalizeTime(trade.exitTime) || normalizeTime(trade.close_time);
+  }
   
-  // Normalize exit_price (optional)
-  const exitPrice = trade.exit_price ? parseFloat(trade.exit_price) : undefined;
+  // Normalize exit_price (optional) - try multiple possible field names
+  let exitPrice: number | undefined = undefined;
+  if (trade.exit_price) {
+    exitPrice = parseFloat(trade.exit_price);
+  } else if (trade.exitPrice) {
+    exitPrice = parseFloat(trade.exitPrice);
+  } else if (trade.close_price) {
+    exitPrice = parseFloat(trade.close_price);
+  }
+  
+  if (exitPrice !== undefined && (isNaN(exitPrice) || exitPrice <= 0)) {
+    exitPrice = undefined;
+  }
   
   // Calculate or use existing profit
   let profit = trade.profit !== undefined ? parseFloat(trade.profit) : undefined;

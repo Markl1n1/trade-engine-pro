@@ -331,16 +331,29 @@ const Backtest = () => {
       if (error) throw error;
 
       if (data.success && data.results) {
+        // Handle trades in both locations (results.trades or data.trades)
+        const trades = data.results.trades || data.trades || [];
+        
+        // Merge trades into results if they were in root
+        if (data.trades && !data.results.trades) {
+          data.results.trades = data.trades;
+        }
+        
         setResults(data.results);
         
         // Отладка: проверить структуру trades
-        if (data.results.trades) {
-          console.log('[BACKTEST] Trades structure:', data.results.trades);
-          console.log('[BACKTEST] Total trades:', data.results.trades.length);
-          if (data.results.trades.length > 0) {
-            console.log('[BACKTEST] First trade:', data.results.trades[0]);
-            console.log('[BACKTEST] Trade keys:', Object.keys(data.results.trades[0] || {}));
-          }
+        if (trades && trades.length > 0) {
+          console.log('[BACKTEST] Trades structure:', trades);
+          console.log('[BACKTEST] Total trades:', trades.length);
+          console.log('[BACKTEST] First trade:', trades[0]);
+          console.log('[BACKTEST] Trade keys:', Object.keys(trades[0] || {}));
+        } else {
+          console.warn('[BACKTEST] No trades found in response. Data structure:', {
+            hasResults: !!data.results,
+            hasTradesInResults: !!data.results?.trades,
+            hasTradesInRoot: !!data.trades,
+            resultsKeys: data.results ? Object.keys(data.results) : []
+          });
         }
         
         // Build detailed success message

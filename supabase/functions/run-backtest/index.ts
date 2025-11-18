@@ -4148,9 +4148,9 @@ async function run4hReentryBacktest(
         profit_factor: profitFactor,
         avg_win: avgWin,
         avg_loss: avgLoss,
-        exit_summary: exitSummary
-      },
-      trades: normalizedTrades
+        exit_summary: exitSummary,
+        trades: normalizedTrades  // Move trades into results
+      }
     }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
   );

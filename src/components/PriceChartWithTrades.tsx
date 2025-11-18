@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback } from "react";
+import React, { useMemo, useState, useCallback, useEffect } from "react";
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -71,17 +71,37 @@ export default function PriceChartWithTrades({ candles, trades }: Props) {
     [candles]
   );
 
+  // Debug: log trades received
+  useEffect(() => {
+    console.log('[PRICE-CHART] Received trades:', trades?.length || 0);
+    if (trades && trades.length > 0) {
+      console.log('[PRICE-CHART] First trade:', trades[0]);
+      console.log('[PRICE-CHART] Trade keys:', Object.keys(trades[0] || {}));
+    }
+  }, [trades]);
+
   // Normalize trade times to numbers (milliseconds)
   const buyPoints = useMemo(
-    () =>
-      (trades || [])
+    () => {
+      if (!trades || trades.length === 0) {
+        console.log('[PRICE-CHART] No trades for buy points');
+        return [];
+      }
+      
+      const filtered = trades
         .filter((t) => {
-          if (!t.entry_time || t.entry_price === undefined) return false;
+          if (!t || !t.entry_time || t.entry_price === undefined || t.entry_price === null) {
+            return false;
+          }
           // Convert entry_time to number if it's a string
           const entryTime = typeof t.entry_time === "string" 
             ? new Date(t.entry_time).getTime() 
             : (t.entry_time < 1e12 ? t.entry_time * 1000 : t.entry_time); // Handle seconds vs milliseconds
-          return !isNaN(entryTime) && entryTime > 0;
+          const isValid = !isNaN(entryTime) && entryTime > 0;
+          if (!isValid) {
+            console.warn('[PRICE-CHART] Invalid entry_time:', t.entry_time, 'for trade:', t);
+          }
+          return isValid;
         })
         .map((t) => {
           const entryTime = typeof t.entry_time === "string" 
@@ -92,15 +112,21 @@ export default function PriceChartWithTrades({ candles, trades }: Props) {
             p: t.entry_price,
             trade: t
           };
-        }),
+        });
+      
+      console.log('[PRICE-CHART] Buy points:', filtered.length, 'from', trades.length, 'trades');
+      return filtered;
+    },
     [trades]
   );
 
   const sellPoints = useMemo(
-    () =>
-      (trades || [])
+    () => {
+      const filtered = (trades || [])
         .filter((t) => {
-          if (!t.exit_time || t.exit_price === undefined) return false;
+          if (!t || !t.exit_time || t.exit_price === undefined || t.exit_price === null) {
+            return false;
+          }
           // Convert exit_time to number if it's a string
           const exitTime = typeof t.exit_time === "string" 
             ? new Date(t.exit_time).getTime() 
@@ -116,7 +142,11 @@ export default function PriceChartWithTrades({ candles, trades }: Props) {
             p: t.exit_price as number,
             trade: t
           };
-        }),
+        });
+      
+      console.log('[PRICE-CHART] Sell points:', filtered.length);
+      return filtered;
+    },
     [trades]
   );
 
@@ -277,12 +307,18 @@ export default function PriceChartWithTrades({ candles, trades }: Props) {
                   })}
 
                   {/* Маркеры BUY - Badge "B" */}
+                  {filteredBuyPoints.length > 0 && console.log('[PRICE-CHART] Rendering', filteredBuyPoints.length, 'buy badges')}
                   {filteredBuyPoints.map((pt, i) => {
                     const cx = x(pt.t);
                     const cy = y(pt.p);
-                    const badgeSize = 20;
+                    const badgeSize = 24;
+                    // Ensure coordinates are valid
+                    if (isNaN(cx) || isNaN(cy) || !isFinite(cx) || !isFinite(cy)) {
+                      console.warn('[PRICE-CHART] Invalid coordinates for buy point:', pt);
+                      return null;
+                    }
                     return (
-                      <g key={`buy-${i}`}>
+                      <g key={`buy-${i}-${pt.t}`}>
                         <circle
                           cx={cx}
                           cy={cy}
@@ -290,7 +326,7 @@ export default function PriceChartWithTrades({ candles, trades }: Props) {
                           fill="#22c55e"
                           stroke="white"
                           strokeWidth={2}
-                          opacity={0.9}
+                          opacity={0.95}
                         />
                         <text
                           x={cx}
@@ -298,8 +334,9 @@ export default function PriceChartWithTrades({ candles, trades }: Props) {
                           textAnchor="middle"
                           dominantBaseline="middle"
                           fill="white"
-                          fontSize="10"
+                          fontSize="12"
                           fontWeight="bold"
+                          pointerEvents="none"
                         >
                           B
                         </text>
@@ -308,12 +345,18 @@ export default function PriceChartWithTrades({ candles, trades }: Props) {
                   })}
 
                   {/* Маркеры SELL - Badge "S" */}
+                  {filteredSellPoints.length > 0 && console.log('[PRICE-CHART] Rendering', filteredSellPoints.length, 'sell badges')}
                   {filteredSellPoints.map((pt, i) => {
                     const cx = x(pt.t);
                     const cy = y(pt.p);
-                    const badgeSize = 20;
+                    const badgeSize = 24;
+                    // Ensure coordinates are valid
+                    if (isNaN(cx) || isNaN(cy) || !isFinite(cx) || !isFinite(cy)) {
+                      console.warn('[PRICE-CHART] Invalid coordinates for sell point:', pt);
+                      return null;
+                    }
                     return (
-                      <g key={`sell-${i}`}>
+                      <g key={`sell-${i}-${pt.t}`}>
                         <circle
                           cx={cx}
                           cy={cy}
@@ -321,7 +364,7 @@ export default function PriceChartWithTrades({ candles, trades }: Props) {
                           fill="#ef4444"
                           stroke="white"
                           strokeWidth={2}
-                          opacity={0.9}
+                          opacity={0.95}
                         />
                         <text
                           x={cx}
@@ -329,8 +372,9 @@ export default function PriceChartWithTrades({ candles, trades }: Props) {
                           textAnchor="middle"
                           dominantBaseline="middle"
                           fill="white"
-                          fontSize="10"
+                          fontSize="12"
                           fontWeight="bold"
+                          pointerEvents="none"
                         >
                           S
                         </text>
