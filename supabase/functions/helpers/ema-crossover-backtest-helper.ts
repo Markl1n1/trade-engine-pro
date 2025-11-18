@@ -251,6 +251,10 @@ export async function runEMACrossoverBacktest(
       balance_history: balanceHistory
     });
 
+  // Normalize trades before returning
+  const { normalizeTrades } = await import('./normalize-trades.ts');
+  const normalizedTrades = normalizeTrades(trades);
+  
   return new Response(
     JSON.stringify({
       success: true,
@@ -258,7 +262,7 @@ export async function runEMACrossoverBacktest(
         initial_balance: initialBalance,
         final_balance: balance,
         total_return: totalReturn,
-        total_trades: trades.length,
+        total_trades: normalizedTrades.length,
         winning_trades: winningTrades,
         losing_trades: losingTrades,
         win_rate: winRate,
@@ -268,7 +272,7 @@ export async function runEMACrossoverBacktest(
         avg_loss: avgLoss,
         exit_summary: exitSummary
       },
-      trades
+      trades: normalizedTrades
     }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
   );

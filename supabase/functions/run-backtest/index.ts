@@ -18,6 +18,7 @@ import { BaseConfig, BacktestConfig, MarketRegime } from '../helpers/strategy-in
 import { runFVGScalpingBacktest } from '../helpers/fvg-backtest-helper.ts';
 import { getStrategyBacktestConfig } from '../helpers/strategy-config-loader.ts';
 import { runEMACrossoverBacktest } from '../helpers/ema-crossover-backtest-helper.ts';
+import { normalizeTrades } from '../helpers/normalize-trades.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -569,6 +570,9 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
     balance_history: balanceHistory
   });
 
+  // Normalize trades before returning
+  const normalizedTrades = normalizeTrades(trades);
+  
   return new Response(
     JSON.stringify({
       success: true,
@@ -576,7 +580,7 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
         initial_balance: initialBalance,
         final_balance: balance,
         total_return: totalReturn,
-        total_trades: trades.length,
+        total_trades: normalizedTrades.length,
         winning_trades: winningTrades,
         losing_trades: losingTrades,
         win_rate: winRate,
@@ -585,7 +589,7 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
         avg_win: avgWin,
         avg_loss: avgLoss,
         balance_history: balanceHistory,
-        trades: trades,
+        trades: normalizedTrades,
         config: {
           strategy_type: 'ath_guard_scalping',
           product_type: productType,
@@ -1466,6 +1470,9 @@ serve(async (req) => {
       console.error('Error saving backtest results:', insertError);
     }
 
+    // Normalize trades before returning
+    const normalizedTrades = normalizeTrades(results.trades || []);
+    
     return new Response(
       JSON.stringify({
         success: true,
@@ -1473,7 +1480,7 @@ serve(async (req) => {
           initial_balance: results.initial_balance,
           final_balance: results.final_balance,
           total_return: results.total_return,
-          total_trades: results.total_trades,
+          total_trades: normalizedTrades.length, // Use normalized count
           winning_trades: results.winning_trades,
           losing_trades: results.losing_trades,
           win_rate: results.win_rate,
@@ -1482,7 +1489,7 @@ serve(async (req) => {
           avg_win: results.avg_win,
           avg_loss: results.avg_loss,
           balance_history: results.balance_history,
-          trades: results.trades,
+          trades: normalizedTrades, // Use normalized trades
           warnings: warnings.length > 0 ? warnings : undefined,
           config: {
             product_type: productType,
@@ -2428,6 +2435,9 @@ async function runSMACrossoverBacktest(
     console.error('Error saving backtest results:', error);
   }
 
+  // Normalize trades before returning
+  const normalizedTrades = normalizeTrades(trades);
+  
   return new Response(
     JSON.stringify({
       success: true,
@@ -2435,11 +2445,11 @@ async function runSMACrossoverBacktest(
         initialBalance,
         finalBalance: balance,
         totalReturn,
-        totalTrades,
+        totalTrades: normalizedTrades.length,
         winRate,
         maxDrawdown,
         profitFactor,
-        trades,
+        trades: normalizedTrades,
         balanceHistory
       }
     }),
@@ -3088,6 +3098,9 @@ async function runMTFMomentumBacktest(
     console.error('Error saving MTF Momentum backtest results:', error);
   }
 
+  // Normalize trades before returning
+  const normalizedTrades = normalizeTrades(trades);
+  
   return new Response(
     JSON.stringify({
       success: true,
@@ -3095,14 +3108,14 @@ async function runMTFMomentumBacktest(
         initial_balance: initialBalance,
         final_balance: balance,
         total_return: totalReturn,
-        total_trades: totalTrades,
+        total_trades: normalizedTrades.length,
         winning_trades: winTrades,
         losing_trades: totalTrades - winTrades,
         win_rate: winRate,
         max_drawdown: maxDrawdown,
         profit_factor: profitFactor,
         // balance_history: balanceHistory, // Removed to prevent CPU timeout
-        trades: trades
+        trades: normalizedTrades
       }
     }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -3576,6 +3589,9 @@ async function runMSTGBacktest(
       balance_history: balanceHistory
     });
 
+  // Normalize trades before returning
+  const normalizedTrades = normalizeTrades(trades);
+  
   return new Response(
     JSON.stringify({
       success: true,
@@ -3583,14 +3599,14 @@ async function runMSTGBacktest(
         initial_balance: initialBalance,
         final_balance: balance,
         total_return: totalReturn,
-        total_trades: trades.length,
+        total_trades: normalizedTrades.length,
         winning_trades: winningTrades,
         losing_trades: losingTrades,
         win_rate: winRate,
         max_drawdown: maxDrawdown,
         sharpe_ratio: null,
         profit_factor: null,
-        trades: trades,
+        trades: normalizedTrades,
         balance_history: balanceHistory,
       }
     }),
@@ -4114,6 +4130,9 @@ async function run4hReentryBacktest(
       balance_history: balanceHistory
     });
 
+  // Normalize trades before returning
+  const normalizedTrades = normalizeTrades(trades);
+  
   return new Response(
     JSON.stringify({
       success: true,
@@ -4121,7 +4140,7 @@ async function run4hReentryBacktest(
         initial_balance: initialBalance,
         final_balance: balance,
         total_return: totalReturn,
-        total_trades: trades.length,
+        total_trades: normalizedTrades.length,
         winning_trades: winningTrades,
         losing_trades: losingTrades,
         win_rate: winRate,
@@ -4131,7 +4150,7 @@ async function run4hReentryBacktest(
         avg_loss: avgLoss,
         exit_summary: exitSummary
       },
-      trades
+      trades: normalizedTrades
     }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
   );

@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState, useCallback } from "react";
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -8,6 +8,7 @@ import {
   Tooltip,
   ReferenceLine,
   Customized,
+  Brush,
 } from "recharts";
 
 type Candle = {
@@ -37,7 +38,27 @@ function formatTs(ts: number | string) {
   return new Date(n).toLocaleString();
 }
 
+function formatDate(ts: number) {
+  return new Date(ts).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  });
+}
+
+function formatDateTime(ts: number) {
+  return new Date(ts).toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
+
 export default function PriceChartWithTrades({ candles, trades }: Props) {
+  const [brushStartIndex, setBrushStartIndex] = useState<number | undefined>(undefined);
+  const [brushEndIndex, setBrushEndIndex] = useState<number | undefined>(undefined);
+
   const data = useMemo(
     () =>
       (candles || []).map((c) => ({
@@ -50,31 +71,52 @@ export default function PriceChartWithTrades({ candles, trades }: Props) {
     [candles]
   );
 
+  // Normalize trade times to numbers (milliseconds)
   const buyPoints = useMemo(
     () =>
       (trades || [])
-        .filter((t) => t.entry_time && t.entry_price !== undefined)
-        .map((t) => ({
-          t:
-            typeof t.entry_time === "string"
-              ? new Date(t.entry_time).getTime()
-              : (t.entry_time as number),
-          p: t.entry_price,
-        })),
+        .filter((t) => {
+          if (!t.entry_time || t.entry_price === undefined) return false;
+          // Convert entry_time to number if it's a string
+          const entryTime = typeof t.entry_time === "string" 
+            ? new Date(t.entry_time).getTime() 
+            : (t.entry_time < 1e12 ? t.entry_time * 1000 : t.entry_time); // Handle seconds vs milliseconds
+          return !isNaN(entryTime) && entryTime > 0;
+        })
+        .map((t) => {
+          const entryTime = typeof t.entry_time === "string" 
+            ? new Date(t.entry_time).getTime() 
+            : (t.entry_time < 1e12 ? t.entry_time * 1000 : t.entry_time);
+          return {
+            t: entryTime,
+            p: t.entry_price,
+            trade: t
+          };
+        }),
     [trades]
   );
 
   const sellPoints = useMemo(
     () =>
       (trades || [])
-        .filter((t) => t.exit_time && t.exit_price !== undefined)
-        .map((t) => ({
-          t:
-            typeof t.exit_time === "string"
-              ? new Date(t.exit_time).getTime()
-              : (t.exit_time as number),
-          p: t.exit_price as number,
-        })),
+        .filter((t) => {
+          if (!t.exit_time || t.exit_price === undefined) return false;
+          // Convert exit_time to number if it's a string
+          const exitTime = typeof t.exit_time === "string" 
+            ? new Date(t.exit_time).getTime() 
+            : (t.exit_time < 1e12 ? t.exit_time * 1000 : t.exit_time); // Handle seconds vs milliseconds
+          return !isNaN(exitTime) && exitTime > 0;
+        })
+        .map((t) => {
+          const exitTime = typeof t.exit_time === "string" 
+            ? new Date(t.exit_time).getTime() 
+            : (t.exit_time < 1e12 ? t.exit_time * 1000 : t.exit_time);
+          return {
+            t: exitTime,
+            p: t.exit_price as number,
+            trade: t
+          };
+        }),
     [trades]
   );
 
@@ -82,112 +124,234 @@ export default function PriceChartWithTrades({ candles, trades }: Props) {
     return <div className="text-sm text-muted-foreground">No price data</div>;
   }
 
+  // Calculate price range with padding
+  const allPrices = data.flatMap(d => [d.high, d.low, d.open, d.close]);
+  const minP = Math.min(...allPrices);
+  const maxP = Math.max(...allPrices);
+  const priceRange = maxP - minP;
+  const pricePadding = priceRange * 0.1; // 10% padding
+
+  // Calculate time range
   const minT = data[0].t;
   const maxT = data[data.length - 1].t;
-  const minP = Math.min(...data.map((d) => d.low));
-  const maxP = Math.max(...data.map((d) => d.high));
+
+  // Filter data based on brush selection
+  const filteredData = useMemo(() => {
+    if (brushStartIndex === undefined || brushEndIndex === undefined) {
+      return data;
+    }
+    return data.slice(brushStartIndex, brushEndIndex + 1);
+  }, [data, brushStartIndex, brushEndIndex]);
+
+  // Filter buy/sell points based on brush selection
+  const filteredBuyPoints = useMemo(() => {
+    if (brushStartIndex === undefined || brushEndIndex === undefined) {
+      return buyPoints;
+    }
+    const startTime = filteredData[0]?.t || minT;
+    const endTime = filteredData[filteredData.length - 1]?.t || maxT;
+    return buyPoints.filter(pt => pt.t >= startTime && pt.t <= endTime);
+  }, [buyPoints, filteredData, brushStartIndex, brushEndIndex, minT, maxT]);
+
+  const filteredSellPoints = useMemo(() => {
+    if (brushStartIndex === undefined || brushEndIndex === undefined) {
+      return sellPoints;
+    }
+    const startTime = filteredData[0]?.t || minT;
+    const endTime = filteredData[filteredData.length - 1]?.t || maxT;
+    return sellPoints.filter(pt => pt.t >= startTime && pt.t <= endTime);
+  }, [sellPoints, filteredData, brushStartIndex, brushEndIndex, minT, maxT]);
+
+  const handleBrushChange = useCallback((data: any) => {
+    if (data && data.startIndex !== undefined && data.endIndex !== undefined) {
+      setBrushStartIndex(data.startIndex);
+      setBrushEndIndex(data.endIndex);
+    } else {
+      setBrushStartIndex(undefined);
+      setBrushEndIndex(undefined);
+    }
+  }, []);
+
+  // Calculate domain for filtered data
+  const displayMinT = filteredData[0]?.t || minT;
+  const displayMaxT = filteredData[filteredData.length - 1]?.t || maxT;
+  const displayMinP = Math.min(...filteredData.flatMap(d => [d.high, d.low, d.open, d.close]));
+  const displayMaxP = Math.max(...filteredData.flatMap(d => [d.high, d.low, d.open, d.close]));
+  const displayPriceRange = displayMaxP - displayMinP;
+  const displayPricePadding = displayPriceRange * 0.1;
 
   return (
-    <ResponsiveContainer width="100%" height={320}>
-      <ComposedChart data={data} margin={{ top: 10, right: 20, bottom: 0, left: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" />
-        <XAxis
-          dataKey="t"
-          type="number"
-          domain={[minT, maxT]}
-          tickFormatter={(ts) => new Date(ts).toLocaleDateString()}
-        />
-        <YAxis type="number" domain={[minP, maxP]} width={60} />
-        <Tooltip
-          labelFormatter={(label) => formatTs(label)}
-          formatter={(val: any, name: any) => [val, name]}
-        />
+    <div className="w-full">
+      <ResponsiveContainer width="100%" height={400}>
+        <ComposedChart 
+          data={filteredData} 
+          margin={{ top: 10, right: 20, bottom: 60, left: 60 }}
+        >
+          <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+          <XAxis
+            dataKey="t"
+            type="number"
+            domain={[displayMinT, displayMaxT]}
+            tickFormatter={(ts) => formatDateTime(ts)}
+            scale="time"
+            angle={-45}
+            textAnchor="end"
+            height={80}
+          />
+          <YAxis 
+            type="number" 
+            domain={[displayMinP - displayPricePadding, displayMaxP + displayPricePadding]} 
+            width={80}
+            tickFormatter={(value) => value.toFixed(2)}
+          />
+          <Tooltip
+            labelFormatter={(label) => formatTs(label)}
+            formatter={(val: any, name: any) => {
+              if (name === 'price') return [`$${val.toFixed(2)}`, 'Price'];
+              return [val, name];
+            }}
+            contentStyle={{
+              backgroundColor: 'rgba(0, 0, 0, 0.8)',
+              border: '1px solid #333',
+              borderRadius: '4px',
+              color: '#fff'
+            }}
+          />
 
-        {/* Вертикальные вспомогательные линии по входам/выходам */}
-        {buyPoints.map((pt, i) => (
-          <ReferenceLine key={`vb-${i}`} x={pt.t} stroke="hsl(var(--success))" strokeOpacity={0.12} />
-        ))}
-        {sellPoints.map((pt, i) => (
-          <ReferenceLine key={`vs-${i}`} x={pt.t} stroke="hsl(var(--destructive))" strokeOpacity={0.12} />
-        ))}
+          {/* Вертикальные вспомогательные линии по входам/выходам */}
+          {filteredBuyPoints.map((pt, i) => (
+            <ReferenceLine 
+              key={`vb-${i}`} 
+              x={pt.t} 
+              stroke="#22c55e" 
+              strokeOpacity={0.2}
+              strokeDasharray="2 2"
+            />
+          ))}
+          {filteredSellPoints.map((pt, i) => (
+            <ReferenceLine 
+              key={`vs-${i}`} 
+              x={pt.t} 
+              stroke="#ef4444" 
+              strokeOpacity={0.2}
+              strokeDasharray="2 2"
+            />
+          ))}
 
-        {/* Свечи и маркеры сделок, отрисованные через Customized для доступа к шкалам */}
-        <Customized
-          component={(props: any) => {
-            const { xAxisMap, yAxisMap, offset } = props;
-            const xAxis = Object.values(xAxisMap || {})[0] as any;
-            const yAxis = Object.values(yAxisMap || {})[0] as any;
-            if (!xAxis?.scale || !yAxis?.scale) return null;
+          {/* Свечи и маркеры сделок, отрисованные через Customized для доступа к шкалам */}
+          <Customized
+            component={(props: any) => {
+              const { xAxisMap, yAxisMap, offset } = props;
+              const xAxis = Object.values(xAxisMap || {})[0] as any;
+              const yAxis = Object.values(yAxisMap || {})[0] as any;
+              if (!xAxis?.scale || !yAxis?.scale) return null;
 
-            const y = (v: number) => yAxis.scale(v);
-            const x = (ts: number) => xAxis.scale(ts);
-            const barW = Math.max(3, Math.min(14, (xAxis?.bandwidth as number) || 7));
+              const y = (v: number) => yAxis.scale(v);
+              const x = (ts: number) => xAxis.scale(ts);
+              const barW = Math.max(2, Math.min(12, (xAxis?.bandwidth as number) || 6));
 
-            return (
-              <g>
-                {/* Свечи */}
-                {data.map((d) => {
-                  const isUp = d.close >= d.open;
-                  const color = isUp ? "hsl(var(--success))" : "hsl(var(--destructive))";
-                  const cx = x(d.t);
-                  const highY = y(d.high);
-                  const lowY = y(d.low);
-                  const openY = y(d.open);
-                  const closeY = y(d.close);
-                  const bodyTop = Math.min(openY, closeY);
-                  const bodyH = Math.max(1, Math.abs(closeY - openY));
-                  const bodyX = cx - barW * 0.5 + barW * 0.2;
-                  const bodyW = Math.max(1, barW * 0.6);
-                  return (
-                    <g key={d.t}>
-                      <line x1={cx} x2={cx} y1={highY} y2={lowY} stroke={color} strokeWidth={1} />
-                      <rect x={bodyX} y={bodyTop} width={bodyW} height={bodyH} fill={color} />
-                    </g>
-                  );
-                })}
+              return (
+                <g>
+                  {/* Свечи */}
+                  {filteredData.map((d) => {
+                    const isUp = d.close >= d.open;
+                    const color = isUp ? "#22c55e" : "#ef4444";
+                    const cx = x(d.t);
+                    const highY = y(d.high);
+                    const lowY = y(d.low);
+                    const openY = y(d.open);
+                    const closeY = y(d.close);
+                    const bodyTop = Math.min(openY, closeY);
+                    const bodyH = Math.max(1, Math.abs(closeY - openY));
+                    const bodyX = cx - barW * 0.5;
+                    const bodyW = Math.max(1, barW);
+                    return (
+                      <g key={d.t}>
+                        <line x1={cx} x2={cx} y1={highY} y2={lowY} stroke={color} strokeWidth={1} />
+                        <rect x={bodyX} y={bodyTop} width={bodyW} height={bodyH} fill={color} />
+                      </g>
+                    );
+                  })}
 
-                {/* Маркеры BUY (зелёные треугольники вверх) */}
-                {buyPoints.map((pt, i) => {
-                  const cx = x(pt.t);
-                  const cy = y(pt.p * 0.998); // Немного ниже цены для видимости
-                  const size = 12;
-                  return (
-                    <g key={`buy-${i}`}>
-                      <path
-                        d={`M ${cx} ${cy - size} L ${cx - size} ${cy + size} L ${cx + size} ${cy + size} Z`}
-                        fill="#22c55e"
-                        stroke="white"
-                        strokeWidth={2}
-                        opacity={0.95}
-                      />
-                    </g>
-                  );
-                })}
+                  {/* Маркеры BUY - Badge "B" */}
+                  {filteredBuyPoints.map((pt, i) => {
+                    const cx = x(pt.t);
+                    const cy = y(pt.p);
+                    const badgeSize = 20;
+                    return (
+                      <g key={`buy-${i}`}>
+                        <circle
+                          cx={cx}
+                          cy={cy}
+                          r={badgeSize / 2}
+                          fill="#22c55e"
+                          stroke="white"
+                          strokeWidth={2}
+                          opacity={0.9}
+                        />
+                        <text
+                          x={cx}
+                          y={cy}
+                          textAnchor="middle"
+                          dominantBaseline="middle"
+                          fill="white"
+                          fontSize="10"
+                          fontWeight="bold"
+                        >
+                          B
+                        </text>
+                      </g>
+                    );
+                  })}
 
-                {/* Маркеры SELL (красные треугольники вниз) */}
-                {sellPoints.map((pt, i) => {
-                  const cx = x(pt.t);
-                  const cy = y(pt.p * 1.002); // Немного выше цены для видимости
-                  const size = 12;
-                  return (
-                    <g key={`sell-${i}`}>
-                      <path
-                        d={`M ${cx} ${cy + size} L ${cx - size} ${cy - size} L ${cx + size} ${cy - size} Z`}
-                        fill="#ef4444"
-                        stroke="white"
-                        strokeWidth={2}
-                        opacity={0.95}
-                      />
-                    </g>
-                  );
-                })}
-              </g>
-            );
-          }}
-        />
-      </ComposedChart>
-    </ResponsiveContainer>
+                  {/* Маркеры SELL - Badge "S" */}
+                  {filteredSellPoints.map((pt, i) => {
+                    const cx = x(pt.t);
+                    const cy = y(pt.p);
+                    const badgeSize = 20;
+                    return (
+                      <g key={`sell-${i}`}>
+                        <circle
+                          cx={cx}
+                          cy={cy}
+                          r={badgeSize / 2}
+                          fill="#ef4444"
+                          stroke="white"
+                          strokeWidth={2}
+                          opacity={0.9}
+                        />
+                        <text
+                          x={cx}
+                          y={cy}
+                          textAnchor="middle"
+                          dominantBaseline="middle"
+                          fill="white"
+                          fontSize="10"
+                          fontWeight="bold"
+                        >
+                          S
+                        </text>
+                      </g>
+                    );
+                  })}
+                </g>
+              );
+            }}
+          />
+          
+          {/* Brush for zoom */}
+          <Brush
+            dataKey="t"
+            height={30}
+            stroke="#8884d8"
+            fill="#8884d8"
+            tickFormatter={(ts) => formatDate(ts)}
+            onChange={handleBrushChange}
+            startIndex={brushStartIndex}
+            endIndex={brushEndIndex}
+          />
+        </ComposedChart>
+      </ResponsiveContainer>
+    </div>
   );
 }
-
-

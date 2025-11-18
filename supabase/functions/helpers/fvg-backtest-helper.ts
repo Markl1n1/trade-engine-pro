@@ -401,11 +401,17 @@ export async function runFVGScalpingBacktest(
     console.error('[FVG-BACKTEST] Error saving results:', insertError);
   }
 
+  // Normalize trades before returning
+  const { normalizeTrades } = await import('./normalize-trades.ts');
+  const normalizedTrades = normalizeTrades(results.trades || []);
+  
   return new Response(
     JSON.stringify({
       success: true,
       results: {
         ...results,
+        trades: normalizedTrades,
+        total_trades: normalizedTrades.length,
         strategy_name: strategy.name,
         symbol: strategy.symbol,
         timeframe: strategy.timeframe,

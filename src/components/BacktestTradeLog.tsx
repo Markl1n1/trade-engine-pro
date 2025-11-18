@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TrendingUp, TrendingDown, Clock } from "lucide-react";
@@ -16,8 +17,11 @@ interface Trade {
 }
 
 const formatPositionDuration = (entryTime: string | number, exitTime: string | number): string => {
-  const entry = typeof entryTime === 'string' ? new Date(entryTime).getTime() : entryTime;
-  const exit = typeof exitTime === 'string' ? new Date(exitTime).getTime() : exitTime;
+  const entry = normalizeTime(entryTime);
+  const exit = normalizeTime(exitTime);
+  
+  if (!entry || !exit) return 'N/A';
+  
   const durationMs = exit - entry;
   
   const seconds = Math.floor(durationMs / 1000);
@@ -42,8 +46,27 @@ const formatPositionDuration = (entryTime: string | number, exitTime: string | n
   }
 };
 
+const normalizeTime = (time: string | number | undefined | null): number | null => {
+  if (!time) return null;
+  
+  if (typeof time === 'number') {
+    // If timestamp < 1e12, it's in seconds, convert to milliseconds
+    return time < 1e12 ? time * 1000 : time;
+  }
+  
+  if (typeof time === 'string') {
+    const parsed = new Date(time).getTime();
+    return isNaN(parsed) ? null : parsed;
+  }
+  
+  return null;
+};
+
 const formatDateTime = (time: string | number): string => {
-  const date = typeof time === 'string' ? new Date(time) : new Date(time);
+  const normalized = normalizeTime(time);
+  if (!normalized) return 'N/A';
+  
+  const date = new Date(normalized);
   return date.toLocaleString('en-US', { 
     month: 'short', 
     day: 'numeric', 
@@ -53,12 +76,61 @@ const formatDateTime = (time: string | number): string => {
   });
 };
 
+const calculateProfitPercent = (
+  entryPrice: number,
+  exitPrice: number | undefined,
+  type: 'buy' | 'sell' | undefined
+): number | undefined => {
+  if (!exitPrice || !entryPrice) return undefined;
+  
+  const typeNormalized = type || 'buy';
+  if (typeNormalized === 'buy') {
+    return ((exitPrice - entryPrice) / entryPrice) * 100;
+  } else {
+    return ((entryPrice - exitPrice) / entryPrice) * 100;
+  }
+};
+
 interface BacktestTradeLogProps {
   trades: Trade[];
 }
 
 export function BacktestTradeLog({ trades }: BacktestTradeLogProps) {
-  if (!trades || trades.length === 0) {
+  // Normalize and filter trades
+  const normalizedTrades = useMemo(() => {
+    if (!trades || trades.length === 0) return [];
+    
+    return trades
+      .filter(t => t && t.entry_time && t.entry_price !== undefined)
+      .map(trade => {
+        // Ensure type is present
+        let type: 'buy' | 'sell' = 'buy';
+        if (trade.type) {
+          type = trade.type.toLowerCase() === 'sell' ? 'sell' : 'buy';
+        }
+        
+        // Normalize times
+        const entryTime = normalizeTime(trade.entry_time);
+        const exitTime = trade.exit_time ? normalizeTime(trade.exit_time) : null;
+        
+        // Calculate profit_percent if missing
+        let profitPercent = trade.profit_percent;
+        if (profitPercent === undefined && trade.exit_price) {
+          profitPercent = calculateProfitPercent(trade.entry_price, trade.exit_price, type);
+        }
+        
+        return {
+          ...trade,
+          type,
+          entry_time: entryTime || trade.entry_time,
+          exit_time: exitTime || trade.exit_time,
+          profit_percent: profitPercent
+        };
+      })
+      .filter(t => t.entry_time !== null); // Filter out invalid trades
+  }, [trades]);
+
+  if (normalizedTrades.length === 0) {
     return (
       <div className="text-center py-8 text-muted-foreground text-sm">
         No trades to display
@@ -68,27 +140,31 @@ export function BacktestTradeLog({ trades }: BacktestTradeLogProps) {
 
   return (
     <div className="space-y-2">
-      <h4 className="text-sm font-semibold mb-3">Trade Log ({trades.length} trades)</h4>
+      <h4 className="text-sm font-semibold mb-3">Trade Log ({normalizedTrades.length} trades)</h4>
       <div className="space-y-2 max-h-[600px] overflow-y-auto">
-        {trades.map((trade, index) => (
-          <Card key={`trade-${index}-${trade.entry_time}`} className="p-3">
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-2 flex-wrap">
-                  {trade.type && (
-                    <Badge 
-                      variant={trade.type === 'buy' ? 'default' : 'destructive'} 
-                      className={trade.type === 'sell' ? 'bg-red-500 text-white' : ''}
-                    >
-                      {trade.type.toUpperCase()}
-                    </Badge>
-                  )}
-                  {trade.profit !== undefined && (
-                    <Badge variant={trade.profit >= 0 ? 'default' : 'destructive'}>
-                      {trade.profit >= 0 ? <TrendingUp className="h-3 w-3 mr-1" /> : <TrendingDown className="h-3 w-3 mr-1" />}
-                      {trade.profit >= 0 ? '+' : ''}{trade.profit_percent?.toFixed(2)}%
-                    </Badge>
-                  )}
+        {normalizedTrades.map((trade, index) => {
+          const profitPercent = trade.profit_percent ?? 
+            (trade.exit_price ? calculateProfitPercent(trade.entry_price, trade.exit_price, trade.type) : undefined);
+          
+          return (
+            <Card key={`trade-${index}-${trade.entry_time}`} className="p-3">
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2 flex-wrap">
+                    {trade.type && (
+                      <Badge 
+                        variant={trade.type === 'buy' ? 'default' : 'destructive'} 
+                        className={trade.type === 'sell' ? 'bg-red-500 text-white' : ''}
+                      >
+                        {trade.type.toUpperCase()}
+                      </Badge>
+                    )}
+                    {(trade.profit !== undefined || profitPercent !== undefined) && (
+                      <Badge variant={(trade.profit ?? 0) >= 0 ? 'default' : 'destructive'}>
+                        {(trade.profit ?? 0) >= 0 ? <TrendingUp className="h-3 w-3 mr-1" /> : <TrendingDown className="h-3 w-3 mr-1" />}
+                        {(trade.profit ?? 0) >= 0 ? '+' : ''}{profitPercent?.toFixed(2) ?? '0.00'}%
+                      </Badge>
+                    )}
                   {trade.exit_reason && (
                     <Badge 
                       variant="outline" 
