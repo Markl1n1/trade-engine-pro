@@ -120,6 +120,46 @@ export default function PriceChartWithTrades({ candles, trades }: Props) {
     [trades]
   );
 
+  // Filter data based on brush selection
+  const filteredData = useMemo(() => {
+    if (brushStartIndex === undefined || brushEndIndex === undefined) {
+      return data;
+    }
+    return data.slice(brushStartIndex, brushEndIndex + 1);
+  }, [data, brushStartIndex, brushEndIndex]);
+
+  // Filter buy/sell points based on brush selection
+  const filteredBuyPoints = useMemo(() => {
+    if (!data.length || brushStartIndex === undefined || brushEndIndex === undefined) {
+      return buyPoints;
+    }
+    const startTime = filteredData[0]?.t;
+    const endTime = filteredData[filteredData.length - 1]?.t;
+    if (!startTime || !endTime) return buyPoints;
+    return buyPoints.filter(pt => pt.t >= startTime && pt.t <= endTime);
+  }, [buyPoints, filteredData, brushStartIndex, brushEndIndex, data.length]);
+
+  const filteredSellPoints = useMemo(() => {
+    if (!data.length || brushStartIndex === undefined || brushEndIndex === undefined) {
+      return sellPoints;
+    }
+    const startTime = filteredData[0]?.t;
+    const endTime = filteredData[filteredData.length - 1]?.t;
+    if (!startTime || !endTime) return sellPoints;
+    return sellPoints.filter(pt => pt.t >= startTime && pt.t <= endTime);
+  }, [sellPoints, filteredData, brushStartIndex, brushEndIndex, data.length]);
+
+  const handleBrushChange = useCallback((data: any) => {
+    if (data && data.startIndex !== undefined && data.endIndex !== undefined) {
+      setBrushStartIndex(data.startIndex);
+      setBrushEndIndex(data.endIndex);
+    } else {
+      setBrushStartIndex(undefined);
+      setBrushEndIndex(undefined);
+    }
+  }, []);
+
+  // Early return after all hooks are called
   if (!data.length) {
     return <div className="text-sm text-muted-foreground">No price data</div>;
   }
@@ -134,43 +174,6 @@ export default function PriceChartWithTrades({ candles, trades }: Props) {
   // Calculate time range
   const minT = data[0].t;
   const maxT = data[data.length - 1].t;
-
-  // Filter data based on brush selection
-  const filteredData = useMemo(() => {
-    if (brushStartIndex === undefined || brushEndIndex === undefined) {
-      return data;
-    }
-    return data.slice(brushStartIndex, brushEndIndex + 1);
-  }, [data, brushStartIndex, brushEndIndex]);
-
-  // Filter buy/sell points based on brush selection
-  const filteredBuyPoints = useMemo(() => {
-    if (brushStartIndex === undefined || brushEndIndex === undefined) {
-      return buyPoints;
-    }
-    const startTime = filteredData[0]?.t || minT;
-    const endTime = filteredData[filteredData.length - 1]?.t || maxT;
-    return buyPoints.filter(pt => pt.t >= startTime && pt.t <= endTime);
-  }, [buyPoints, filteredData, brushStartIndex, brushEndIndex, minT, maxT]);
-
-  const filteredSellPoints = useMemo(() => {
-    if (brushStartIndex === undefined || brushEndIndex === undefined) {
-      return sellPoints;
-    }
-    const startTime = filteredData[0]?.t || minT;
-    const endTime = filteredData[filteredData.length - 1]?.t || maxT;
-    return sellPoints.filter(pt => pt.t >= startTime && pt.t <= endTime);
-  }, [sellPoints, filteredData, brushStartIndex, brushEndIndex, minT, maxT]);
-
-  const handleBrushChange = useCallback((data: any) => {
-    if (data && data.startIndex !== undefined && data.endIndex !== undefined) {
-      setBrushStartIndex(data.startIndex);
-      setBrushEndIndex(data.endIndex);
-    } else {
-      setBrushStartIndex(undefined);
-      setBrushEndIndex(undefined);
-    }
-  }, []);
 
   // Calculate domain for filtered data
   const displayMinT = filteredData[0]?.t || minT;
