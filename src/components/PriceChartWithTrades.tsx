@@ -57,6 +57,11 @@ export default function PriceChartWithTrades({ candles, trades }: Props) {
   const [panStart, setPanStart] = useState<{x: number, index: number} | null>(null);
   const chartRef = useRef<HTMLDivElement>(null);
 
+  // Reset zoom when candles change (new backtest results)
+  useEffect(() => {
+    setZoomDomain(null);
+  }, [candles]);
+
   const data = useMemo(
     () =>
       (candles || []).map((c) => ({
@@ -236,7 +241,23 @@ export default function PriceChartWithTrades({ candles, trades }: Props) {
     );
   }
 
-  const allPrices = data.flatMap(d => [d.high, d.low, d.open, d.close]);
+  // Helper function to validate price values
+  const isValidPrice = (price: number): boolean => {
+    return !isNaN(price) && isFinite(price) && price > 0 && price < 1e10; // Reasonable upper limit
+  };
+
+  // Calculate price range with padding - filter invalid prices
+  const allPrices = data.flatMap(d => [d.high, d.low, d.open, d.close])
+    .filter(isValidPrice);
+  
+  if (allPrices.length === 0) {
+    return (
+      <div className="w-full h-[600px] flex items-center justify-center bg-card rounded-lg border border-border">
+        <p className="text-muted-foreground">Invalid price data</p>
+      </div>
+    );
+  }
+  
   const minP = Math.min(...allPrices);
   const maxP = Math.max(...allPrices);
   const priceRange = maxP - minP;

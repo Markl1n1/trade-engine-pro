@@ -219,13 +219,25 @@ export function getStrategyBacktestConfig(strategy: any, strategyType: string): 
     case 'sma_20_200_rsi':
       // Build SMA config, then relax gates based on flags
       {
+        // Optimize: Make RSI thresholds less strict (increase overbought, decrease oversold)
+        const rsiOverbought = isEnabled('rsi') 
+          ? Math.min(85, (unifiedConfig.rsi_overbought || 70) + 5) // Add 5 to make less strict
+          : 100;
+        const rsiOversold = isEnabled('rsi')
+          ? Math.max(15, (unifiedConfig.rsi_oversold || 30) - 5) // Subtract 5 to make less strict
+          : 0;
+        // Optimize: Reduce volume multiplier requirement
+        const volumeMultiplier = isEnabled('volume')
+          ? Math.max(0.9, (unifiedConfig.volume_multiplier || 1.2) * 0.9) // Reduce by 10%
+          : 0;
+        
         const base = {
         sma_fast_period: unifiedConfig.sma_fast_period || 20,
         sma_slow_period: unifiedConfig.sma_slow_period || 200,
         rsi_period: unifiedConfig.rsi_period,
-        rsi_overbought: isEnabled('rsi') ? unifiedConfig.rsi_overbought : 100,
-        rsi_oversold: isEnabled('rsi') ? unifiedConfig.rsi_oversold : 0,
-        volume_multiplier: isEnabled('volume') ? unifiedConfig.volume_multiplier : 0,
+        rsi_overbought: rsiOverbought,
+        rsi_oversold: rsiOversold,
+        volume_multiplier: volumeMultiplier,
         atr_sl_multiplier: unifiedConfig.atr_sl_multiplier,
         atr_tp_multiplier: unifiedConfig.atr_tp_multiplier,
         adx_threshold: isEnabled('trend') ? unifiedConfig.adx_threshold : 0,
@@ -239,13 +251,21 @@ export function getStrategyBacktestConfig(strategy: any, strategyType: string): 
       }
       
     case 'mtf_momentum':
+      // Optimize: Reduce RSI threshold and volume multiplier for better entry rate
+      const mtfRsiThreshold = isEnabled('rsi')
+        ? Math.max(45, (unifiedConfig.mtf_rsi_entry_threshold || 55) - 5) // Reduce by 5 to make less strict
+        : 0;
+      const mtfVolumeMultiplier = isEnabled('volume')
+        ? Math.max(1.0, (unifiedConfig.mtf_volume_multiplier || 1.3) * 0.85) // Reduce by 15%
+        : 0;
+      
       return {
         mtf_rsi_period: unifiedConfig.mtf_rsi_period || 14,
-        mtf_rsi_entry_threshold: isEnabled('rsi') ? (unifiedConfig.mtf_rsi_entry_threshold || 55) : 0, // OPTIMIZED: Default 55
+        mtf_rsi_entry_threshold: mtfRsiThreshold,
         mtf_macd_fast: unifiedConfig.mtf_macd_fast || 8,
         mtf_macd_slow: unifiedConfig.mtf_macd_slow || 21,
         mtf_macd_signal: unifiedConfig.mtf_macd_signal || 5,
-        mtf_volume_multiplier: isEnabled('volume') ? (unifiedConfig.mtf_volume_multiplier || 1.3) : 0, // OPTIMIZED: Default 1.3
+        mtf_volume_multiplier: mtfVolumeMultiplier,
         atr_sl_multiplier: unifiedConfig.atr_sl_multiplier,
         atr_tp_multiplier: unifiedConfig.atr_tp_multiplier,
         trailing_stop_percent: unifiedConfig.trailing_stop_percent,
@@ -254,17 +274,25 @@ export function getStrategyBacktestConfig(strategy: any, strategyType: string): 
       };
       
     case 'ath_guard_scalping':
+      // Optimize: Reduce RSI threshold and volume multiplier for better entry rate
+      const athGuardRsiThreshold = isEnabled('rsi')
+        ? Math.min(75, (unifiedConfig.ath_guard_rsi_threshold || 75) - 5) // Reduce by 5
+        : 0;
+      const athGuardVolumeMultiplier = isEnabled('volume')
+        ? Math.max(1.0, (unifiedConfig.ath_guard_volume_multiplier || 1.2) * 0.9) // Reduce by 10%
+        : 0;
+      
       return {
         ema_slope_threshold: unifiedConfig.ath_guard_ema_slope_threshold || 0.10,
-        pullback_tolerance: unifiedConfig.ath_guard_pullback_tolerance || 0.25, // OPTIMIZED: Default 0.25
-        volume_multiplier: isEnabled('volume') ? (unifiedConfig.ath_guard_volume_multiplier || 1.5) : 0, // OPTIMIZED: Default 1.5
+        pullback_tolerance: unifiedConfig.ath_guard_pullback_tolerance || 0.25,
+        volume_multiplier: athGuardVolumeMultiplier,
         stoch_oversold: unifiedConfig.ath_guard_stoch_oversold || 25,
         stoch_overbought: unifiedConfig.ath_guard_stoch_overbought || 75,
-        atr_sl_multiplier: unifiedConfig.ath_guard_atr_sl_multiplier || 1.0, // OPTIMIZED: Default 1.0
-        atr_tp1_multiplier: unifiedConfig.ath_guard_atr_tp1_multiplier || 0.6, // OPTIMIZED: Default 0.6
-        atr_tp2_multiplier: unifiedConfig.ath_guard_atr_tp2_multiplier || 1.2, // OPTIMIZED: Default 1.2
+        atr_sl_multiplier: unifiedConfig.ath_guard_atr_sl_multiplier || 1.0,
+        atr_tp1_multiplier: unifiedConfig.ath_guard_atr_tp1_multiplier || 0.6,
+        atr_tp2_multiplier: unifiedConfig.ath_guard_atr_tp2_multiplier || 1.2,
         ath_safety_distance: unifiedConfig.ath_guard_ath_safety_distance || 0.2,
-        rsi_threshold: isEnabled('rsi') ? (unifiedConfig.ath_guard_rsi_threshold || 80) : 0, // OPTIMIZED: Default 80
+        rsi_threshold: athGuardRsiThreshold,
         trailing_stop_percent: unifiedConfig.trailing_stop_percent,
         max_position_time: unifiedConfig.max_position_time,
         adx_threshold: isEnabled('trend') ? unifiedConfig.adx_threshold : 0,

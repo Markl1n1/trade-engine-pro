@@ -502,18 +502,18 @@ export function evaluate4hReentry(
 
   // LONG setup: C_{t-1} < L_4h AND C_t >= L_4h
   if (C_prev < rangeLow && C_curr >= rangeLow) {
-    // Enhanced confirmation filters with trend
-    const adxConfirmed = currentADX >= 20;
-    const rsiConfirmed = currentRSI > 30 && currentRSI < 70;
-    const momentumConfirmed = Math.abs(momentumScore) >= 10;
-    const bollingerConfirmed = bollingerPosition > 0.1 && bollingerPosition < 0.9;
+    // Enhanced confirmation filters with trend - optimized to be less strict
+    const adxConfirmed = currentADX >= 18; // Reduced from 20 to 18
+    const rsiConfirmed = currentRSI > 25 && currentRSI < 75; // Expanded from 30-70 to 25-75
+    const momentumConfirmed = Math.abs(momentumScore) >= 8; // Reduced from 10 to 8
+    const bollingerConfirmed = bollingerPosition > 0.05 && bollingerPosition < 0.95; // Expanded from 0.1-0.9 to 0.05-0.95
     const trendConfirmed = isBullishTrend; // Only LONG if above EMA20
     
     console.log('[4H-REENTRY] 🔍 LONG reentry filters:', {
-      adx: `${currentADX.toFixed(2)} (need ≥20): ${adxConfirmed ? '✅' : '❌'}`,
-      rsi: `${currentRSI.toFixed(2)} (need 30-70): ${rsiConfirmed ? '✅' : '❌'}`,
-      momentum: `${momentumScore.toFixed(2)} (need ≥10): ${momentumConfirmed ? '✅' : '❌'}`,
-      bollinger: `${bollingerPosition.toFixed(3)} (need 0.1-0.9): ${bollingerConfirmed ? '✅' : '❌'}`,
+      adx: `${currentADX.toFixed(2)} (need ≥18): ${adxConfirmed ? '✅' : '❌'}`,
+      rsi: `${currentRSI.toFixed(2)} (need 25-75): ${rsiConfirmed ? '✅' : '❌'}`,
+      momentum: `${momentumScore.toFixed(2)} (need ≥8): ${momentumConfirmed ? '✅' : '❌'}`,
+      bollinger: `${bollingerPosition.toFixed(3)} (need 0.05-0.95): ${bollingerConfirmed ? '✅' : '❌'}`,
       volume: volumeConfirmed ? '✅' : '❌',
       trend: `Close ${currentCandle.close.toFixed(2)} > EMA20 ${currentEMA20.toFixed(2)}: ${trendConfirmed ? '✅' : '❌'}`
     });
@@ -561,20 +561,20 @@ export function evaluate4hReentry(
     };
   }
 
-  // Enhanced SHORT setup with additional filters
+  // Enhanced SHORT setup with additional filters - optimized to be less strict
   if (C_prev > rangeHigh && C_curr <= rangeHigh) {
-    // Enhanced confirmation filters with trend
-    const adxConfirmed = currentADX >= 20;
-    const rsiConfirmed = currentRSI > 30 && currentRSI < 70;
-    const momentumConfirmed = Math.abs(momentumScore) >= 10;
-    const bollingerConfirmed = bollingerPosition > 0.1 && bollingerPosition < 0.9;
+    // Enhanced confirmation filters with trend - optimized to be less strict
+    const adxConfirmed = currentADX >= 18; // Reduced from 20 to 18
+    const rsiConfirmed = currentRSI > 25 && currentRSI < 75; // Expanded from 30-70 to 25-75
+    const momentumConfirmed = Math.abs(momentumScore) >= 8; // Reduced from 10 to 8
+    const bollingerConfirmed = bollingerPosition > 0.05 && bollingerPosition < 0.95; // Expanded from 0.1-0.9 to 0.05-0.95
     const trendConfirmed = isBearishTrend; // Only SHORT if below EMA20
     
     console.log('[4H-REENTRY] 🔍 SHORT reentry filters:', {
-      adx: `${currentADX.toFixed(2)} (need ≥20): ${adxConfirmed ? '✅' : '❌'}`,
-      rsi: `${currentRSI.toFixed(2)} (need 30-70): ${rsiConfirmed ? '✅' : '❌'}`,
-      momentum: `${momentumScore.toFixed(2)} (need ≥10): ${momentumConfirmed ? '✅' : '❌'}`,
-      bollinger: `${bollingerPosition.toFixed(3)} (need 0.1-0.9): ${bollingerConfirmed ? '✅' : '❌'}`,
+      adx: `${currentADX.toFixed(2)} (need ≥18): ${adxConfirmed ? '✅' : '❌'}`,
+      rsi: `${currentRSI.toFixed(2)} (need 25-75): ${rsiConfirmed ? '✅' : '❌'}`,
+      momentum: `${momentumScore.toFixed(2)} (need ≥8): ${momentumConfirmed ? '✅' : '❌'}`,
+      bollinger: `${bollingerPosition.toFixed(3)} (need 0.05-0.95): ${bollingerConfirmed ? '✅' : '❌'}`,
       volume: volumeConfirmed ? '✅' : '❌',
       trend: `Close ${currentCandle.close.toFixed(2)} < EMA20 ${currentEMA20.toFixed(2)}: ${trendConfirmed ? '✅' : '❌'}`
     });

@@ -242,7 +242,17 @@ const Backtest = () => {
       try {
         if (!results) return;
         const strategy = strategies.find(s => s.id === selectedStrategy);
-        if (!strategy?.symbol || !strategy?.timeframe) return;
+        if (!strategy?.symbol) return;
+
+        // Determine correct timeframe for candle fetching
+        // FVG strategy uses fvg_analysis_timeframe for backtest, but strategy.timeframe for display
+        let timeframe = strategy.timeframe;
+        if (strategy.strategy_type === 'fvg_scalping' && strategy.fvg_analysis_timeframe) {
+          // For FVG, use analysis timeframe (what backtest actually used)
+          timeframe = strategy.fvg_analysis_timeframe;
+        }
+
+        if (!timeframe) return;
 
         const startMs = new Date(startDate).getTime();
         const endMs = new Date(endDate).getTime();
@@ -251,7 +261,7 @@ const Backtest = () => {
           .from('market_data')
           .select('open_time, open, high, low, close')
           .eq('symbol', strategy.symbol)
-          .eq('timeframe', strategy.timeframe)
+          .eq('timeframe', timeframe)
           .eq('exchange_type', 'bybit')
           .gte('open_time', startMs)
           .lte('open_time', endMs)
