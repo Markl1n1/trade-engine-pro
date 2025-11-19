@@ -257,22 +257,45 @@ const Backtest = () => {
         const startMs = new Date(startDate).getTime();
         const endMs = new Date(endDate).getTime();
 
-        const { data, error } = await supabase
-          .from('market_data')
-          .select('open_time, open, high, low, close')
-          .eq('symbol', strategy.symbol)
-          .eq('timeframe', timeframe)
-          .eq('exchange_type', 'bybit')
-          .gte('open_time', startMs)
-          .lte('open_time', endMs)
-          .order('open_time', { ascending: true });
+        // Fetch all candles with pagination (Supabase default limit is 1000)
+        let allCandles: any[] = [];
+        let from = 0;
+        const batchSize = 1000;
+        let hasMore = true;
 
-        if (error) {
-          console.error('[BACKTEST] Error loading candles:', error);
-          setCandles([]);
-          return;
+        while (hasMore) {
+          const { data, error } = await supabase
+            .from('market_data')
+            .select('open_time, open, high, low, close')
+            .eq('symbol', strategy.symbol)
+            .eq('timeframe', timeframe)
+            .eq('exchange_type', 'bybit')
+            .gte('open_time', startMs)
+            .lte('open_time', endMs)
+            .order('open_time', { ascending: true })
+            .range(from, from + batchSize - 1);
+
+          if (error) {
+            console.error('[BACKTEST] Error loading candles:', error);
+            setCandles([]);
+            return;
+          }
+
+          if (data && data.length > 0) {
+            allCandles = allCandles.concat(data);
+            from += batchSize;
+            
+            // If we got less than batchSize, we've reached the end
+            if (data.length < batchSize) {
+              hasMore = false;
+            }
+          } else {
+            hasMore = false;
+          }
         }
-        setCandles(data || []);
+
+        setCandles(allCandles);
+        console.log(`[BACKTEST] Loaded ${allCandles.length} candles for date range`);
       } catch (e) {
         console.error('[BACKTEST] Candles fetch fail:', e);
         setCandles([]);
@@ -927,7 +950,7 @@ const Backtest = () => {
                 <TabsTrigger value="trades">Trade Log</TabsTrigger>
               </TabsList>
               
-              <TabsContent value="overview" className="space-y-6 flex-1 overflow-y-auto">
+              <TabsContent value="overview" className="space-y-6 flex-1">
               {/* Price Chart with Trades */}
               <div>
                 <h4 className="text-sm font-semibold mb-2">Price Chart (candles) with Trades</h4>

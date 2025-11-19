@@ -67,13 +67,18 @@ const formatDateTime = (time: string | number): string => {
   if (!normalized) return 'N/A';
   
   const date = new Date(normalized);
-  return date.toLocaleString('en-US', { 
+  const base = date.toLocaleString('en-US', { 
     month: 'short', 
     day: 'numeric', 
     hour: '2-digit', 
     minute: '2-digit',
+    second: '2-digit',
     hour12: false
   });
+  
+  // Add milliseconds for precision (especially important for scalping trades)
+  const ms = date.getMilliseconds();
+  return ms > 0 ? `${base}.${ms.toString().padStart(3, '0')}` : base;
 };
 
 const calculateProfitPercent = (
