@@ -94,7 +94,7 @@ export const RealTimeSignals = () => {
   
   const getModeEmoji = (mode: string) => {
     switch (mode) {
-      case 'hybrid_safe': return '🛡️';
+      case 'testnet_only': return '🛡️';
       case 'hybrid_live': return '🟡';
       case 'paper_trading': return '📄';
       case 'mainnet_only': return '🚨';

@@ -32,7 +32,6 @@ function validateAndCorrectTradingMode(tradingMode: string, userSettings: any): 
   
   switch (tradingMode) {
     case 'testnet_only':
-    case 'hybrid_safe':
     case 'hybrid_live':
     case 'mainnet_only':
       // Accept these modes as-is, credential validation happens at execution time
@@ -63,7 +62,6 @@ function shouldCheckExchangePosition(tradingMode: string): boolean {
     case 'hybrid_live':
       return true; // Режимы с реальным выполнением
     case 'testnet_only':
-    case 'hybrid_safe':
     case 'paper_trading':
     default:
       return false; // Режимы без реального выполнения
@@ -77,7 +75,6 @@ function shouldExecuteRealTrades(tradingMode: string): boolean {
     case 'hybrid_live':
       return true; // Режимы с реальным выполнением
     case 'testnet_only':
-    case 'hybrid_safe':
     case 'paper_trading':
     default:
       return false; // Режимы без реального выполнения
@@ -576,7 +573,7 @@ Deno.serve(async (req) => {
           .single();
 
         // Валидация и авто-коррекция режима торговли
-        const requestedTradingMode = userSettings?.trading_mode || 'hybrid_safe';
+        const requestedTradingMode = userSettings?.trading_mode || 'paper_trading';
         const modeValidation = validateAndCorrectTradingMode(requestedTradingMode, userSettings);
         const tradingMode = modeValidation.correctedMode;
         

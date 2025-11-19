@@ -73,7 +73,7 @@ Deno.serve(async (req) => {
 
     // Determine exchange type
     const exchangeType = settings.exchange_type || 'bybit';
-    const tradingMode = settings.trading_mode || 'hybrid_safe';
+    const tradingMode = settings.trading_mode || 'paper_trading';
     const useTestnet = settings.use_testnet || false;
     
     console.log(`[GET-ACCOUNT-DATA] User settings:`, {

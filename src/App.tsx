@@ -32,9 +32,8 @@ const App = () => (
                 <Layout>
                   <Routes>
                     <Route path="/" element={<Dashboard />} />
-                    <Route path="/strategies" element={<Strategies />} />
-                    <Route path="/backtest" element={<Backtest />} />
-              <Route path="/data-quality" element={<DataQuality />} />
+            <Route path="/strategies" element={<Strategies />} />
+            <Route path="/backtest" element={<Backtest />} />
               <Route path="/audit-logs" element={<AuditLogsPage />} />
               <Route path="/settings" element={<AdminRoute><Settings /></AdminRoute>} />
                     {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

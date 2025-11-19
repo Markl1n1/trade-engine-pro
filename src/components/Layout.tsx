@@ -57,10 +57,6 @@ const Layout = ({
     label: "Backtest",
     icon: BarChart3
   }, {
-    path: "/data-quality",
-    label: "Data Quality",
-    icon: Database
-  }, {
     path: "/audit-logs",
     label: "Audit Logs",
     icon: FileText

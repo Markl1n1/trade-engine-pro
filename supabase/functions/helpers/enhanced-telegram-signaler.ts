@@ -18,7 +18,7 @@ export interface TradingSignal {
   reason?: string;
   timestamp: number;
   priority: 'low' | 'medium' | 'high' | 'critical';
-  tradingMode: 'testnet_only' | 'hybrid_safe' | 'hybrid_live' | 'paper_trading' | 'mainnet_only';
+  tradingMode: 'testnet_only' | 'hybrid_live' | 'paper_trading' | 'mainnet_only';
   originalSignalId?: string; // Reference to original signal for closing
 }
 
@@ -214,7 +214,6 @@ export class EnhancedTelegramSignaler {
   private getTradingModeEmoji(mode: string): string {
     switch (mode) {
       case 'testnet_only': return '🧪';
-      case 'hybrid_safe': return '🛡️';
       case 'hybrid_live': return '⚡';
       case 'paper_trading': return '📄';
       case 'mainnet_only': return '🚨';
@@ -226,8 +225,6 @@ export class EnhancedTelegramSignaler {
     switch (mode) {
       case 'testnet_only':
         return '⚠️ **TESTNET MODE** - No real money at risk';
-      case 'hybrid_safe':
-        return '🔒 **HYBRID SAFE** - Real data + Testnet API + Paper Trading';
       case 'hybrid_live':
         return '⚡ **HYBRID LIVE** - Real data + Testnet API + Real execution';
       case 'paper_trading':
