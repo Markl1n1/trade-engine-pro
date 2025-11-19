@@ -21,7 +21,7 @@ const Backtest = () => {
   const [initialBalance, setInitialBalance] = useState<string>("1000");
   const [stopLossPercent, setStopLossPercent] = useState<string>("3");
   const [takeProfitPercent, setTakeProfitPercent] = useState<string>("6");
-  const [trailingStopPercent, setTrailingStopPercent] = useState<string>("20");
+  const [trailingStopPercent, setTrailingStopPercent] = useState<string>("0");
   const [isStrategyDefaults, setIsStrategyDefaults] = useState(true);
   const [productType, setProductType] = useState<string>("futures");
   const [leverage, setLeverage] = useState<string>("1");
