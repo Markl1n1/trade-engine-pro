@@ -198,7 +198,7 @@ export function BacktestTradeLog({ trades }: BacktestTradeLogProps) {
           
           return (
             <Card key={`trade-${index}-${trade.entry_time}`} className="p-4">
-              {/* Header: Badges */}
+              {/* Header: Badges (Type, Profit/Loss, Duration) */}
               <div className="flex items-center gap-2 mb-3 flex-wrap">
                 {trade.type && (
                   <Badge 
@@ -214,19 +214,6 @@ export function BacktestTradeLog({ trades }: BacktestTradeLogProps) {
                     {(trade.profit ?? 0) >= 0 ? '+' : ''}{profitPercent?.toFixed(2) ?? '0.00'}%
                   </Badge>
                 )}
-                {trade.exit_reason && (
-                  <Badge 
-                    variant="outline" 
-                    className={`text-xs ${
-                      trade.exit_reason.includes('TAKE_PROFIT') || trade.exit_reason.includes('Take profit') ? 'border-green-500 text-green-600 dark:text-green-400' :
-                      trade.exit_reason.includes('STOP_LOSS') || trade.exit_reason.includes('Stop loss') ? 'border-red-500 text-red-600 dark:text-red-400' :
-                      trade.exit_reason.includes('TRAILING') || trade.exit_reason.includes('Trailing') ? 'border-blue-500 text-blue-600 dark:text-blue-400' :
-                      'border-muted-foreground'
-                    }`}
-                  >
-                    {formatExitReason(trade.exit_reason)}
-                  </Badge>
-                )}
                 {trade.exit_time && (
                   <Badge variant="outline" className="text-xs">
                     <Clock className="h-3 w-3 mr-1" />
@@ -235,23 +222,59 @@ export function BacktestTradeLog({ trades }: BacktestTradeLogProps) {
                 )}
               </div>
 
-              {/* Main Content: Prices and Times */}
-              <div className="grid grid-cols-2 gap-4 mb-3">
+              {/* Row 2: Entry, Opened, Exit, Closed */}
+              <div className="grid grid-cols-4 gap-3 mb-3">
                 <div className="space-y-1">
-                  <div className="text-xs text-muted-foreground">Entry Price</div>
-                  <div className="text-base font-semibold">${trade.entry_price.toFixed(2)}</div>
-                  <div className="text-xs text-muted-foreground">{formatDateTime(trade.entry_time)}</div>
+                  <div className="text-xs text-muted-foreground">Entry</div>
+                  <div className="text-sm font-semibold">${trade.entry_price.toFixed(2)}</div>
                 </div>
-                {trade.exit_price && (
-                  <div className="space-y-1">
-                    <div className="text-xs text-muted-foreground">Exit Price</div>
-                    <div className="text-base font-semibold">${trade.exit_price.toFixed(2)}</div>
-                    {trade.exit_time && (
-                      <div className="text-xs text-muted-foreground">{formatDateTime(trade.exit_time)}</div>
-                    )}
-                  </div>
+                <div className="space-y-1">
+                  <div className="text-xs text-muted-foreground">Opened</div>
+                  <div className="text-sm font-medium">{formatDateTime(trade.entry_time)}</div>
+                </div>
+                {trade.exit_price ? (
+                  <>
+                    <div className="space-y-1">
+                      <div className="text-xs text-muted-foreground">Exit</div>
+                      <div className="text-sm font-semibold">${trade.exit_price.toFixed(2)}</div>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-xs text-muted-foreground">Closed</div>
+                      {trade.exit_time && (
+                        <div className="text-sm font-medium">{formatDateTime(trade.exit_time)}</div>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="space-y-1">
+                      <div className="text-xs text-muted-foreground">Exit</div>
+                      <div className="text-sm text-muted-foreground">-</div>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-xs text-muted-foreground">Closed</div>
+                      <div className="text-sm text-muted-foreground">-</div>
+                    </div>
+                  </>
                 )}
               </div>
+
+              {/* Row 3: Exit Reason */}
+              {trade.exit_reason && (
+                <div className="mb-3">
+                  <Badge 
+                    variant="outline" 
+                    className={`text-xs w-full justify-start ${
+                      trade.exit_reason.includes('TAKE_PROFIT') || trade.exit_reason.includes('Take profit') ? 'border-green-500 text-green-600 dark:text-green-400' :
+                      trade.exit_reason.includes('STOP_LOSS') || trade.exit_reason.includes('Stop loss') ? 'border-red-500 text-red-600 dark:text-red-400' :
+                      trade.exit_reason.includes('TRAILING') || trade.exit_reason.includes('Trailing') ? 'border-blue-500 text-blue-600 dark:text-blue-400' :
+                      'border-muted-foreground'
+                    }`}
+                  >
+                    {formatExitReason(trade.exit_reason)}
+                  </Badge>
+                </div>
+              )}
 
               {/* Footer: PnL */}
               {trade.profit !== undefined && (

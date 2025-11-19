@@ -25,9 +25,6 @@ verify_jwt = true
 verify_jwt = true
 
 # MARKET DATA COLLECTION
-[functions.binance-ticker]
-verify_jwt = false
-
 [functions.load-market-data]
 verify_jwt = false
 

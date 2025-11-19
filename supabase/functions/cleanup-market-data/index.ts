@@ -1,5 +1,5 @@
 // Cleans up old rows from market_data
-// Deletes rows where close_time is older than 3 months (90 days) from now
+// Deletes rows where created_at is older than 3 months (90 days) from now
 // Intended to be run by Supabase Scheduled Triggers once per day at night
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
@@ -19,11 +19,12 @@ serve(async (_req) => {
 
   try {
     // Define cutoff (90 days = ~3 months)
-    const now = Date.now();
-    const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
-    const cutoffMs = now - ninetyDaysMs;
+    const now = new Date();
+    const ninetyDaysAgo = new Date(now);
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+    const cutoffDate = ninetyDaysAgo.toISOString();
 
-    console.log(`[CLEANUP] Starting market_data cleanup. Cutoff (ms): ${cutoffMs} (${new Date(cutoffMs).toISOString()})`);
+    console.log(`[CLEANUP] Starting market_data cleanup. Cutoff date: ${cutoffDate}`);
 
     // Delete in batches to avoid long transactions; returns limited rows' ids/count per batch
     const BATCH_SIZE = 50000; // tune if needed
@@ -36,10 +37,11 @@ serve(async (_req) => {
       // falling back to one-shot delete if RPC is unavailable.
 
       // Try one-shot delete first (safe for daily jobs)
+      // Use created_at field (timestamp) instead of close_time
       const { error } = await supabase
         .from('market_data')
         .delete()
-        .lt('close_time', cutoffMs);
+        .lt('created_at', cutoffDate);
 
       if (error) {
         console.error('[CLEANUP] Delete error:', error);
@@ -51,7 +53,7 @@ serve(async (_req) => {
       const { count } = await supabase
         .from('market_data')
         .select('id', { count: 'exact', head: true })
-        .lt('close_time', cutoffMs);
+        .lt('created_at', cutoffDate);
 
       // If no remaining rows older than cutoff, we consider done.
       batches += 1;
@@ -68,7 +70,7 @@ serve(async (_req) => {
     const result: CleanupResult = {
       success: true,
       deleted: totalDeleted,
-      cutoff_ms: cutoffMs,
+      cutoff_ms: ninetyDaysAgo.getTime(),
       batches,
     };
 

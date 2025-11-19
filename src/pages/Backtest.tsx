@@ -883,10 +883,10 @@ const Backtest = () => {
                     setIsStrategyDefaults(false);
                   }}
                   className="mt-1"
-                  min="1"
+                  min="0"
                   max="50"
                   step="1"
-                  placeholder="20"
+                  placeholder="0"
                 />
                 {parseFloat(trailingStopPercent) === 0 && (
                   <p className="text-[10px] text-muted-foreground mt-1">

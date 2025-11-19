@@ -78,7 +78,7 @@ const GLOBAL_DEFAULTS: Partial<UnifiedStrategyConfig> = {
   // Risk management
   atr_sl_multiplier: 1.8,
   atr_tp_multiplier: 2.5,
-  trailing_stop_percent: 0.75,
+  trailing_stop_percent: 0,
   max_position_time: 480,
   risk_reward_ratio: 2.0,
   

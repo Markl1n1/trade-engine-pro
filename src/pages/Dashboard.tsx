@@ -185,29 +185,97 @@ const Dashboard = () => {
   };
   const fetchMarketData = async () => {
     try {
-      const {
-        data,
-        error
-      } = await supabase.functions.invoke('binance-ticker', {
-        body: {
-          symbols: userPairs
+      if (userPairs.length === 0) {
+        setMarketData([]);
+        setLoading(false);
+        return;
+      }
+
+      // Fetch latest market data from database for each symbol
+      const tickerPromises = userPairs.map(async (symbol: string) => {
+        try {
+          // Get the latest candle for each symbol (1m timeframe for most recent data)
+          const { data: latestCandle, error } = await supabase
+            .from('market_data')
+            .select('symbol, close, open, high, low, volume, open_time')
+            .eq('symbol', symbol)
+            .eq('timeframe', '1m')
+            .eq('exchange_type', 'bybit')
+            .order('open_time', { ascending: false })
+            .limit(1)
+            .single();
+
+          if (error || !latestCandle) {
+            return { symbol, error: 'No data available' };
+          }
+
+          // Get previous candle for change calculation
+          const { data: previousCandle } = await supabase
+            .from('market_data')
+            .select('close')
+            .eq('symbol', symbol)
+            .eq('timeframe', '1m')
+            .eq('exchange_type', 'bybit')
+            .lt('open_time', latestCandle.open_time)
+            .order('open_time', { ascending: false })
+            .limit(1)
+            .single();
+
+          const currentPrice = latestCandle.close;
+          const previousPrice = previousCandle?.close || currentPrice;
+          const change = currentPrice - previousPrice;
+          const changePercent = previousPrice > 0 ? (change / previousPrice) * 100 : 0;
+
+          // Get 24h high/low from recent candles (approximate)
+          const { data: candles24h } = await supabase
+            .from('market_data')
+            .select('high, low, volume')
+            .eq('symbol', symbol)
+            .eq('timeframe', '1m')
+            .eq('exchange_type', 'bybit')
+            .gte('open_time', latestCandle.open_time - 24 * 60 * 60 * 1000)
+            .order('open_time', { ascending: true });
+
+          const high24h = candles24h && candles24h.length > 0 
+            ? Math.max(...candles24h.map(c => c.high))
+            : latestCandle.high;
+          const low24h = candles24h && candles24h.length > 0
+            ? Math.min(...candles24h.map(c => c.low))
+            : latestCandle.low;
+          const volume24h = candles24h && candles24h.length > 0
+            ? candles24h.reduce((sum, c) => sum + (c.volume || 0), 0)
+            : latestCandle.volume || 0;
+
+          return {
+            symbol: latestCandle.symbol,
+            price: currentPrice,
+            change: change,
+            changePercent: changePercent,
+            high: high24h,
+            low: low24h,
+            volume: volume24h,
+            quoteVolume: volume24h * currentPrice
+          };
+        } catch (err) {
+          const errMsg = err instanceof Error ? err.message : 'Unknown error';
+          console.error(`Failed to fetch ${symbol}:`, errMsg);
+          return { symbol, error: errMsg };
         }
       });
-      if (error) throw error;
-      if (data?.success) {
-        // Accept partial data
-        setMarketData(data.data || []);
 
-        // Handle errors for invalid symbols
-        if (data.errors && data.errors.length > 0) {
-          setTickerErrors(data.errors);
-        } else {
-          setTickerErrors([]);
-        }
-      }
+      const results = await Promise.all(tickerPromises);
+      const successData = results.filter((r: any) => !r.error);
+      const errors = results.filter((r: any) => r.error).map((r: any) => ({
+        symbol: r.symbol,
+        error: r.error
+      }));
+
+      setMarketData(successData);
+      setTickerErrors(errors.length > 0 ? errors : []);
     } catch (error) {
       console.error('Error fetching market data:', error);
       setMarketData([]);
+      setTickerErrors([]);
     } finally {
       setLoading(false);
     }
@@ -225,41 +293,6 @@ const Dashboard = () => {
         apiCreds?.some(cred => cred.credential_type === type);
 
       const exchanges: ExchangeStatus[] = [];
-
-      // Check Binance APIs
-      if (hasCredential('binance_mainnet')) {
-        exchanges.push({
-          name: 'Binance Mainnet API',
-          type: 'mainnet',
-          status: 'connected',
-          latency: Math.floor(Math.random() * 100) + 50,
-          lastUpdate: new Date().toISOString(),
-          apiCalls: Math.floor(Math.random() * 1000) + 500,
-          errors: Math.floor(Math.random() * 5),
-          rateLimit: {
-            used: Math.floor(Math.random() * 1000),
-            limit: 1200,
-            resetTime: new Date(Date.now() + 60000).toISOString()
-          }
-        });
-      }
-
-      if (hasCredential('binance_testnet')) {
-        exchanges.push({
-          name: 'Binance Testnet API',
-          type: 'testnet',
-          status: 'connected',
-          latency: Math.floor(Math.random() * 150) + 100,
-          lastUpdate: new Date().toISOString(),
-          apiCalls: Math.floor(Math.random() * 500) + 200,
-          errors: Math.floor(Math.random() * 3),
-          rateLimit: {
-            used: Math.floor(Math.random() * 500),
-            limit: 1200,
-            resetTime: new Date(Date.now() + 60000).toISOString()
-          }
-        });
-      }
 
       // Check Bybit APIs
       if (hasCredential('bybit_mainnet')) {

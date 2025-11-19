@@ -93,12 +93,6 @@ const DataQuality = () => {
 
   const loadDataSourcesStatus = async () => {
     try {
-      // Check Binance mainnet
-      const binanceMainnet = await checkDataSource('binance', 'mainnet');
-      
-      // Check Binance testnet
-      const binanceTestnet = await checkDataSource('binance', 'testnet');
-      
       // Check Bybit mainnet
       const bybitMainnet = await checkDataSource('bybit', 'mainnet');
       
@@ -106,24 +100,6 @@ const DataQuality = () => {
       const bybitTestnet = await checkDataSource('bybit', 'testnet');
       
       setDataSources([
-        {
-          name: 'Binance Mainnet',
-          status: binanceMainnet.status,
-          latency: binanceMainnet.latency,
-          lastUpdate: binanceMainnet.lastUpdate,
-          quality: binanceMainnet.quality,
-          errors: binanceMainnet.errors,
-          warnings: binanceMainnet.warnings
-        },
-        {
-          name: 'Binance Testnet',
-          status: binanceTestnet.status,
-          latency: binanceTestnet.latency,
-          lastUpdate: binanceTestnet.lastUpdate,
-          quality: binanceTestnet.quality,
-          errors: binanceTestnet.errors,
-          warnings: binanceTestnet.warnings
-        },
         {
           name: 'Bybit Mainnet',
           status: bybitMainnet.status,
@@ -152,13 +128,8 @@ const DataQuality = () => {
     const startTime = Date.now();
     
     try {
-      const baseUrl = exchange === 'binance' 
-        ? (type === 'mainnet' ? 'https://fapi.binance.com' : 'https://testnet.binancefuture.com')
-        : (type === 'mainnet' ? 'https://api.bybit.com' : 'https://api-testnet.bybit.com');
-      
-      const endpoint = exchange === 'binance' 
-        ? '/fapi/v1/ping'
-        : '/v5/market/time';
+      const baseUrl = type === 'mainnet' ? 'https://api.bybit.com' : 'https://api-testnet.bybit.com';
+      const endpoint = '/v5/market/time';
       
       const response = await fetch(`${baseUrl}${endpoint}`, {
         method: 'GET',
@@ -217,41 +188,6 @@ const DataQuality = () => {
 
       const hasCredential = (type: string) => 
         apiCreds?.some(cred => cred.credential_type === type);
-
-      // Check Binance APIs
-      if (hasCredential('binance_mainnet')) {
-        exchanges.push({
-          name: 'Binance Mainnet API',
-          type: 'mainnet',
-          status: 'connected',
-          latency: Math.floor(Math.random() * 100) + 50,
-          lastUpdate: new Date().toISOString(),
-          apiCalls: Math.floor(Math.random() * 1000) + 500,
-          errors: Math.floor(Math.random() * 5),
-          rateLimit: {
-            used: Math.floor(Math.random() * 1000),
-            limit: 1200,
-            resetTime: new Date(Date.now() + 60000).toISOString()
-          }
-        });
-      }
-
-      if (hasCredential('binance_testnet')) {
-        exchanges.push({
-          name: 'Binance Testnet API',
-          type: 'testnet',
-          status: 'connected',
-          latency: Math.floor(Math.random() * 150) + 100,
-          lastUpdate: new Date().toISOString(),
-          apiCalls: Math.floor(Math.random() * 500) + 200,
-          errors: Math.floor(Math.random() * 3),
-          rateLimit: {
-            used: Math.floor(Math.random() * 500),
-            limit: 1200,
-            resetTime: new Date(Date.now() + 60000).toISOString()
-          }
-        });
-      }
 
       // Check Bybit APIs
       if (hasCredential('bybit_mainnet')) {
