@@ -168,87 +168,109 @@ export function BacktestTradeLog({ trades }: BacktestTradeLogProps) {
   }
 
   return (
-    <div className="space-y-2">
+    <div className="flex flex-col h-full">
       <h4 className="text-sm font-semibold mb-3">Trade Log ({normalizedTrades.length} trades)</h4>
-      <div className="space-y-2 max-h-[600px] overflow-y-auto">
+      <div className="flex-1 space-y-2 overflow-y-auto pr-2">
         {normalizedTrades.map((trade, index) => {
           const profitPercent = trade.profit_percent ?? 
             (trade.exit_price ? calculateProfitPercent(trade.entry_price, trade.exit_price, trade.type) : undefined);
           
+          // Format exit reason for display
+          const formatExitReason = (reason: string | undefined): string => {
+            if (!reason) return '';
+            // Handle different exit reason formats
+            if (reason.includes('Stop loss hit')) {
+              const match = reason.match(/Stop loss hit: ([\d.-]+)%/);
+              return match ? `Stop loss hit: ${match[1]}%` : 'Stop Loss';
+            }
+            if (reason.includes('Take profit hit')) {
+              const match = reason.match(/Take profit hit: ([\d.-]+)%/);
+              return match ? `Take profit hit: ${match[1]}%` : 'Take Profit';
+            }
+            if (reason.includes('TRAILING_STOP_TRIGGERED') || reason.includes('Trailing')) {
+              return 'Trailing Stop';
+            }
+            if (reason.includes('Opposite crossover')) {
+              return reason.split(',')[0]; // Get first part before comma
+            }
+            return reason;
+          };
+          
           return (
-            <Card key={`trade-${index}-${trade.entry_time}`} className="p-3">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2 flex-wrap">
-                    {trade.type && (
-                      <Badge 
-                        variant={trade.type === 'buy' ? 'default' : 'destructive'} 
-                        className={trade.type === 'sell' ? 'bg-red-500 text-white' : ''}
-                      >
-                        {trade.type.toUpperCase()}
-                      </Badge>
-                    )}
-                    {(trade.profit !== undefined || profitPercent !== undefined) && (
-                      <Badge variant={(trade.profit ?? 0) >= 0 ? 'default' : 'destructive'}>
-                        {(trade.profit ?? 0) >= 0 ? <TrendingUp className="h-3 w-3 mr-1" /> : <TrendingDown className="h-3 w-3 mr-1" />}
-                        {(trade.profit ?? 0) >= 0 ? '+' : ''}{profitPercent?.toFixed(2) ?? '0.00'}%
-                      </Badge>
-                    )}
-                  {trade.exit_reason && (
-                    <Badge 
-                      variant="outline" 
-                      className={`text-xs ${
-                        trade.exit_reason === 'TAKE_PROFIT' ? 'border-green-500 text-green-600 dark:text-green-400' :
-                        trade.exit_reason === 'STOP_LOSS' ? 'border-red-500 text-red-600 dark:text-red-400' :
-                        trade.exit_reason === 'TRAILING_STOP_TRIGGERED' ? 'border-blue-500 text-blue-600 dark:text-blue-400' :
-                        'border-muted-foreground'
-                      }`}
-                    >
-                      {trade.exit_reason === 'TAKE_PROFIT' ? 'TP' : 
-                       trade.exit_reason === 'STOP_LOSS' ? 'SL' :
-                       trade.exit_reason === 'TRAILING_STOP_TRIGGERED' ? 'Trailing' :
-                       trade.exit_reason}
-                    </Badge>
-                  )}
-                  {trade.exit_time && (
-                    <Badge variant="outline" className="text-xs">
-                      <Clock className="h-3 w-3 mr-1" />
-                      {formatPositionDuration(trade.entry_time, trade.exit_time)}
-                    </Badge>
-                  )}
-                </div>
+            <Card key={`trade-${index}-${trade.entry_time}`} className="p-4">
+              {/* Header: Badges */}
+              <div className="flex items-center gap-2 mb-3 flex-wrap">
+                {trade.type && (
+                  <Badge 
+                    variant={trade.type === 'buy' ? 'default' : 'destructive'} 
+                    className={trade.type === 'sell' ? 'bg-red-500 text-white' : ''}
+                  >
+                    {trade.type.toUpperCase()}
+                  </Badge>
+                )}
+                {(trade.profit !== undefined || profitPercent !== undefined) && (
+                  <Badge variant={(trade.profit ?? 0) >= 0 ? 'default' : 'destructive'}>
+                    {(trade.profit ?? 0) >= 0 ? <TrendingUp className="h-3 w-3 mr-1" /> : <TrendingDown className="h-3 w-3 mr-1" />}
+                    {(trade.profit ?? 0) >= 0 ? '+' : ''}{profitPercent?.toFixed(2) ?? '0.00'}%
+                  </Badge>
+                )}
+                {trade.exit_reason && (
+                  <Badge 
+                    variant="outline" 
+                    className={`text-xs ${
+                      trade.exit_reason.includes('TAKE_PROFIT') || trade.exit_reason.includes('Take profit') ? 'border-green-500 text-green-600 dark:text-green-400' :
+                      trade.exit_reason.includes('STOP_LOSS') || trade.exit_reason.includes('Stop loss') ? 'border-red-500 text-red-600 dark:text-red-400' :
+                      trade.exit_reason.includes('TRAILING') || trade.exit_reason.includes('Trailing') ? 'border-blue-500 text-blue-600 dark:text-blue-400' :
+                      'border-muted-foreground'
+                    }`}
+                  >
+                    {formatExitReason(trade.exit_reason)}
+                  </Badge>
+                )}
+                {trade.exit_time && (
+                  <Badge variant="outline" className="text-xs">
+                    <Clock className="h-3 w-3 mr-1" />
+                    {formatPositionDuration(trade.entry_time, trade.exit_time)}
+                  </Badge>
+                )}
               </div>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div>
-                    <span className="text-muted-foreground">Entry:</span> <span className="font-medium">${trade.entry_price.toFixed(2)}</span>
-                  </div>
-                  {trade.exit_price && (
-                    <div>
-                      <span className="text-muted-foreground">Exit:</span> <span className="font-medium">${trade.exit_price.toFixed(2)}</span>
-                    </div>
-                  )}
-                  <div>
-                    <span className="text-muted-foreground">Opened:</span> <span className="font-medium">{formatDateTime(trade.entry_time)}</span>
-                  </div>
-                  {trade.exit_time && (
-                    <div>
-                      <span className="text-muted-foreground">Closed:</span> <span className="font-medium">{formatDateTime(trade.exit_time)}</span>
-                    </div>
-                  )}
+
+              {/* Main Content: Prices and Times */}
+              <div className="grid grid-cols-2 gap-4 mb-3">
+                <div className="space-y-1">
+                  <div className="text-xs text-muted-foreground">Entry Price</div>
+                  <div className="text-base font-semibold">${trade.entry_price.toFixed(2)}</div>
+                  <div className="text-xs text-muted-foreground">{formatDateTime(trade.entry_time)}</div>
                 </div>
-                {trade.profit !== undefined && (
-                  <div className="grid grid-cols-2 gap-2 mt-2">
-                    <div className={`text-sm font-semibold ${trade.profit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                      {trade.profit >= 0 ? '+' : ''}${trade.profit.toFixed(2)}
-                    </div>
-                    {trade.profit_percent !== undefined && (
-                      <div className={`text-sm font-semibold text-right ${trade.profit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                        {trade.profit >= 0 ? '+' : ''}{trade.profit_percent.toFixed(2)}%
-                      </div>
+                {trade.exit_price && (
+                  <div className="space-y-1">
+                    <div className="text-xs text-muted-foreground">Exit Price</div>
+                    <div className="text-base font-semibold">${trade.exit_price.toFixed(2)}</div>
+                    {trade.exit_time && (
+                      <div className="text-xs text-muted-foreground">{formatDateTime(trade.exit_time)}</div>
                     )}
                   </div>
                 )}
               </div>
+
+              {/* Footer: PnL */}
+              {trade.profit !== undefined && (
+                <div className="pt-3 border-t border-border">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">Profit/Loss:</span>
+                    <div className="flex items-center gap-3">
+                      <span className={`text-lg font-bold ${trade.profit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        {trade.profit >= 0 ? '+' : ''}${trade.profit.toFixed(2)}
+                      </span>
+                      {profitPercent !== undefined && (
+                        <span className={`text-lg font-bold ${trade.profit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                          {trade.profit >= 0 ? '+' : ''}{profitPercent.toFixed(2)}%
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
             </Card>
           );
         })}

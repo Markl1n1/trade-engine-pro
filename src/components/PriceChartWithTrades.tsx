@@ -322,6 +322,23 @@ export default function PriceChartWithTrades({ candles, trades }: Props) {
           <YAxis
             domain={[minP - pricePadding, maxP + pricePadding]}
             tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+            tickFormatter={(value) => {
+              // Format price with appropriate decimal places
+              if (!isFinite(value) || isNaN(value) || value <= 0 || value >= 1e10) {
+                return '';
+              }
+              // Determine decimal places based on price range
+              if (value >= 1000) {
+                return value.toFixed(1);
+              } else if (value >= 100) {
+                return value.toFixed(2);
+              } else if (value >= 10) {
+                return value.toFixed(3);
+              } else {
+                return value.toFixed(4);
+              }
+            }}
+            width={80}
           />
           <Tooltip
             contentStyle={{

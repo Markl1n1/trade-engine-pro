@@ -918,16 +918,16 @@ const Backtest = () => {
           </div>
         </Card>
 
-        <Card className="lg:col-span-2 p-6">
+        <Card className="lg:col-span-2 p-6 flex flex-col h-full">
           <h3 className="text-lg font-bold mb-4">Results</h3>
           {results ? (
-            <Tabs defaultValue="overview" className="w-full">
+            <Tabs defaultValue="overview" className="w-full flex flex-col flex-1 min-h-0">
               <TabsList>
                 <TabsTrigger value="overview">Overview</TabsTrigger>
                 <TabsTrigger value="trades">Trade Log</TabsTrigger>
               </TabsList>
               
-              <TabsContent value="overview" className="space-y-6">
+              <TabsContent value="overview" className="space-y-6 flex-1 overflow-y-auto">
               {/* Price Chart with Trades */}
               <div>
                 <h4 className="text-sm font-semibold mb-2">Price Chart (candles) with Trades</h4>
@@ -1044,7 +1044,7 @@ const Backtest = () => {
               </div>
               </TabsContent>
               
-              <TabsContent value="trades">
+              <TabsContent value="trades" className="flex-1 flex flex-col min-h-0">
                 <BacktestTradeLog trades={results.trades || []} />
               </TabsContent>
             </Tabs>
