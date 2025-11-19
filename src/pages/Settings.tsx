@@ -36,7 +36,7 @@ interface UserSettings {
   telegram_chat_id: string;
   telegram_enabled: boolean;
   // Trading mode settings
-  trading_mode: 'hybrid_safe' | 'hybrid_live' | 'paper_trading' | 'mainnet_only';
+  trading_mode: 'testnet_only' | 'hybrid_live' | 'paper_trading' | 'mainnet_only';
   use_mainnet_data: boolean;
   use_testnet_api: boolean;
   paper_trading_mode: boolean;
@@ -65,7 +65,7 @@ interface SystemSettings {
 // Helper functions for trading mode display
 const getTradingModeAlertClass = (mode: string) => {
   switch (mode) {
-    case 'hybrid_safe':
+    case 'testnet_only':
       return "bg-green-50 border-green-200";
     case 'hybrid_live':
       return "bg-yellow-50 border-yellow-200";
@@ -79,7 +79,7 @@ const getTradingModeAlertClass = (mode: string) => {
 };
 const getTradingModeIconClass = (mode: string) => {
   switch (mode) {
-    case 'hybrid_safe':
+    case 'testnet_only':
       return "text-green-600";
     case 'hybrid_live':
       return "text-yellow-600";
@@ -93,10 +93,10 @@ const getTradingModeIconClass = (mode: string) => {
 };
 const getTradingModeDescription = (mode: string) => {
   switch (mode) {
-    case 'hybrid_safe':
+    case 'testnet_only':
       return <>
-          <strong>HYBRID SAFE:</strong> Real market data + testnet API + paper trading
-          <br />✅ High accuracy, ✅ Safe testing, ✅ No real money risk
+          <strong>TESTNET ONLY:</strong> Testnet data + testnet API + safe testing
+          <br />✅ Safe testing, ✅ No real money risk
         </>;
     case 'hybrid_live':
       return <>
@@ -142,7 +142,7 @@ const Settings = () => {
     telegram_chat_id: "",
     telegram_enabled: false,
     // Trading mode settings
-    trading_mode: 'hybrid_safe',
+    trading_mode: 'paper_trading',
     use_mainnet_data: true,
     use_testnet_api: true,
     paper_trading_mode: true
@@ -247,7 +247,7 @@ const Settings = () => {
           telegram_chat_id: data.telegram_chat_id || "",
           telegram_enabled: data.telegram_enabled,
           // Trading mode settings
-          trading_mode: data.trading_mode as 'hybrid_safe' | 'hybrid_live' | 'paper_trading' | 'mainnet_only' || 'hybrid_safe',
+          trading_mode: data.trading_mode as 'testnet_only' | 'hybrid_live' | 'paper_trading' | 'mainnet_only' || 'paper_trading',
           use_mainnet_data: data.use_mainnet_data ?? true,
           use_testnet_api: data.use_testnet_api ?? true,
           paper_trading_mode: data.paper_trading_mode ?? true
@@ -640,15 +640,15 @@ const Settings = () => {
             <p className="text-sm text-muted-foreground mb-3">
               Choose your trading mode based on your risk tolerance and testing needs
             </p>
-            <Select value={settings.trading_mode || 'hybrid_safe'} onValueChange={(value: string) => updateSetting("trading_mode", value as any)}>
+            <Select value={settings.trading_mode || 'paper_trading'} onValueChange={(value: string) => updateSetting("trading_mode", value as any)}>
               <SelectTrigger>
                 <SelectValue placeholder="Select trading mode" />
               </SelectTrigger>
               <SelectContent className="!bg-background !border-border dark:!bg-gray-800 dark:!text-white">
-                <SelectItem value="hybrid_safe" className="hover:bg-accent">
+                <SelectItem value="testnet_only" className="hover:bg-accent">
                   <div className="flex flex-col">
-                    <span className="font-medium">Hybrid Safe</span>
-                    <span className="text-xs text-muted-foreground">Real data + testnet API + paper trading</span>
+                    <span className="font-medium">Testnet Only</span>
+                    <span className="text-xs text-muted-foreground">Testnet data + testnet API + safe testing</span>
                   </div>
                 </SelectItem>
                 <SelectItem value="hybrid_live" className="hover:bg-accent">

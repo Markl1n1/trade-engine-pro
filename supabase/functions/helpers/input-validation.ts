@@ -24,7 +24,7 @@ export const signalSchema = z.union([
         })
       ]),
       // Make mode optional with default
-      mode: z.string().optional().default('hybrid_safe'),
+      mode: z.string().optional().default('paper_trading'),
       priority: z.enum(['critical', 'high', 'medium', 'low']),
       channels: z.array(z.string()),
       // Make metadata optional with default
@@ -61,7 +61,7 @@ export const signalSchema = z.union([
         return isNaN(parsed) ? parseInt(str) : parsed;
       })
     ]),
-    mode: z.string().optional().default('hybrid_safe'),
+    mode: z.string().optional().default('paper_trading'),
     priority: z.enum(['critical', 'high', 'medium', 'low']),
     channels: z.array(z.string()),
     metadata: z.object({
@@ -118,7 +118,6 @@ export const timeframeSchema = z.enum(['1m', '3m', '5m', '15m', '30m', '1h', '2h
 // Trading mode validation
 export const tradingModeSchema = z.enum([
   'testnet_only',
-  'hybrid_safe', 
   'hybrid_live',
   'paper_trading',
   'mainnet_only'

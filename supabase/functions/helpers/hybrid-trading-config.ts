@@ -54,15 +54,6 @@ export const TRADING_MODES: Record<string, TradingMode> = {
     realMoney: true
   },
   
-  'hybrid_safe': {
-    mode: 'hybrid',
-    description: 'Hybrid mode - real data, testnet API, paper trading',
-    dataSource: 'mainnet',
-    apiEndpoint: 'testnet',
-    riskLevel: 'none',
-    realMoney: false
-  },
-  
   'hybrid_live': {
     mode: 'hybrid',
     description: 'Hybrid live - real data, testnet API, real execution',
