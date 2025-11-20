@@ -358,8 +358,13 @@ export function evaluate4hReentry(
   );
   
   // Calculate enhanced metrics
-  // Note: volumeConfirmed is now calculated inline in LONG/SHORT sections using config threshold
   const momentumScore = calculateMomentumScore(candles, rsi);
+  
+  // Calculate volume confirmation
+  const currentVolume = currentCandle.volume;
+  const avgVolume = candles.slice(-21, -1).reduce((sum, c) => sum + c.volume, 0) / 20;
+  const volumeThreshold = strategy.volume_multiplier || 1.1;
+  const volumeConfirmed = currentVolume >= avgVolume * volumeThreshold;
   
   // Calculate 4h EMA for trend filtering
   const ema20 = calculateEMA(closes, 20);

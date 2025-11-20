@@ -3870,7 +3870,7 @@ async function run4hReentryBacktest(
         const atr = indicators.calculateATR(recentCandles, 14);
         
         const currentRSI = rsi[rsi.length - 1];
-        const currentADX = adx[adx.length - 1];
+        const currentADX = adx.adx[adx.adx.length - 1];
         const currentBollingerUpper = bollinger.upper[bollinger.upper.length - 1];
         const currentBollingerLower = bollinger.lower[bollinger.lower.length - 1];
         const currentBollingerMiddle = bollinger.middle[bollinger.middle.length - 1];
