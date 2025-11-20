@@ -3855,6 +3855,66 @@ async function run4hReentryBacktest(
       }
 
       if (shouldEnterLong || shouldEnterShort) {
+        // Apply enhanced filters before entry (matching evaluate4hReentry logic)
+        if (i < 200) {
+          // Need enough candles for indicators
+          continue;
+        }
+        
+        // Calculate indicators for filter checks
+        const recentCandles = candles.slice(Math.max(0, i - 200), i + 1);
+        const closes = recentCandles.map(c => c.close);
+        const rsi = indicators.calculateRSI(closes, 14);
+        const adx = indicators.calculateADX(recentCandles, 14);
+        const bollinger = indicators.calculateBollingerBands(closes, enhancedConfig.bollinger_period || 20, enhancedConfig.bollinger_std || 2.0);
+        const atr = indicators.calculateATR(recentCandles, 14);
+        
+        const currentRSI = rsi[rsi.length - 1];
+        const currentADX = adx[adx.length - 1];
+        const currentBollingerUpper = bollinger.upper[bollinger.upper.length - 1];
+        const currentBollingerLower = bollinger.lower[bollinger.lower.length - 1];
+        const currentBollingerMiddle = bollinger.middle[bollinger.middle.length - 1];
+        const currentPrice = currentCandle.close;
+        const bollingerPosition = (currentPrice - currentBollingerLower) / (currentBollingerUpper - currentBollingerLower);
+        
+        // Calculate momentum score
+        const prevPrice = recentCandles[recentCandles.length - 2].close;
+        const priceChange = ((currentPrice - prevPrice) / prevPrice) * 100;
+        const rsiScore = currentRSI > 50 ? 1 : -1;
+        const momentumScore = (priceChange * 0.7) + (rsiScore * 0.3);
+        
+        // Calculate EMA20 for trend filter
+        const ema20 = indicators.calculateEMA(closes, 20);
+        const currentEMA20 = ema20[ema20.length - 1];
+        const isBullishTrend = currentPrice > currentEMA20;
+        const isBearishTrend = currentPrice < currentEMA20;
+        
+        // Volume confirmation
+        const currentVolume = currentCandle.volume;
+        const avgVolume = recentCandles.slice(-21, -1).reduce((sum, c) => sum + c.volume, 0) / 20;
+        const volumeThreshold = enhancedConfig.volume_threshold || 1.1;
+        const volumeConfirmed = currentVolume >= avgVolume * volumeThreshold;
+        
+        // Apply filters with optimized thresholds
+        const adxThreshold = enhancedConfig.adx_threshold || 18;
+        const rsiOversold = enhancedConfig.rsi_oversold || 20;
+        const rsiOverbought = enhancedConfig.rsi_overbought || 80;
+        const momentumThreshold = enhancedConfig.momentum_threshold || 8;
+        
+        const adxConfirmed = currentADX >= adxThreshold;
+        const rsiConfirmed = currentRSI > rsiOversold && currentRSI < rsiOverbought;
+        const momentumConfirmed = Math.abs(momentumScore) >= momentumThreshold;
+        const bollingerConfirmed = bollingerPosition >= 0.0 && bollingerPosition <= 1.0;
+        const trendConfirmed = shouldEnterLong ? isBullishTrend : isBearishTrend;
+        
+        // Check all filters
+        if (!adxConfirmed || !rsiConfirmed || !momentumConfirmed || !bollingerConfirmed || !volumeConfirmed || !trendConfirmed) {
+          console.log(`[${i}] ${nyTimeStr} ❌ ${shouldEnterLong ? 'LONG' : 'SHORT'} entry rejected - filters: ADX=${adxConfirmed ? '✓' : '✗'}(${currentADX.toFixed(1)}/${adxThreshold}), RSI=${rsiConfirmed ? '✓' : '✗'}(${currentRSI.toFixed(1)}/${rsiOversold}-${rsiOverbought}), Momentum=${momentumConfirmed ? '✓' : '✗'}(${Math.abs(momentumScore).toFixed(1)}/${momentumThreshold}), BB=${bollingerConfirmed ? '✓' : '✗'}, Vol=${volumeConfirmed ? '✓' : '✗'}(${(currentVolume/avgVolume).toFixed(2)}x/${volumeThreshold}x), Trend=${trendConfirmed ? '✓' : '✗'}`);
+          continue;
+        }
+        
+        console.log(`[${i}] ${nyTimeStr} ✅ ${shouldEnterLong ? 'LONG' : 'SHORT'} entry confirmed - all filters passed`);
+        
         // Determine execution price FIRST
         let executionPrice = executionTiming === 'open' ? currentCandle.open : currentCandle.close;
         // If we execute on close but want exchange-like next-open fill, shift to next candle open when available

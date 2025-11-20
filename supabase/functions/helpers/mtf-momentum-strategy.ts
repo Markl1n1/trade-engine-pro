@@ -229,35 +229,41 @@ export function evaluateMTFMomentum(
   const currentMACD5 = last(macd5.histogram);
   const currentMACD15 = last(macd15.histogram);
 
-  // OPTIMIZED: Stricter multi-timeframe confluence for 50%+ win rate
-  // Require ALL timeframes to confirm for maximum selectivity
-  const mtfConvergenceLong = 
-    currentRSI1 > cfg.rsi_entry_threshold &&  // 1m RSI above threshold (55)
-    currentRSI5 > 50 &&   // 5m RSI must be bullish (>50)
-    currentRSI15 > 50 &&  // 15m RSI must be bullish (>50) - ALL must confirm
-    currentMACD1 > 0 &&   // 1m MACD must be positive
-    currentMACD5 > 0 &&   // 5m MACD must be positive - ALL must confirm
-    currentMACD15 > 0;    // 15m MACD must be positive - ALL must confirm
+  // OPTIMIZED: Allow 2/3 timeframe confirmation instead of requiring all 3
+  // This allows more entries while maintaining quality
+  const rsi1Long = currentRSI1 > cfg.rsi_entry_threshold;
+  const rsi5Long = currentRSI5 > 50;
+  const rsi15Long = currentRSI15 > 50;
+  const macd1Long = currentMACD1 > 0;
+  const macd5Long = currentMACD5 > 0;
+  const macd15Long = currentMACD15 > 0;
+  
+  // Count confirmations: need at least 2/3 RSI and 2/3 MACD
+  const rsiLongCount = (rsi1Long ? 1 : 0) + (rsi5Long ? 1 : 0) + (rsi15Long ? 1 : 0);
+  const macdLongCount = (macd1Long ? 1 : 0) + (macd5Long ? 1 : 0) + (macd15Long ? 1 : 0);
+  const mtfConvergenceLong = rsiLongCount >= 2 && macdLongCount >= 2;
 
   const condLong = !positionOpen && mtfConvergenceLong && volOk;
 
-  // OPTIMIZED: Stricter multi-timeframe confluence for SELL
-  // Require ALL timeframes to confirm for maximum selectivity
-  const mtfConvergenceShort =
-    currentRSI1 < (100 - cfg.rsi_entry_threshold) &&  // 1m RSI below threshold (45)
-    currentRSI5 < 50 &&   // 5m RSI must be bearish (<50)
-    currentRSI15 < 50;    // 15m RSI must be bearish (<50) - ALL must confirm
-    currentMACD1 < 0 &&   // 1m MACD must be negative
-    currentMACD5 < 0 &&   // 5m MACD must be negative - ALL must confirm
-    currentMACD15 < 0;    // 15m MACD must be negative - ALL must confirm
+  // SHORT: Allow 2/3 timeframe confirmation
+  const rsi1Short = currentRSI1 < (100 - cfg.rsi_entry_threshold);
+  const rsi5Short = currentRSI5 < 50;
+  const rsi15Short = currentRSI15 < 50;
+  const macd1Short = currentMACD1 < 0;
+  const macd5Short = currentMACD5 < 0;
+  const macd15Short = currentMACD15 < 0;
+  
+  const rsiShortCount = (rsi1Short ? 1 : 0) + (rsi5Short ? 1 : 0) + (rsi15Short ? 1 : 0);
+  const macdShortCount = (macd1Short ? 1 : 0) + (macd5Short ? 1 : 0) + (macd15Short ? 1 : 0);
+  const mtfConvergenceShort = rsiShortCount >= 2 && macdShortCount >= 2;
 
   const condShort = !positionOpen && mtfConvergenceShort && volOk;
   
-  // CRITICAL: Enforce strict multi-timeframe convergence for 50%+ win rate
+  // Check if we have any convergence
   if (!positionOpen && !mtfConvergenceLong && !mtfConvergenceShort) {
     return { 
       signal_type: null, 
-      reason: 'No multi-timeframe convergence - not all timeframes align',
+      reason: `No MTF convergence (RSI: ${rsiLongCount}/3 long, ${rsiShortCount}/3 short; MACD: ${macdLongCount}/3 long, ${macdShortCount}/3 short)`,
       confidence: 0,
       time_to_expire: 5
     };

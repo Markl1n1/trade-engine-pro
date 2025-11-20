@@ -538,11 +538,12 @@ export function evaluateFVGStrategy(
   const trendAligned = config.require_trend_alignment ? checkTrendAlignment(candles, fvg.type) : true;
   const qualityScore = calculateFVGQualityScore(fvg, currentCandle, volumeRatio, Math.abs(rsiChange), trendAligned);
   
-  if (qualityScore < 65) {
+  // OPTIMIZED: Increased threshold from 65 to 75 for better winrate
+  if (qualityScore < 75) {
     console.log('[FVG-QUALITY] Quality score too low:', qualityScore.toFixed(1));
     return {
       signal_type: null,
-      reason: `${fvg.type} FVG quality score too low (${qualityScore.toFixed(1)}/100)`,
+      reason: `${fvg.type} FVG quality score too low (${qualityScore.toFixed(1)}/100, need ≥75)`,
       confidence: 50
     };
   }

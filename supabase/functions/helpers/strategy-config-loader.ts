@@ -226,9 +226,19 @@ export function getStrategyBacktestConfig(strategy: any, strategyType: string): 
         const rsiOversold = isEnabled('rsi')
           ? Math.max(15, (unifiedConfig.rsi_oversold || 30) - 5) // Subtract 5 to make less strict
           : 0;
-        // Optimize: Reduce volume multiplier requirement
+        // Optimize: Reduce volume multiplier requirement (0.8 for more entries)
         const volumeMultiplier = isEnabled('volume')
-          ? Math.max(0.9, (unifiedConfig.volume_multiplier || 1.2) * 0.9) // Reduce by 10%
+          ? Math.max(0.8, (unifiedConfig.volume_multiplier || 1.2) * 0.67) // Reduce to 0.8 target
+          : 0;
+        
+        // Optimize: Reduce ADX threshold (15 for more entries)
+        const adxThreshold = isEnabled('trend') 
+          ? Math.min(15, unifiedConfig.adx_threshold || 18) 
+          : 0;
+        
+        // Optimize: Reduce min_trend_strength (0.2 for more entries)
+        const minTrendStrength = isEnabled('trend') 
+          ? Math.min(0.2, unifiedConfig.min_trend_strength || 0.3) 
           : 0;
         
         const base = {
@@ -240,12 +250,12 @@ export function getStrategyBacktestConfig(strategy: any, strategyType: string): 
         volume_multiplier: volumeMultiplier,
         atr_sl_multiplier: unifiedConfig.atr_sl_multiplier,
         atr_tp_multiplier: unifiedConfig.atr_tp_multiplier,
-        adx_threshold: isEnabled('trend') ? unifiedConfig.adx_threshold : 0,
+        adx_threshold: adxThreshold,
         bollinger_period: unifiedConfig.bollinger_period,
         bollinger_std: unifiedConfig.bollinger_std,
         trailing_stop_percent: unifiedConfig.trailing_stop_percent,
         max_position_time: unifiedConfig.max_position_time,
-        min_trend_strength: isEnabled('trend') ? unifiedConfig.min_trend_strength : 0
+        min_trend_strength: minTrendStrength
       };
         return base;
       }
@@ -302,6 +312,7 @@ export function getStrategyBacktestConfig(strategy: any, strategyType: string): 
       };
       
     case 'fvg_scalping':
+      // Optimize: Increase volume requirement and quality threshold (in code) for better winrate
       return {
         keyTimeStart: unifiedConfig.fvg_key_candle_time?.split('-')[0] || "09:30",
         keyTimeEnd: unifiedConfig.fvg_key_candle_time?.split('-')[1] || "09:35",
@@ -311,7 +322,7 @@ export function getStrategyBacktestConfig(strategy: any, strategyType: string): 
         tickSize: unifiedConfig.fvg_tick_size || 0.01,
         min_fvg_size_percent: 0.5, // OPTIMIZED: Increased from 0.3% to 0.5% for larger gaps
         require_trend_alignment: true, // Phase 3: Require EMA trend alignment
-        min_volume_ratio: 1.8, // OPTIMIZED: Stricter volume (1.8x instead of 1.5x) for better signals
+        min_volume_ratio: 2.0, // OPTIMIZED: Increased from 1.8x to 2.0x for better signals (improve winrate)
         prefer_50_percent_fill: true, // Phase 6: Prefer 50% mitigation
         avoid_low_liquidity_hours: true, // Phase 7: Avoid 00:00-04:00 UTC
         disableTimeWindow: !isEnabled('timeWindow'),
@@ -319,6 +330,8 @@ export function getStrategyBacktestConfig(strategy: any, strategyType: string): 
       };
       
     case '4h_reentry':
+      // Optimize: Relax filters to allow entries
+      // ADX: 22 → 18, RSI: 30-70 → 20-80, Momentum: 10 → 8, Volume: 1.3 → 1.1
       return {
         sessionStart: "00:00",
         sessionEnd: "03:59",
@@ -327,13 +340,13 @@ export function getStrategyBacktestConfig(strategy: any, strategyType: string): 
         atr_tp_multiplier: unifiedConfig.atr_tp_multiplier,
         trailing_stop_percent: unifiedConfig.trailing_stop_percent,
         max_position_time: unifiedConfig.max_position_time,
-        volume_threshold: unifiedConfig.volume_multiplier,
-        adx_threshold: unifiedConfig.adx_threshold,
+        volume_threshold: Math.max(1.1, (unifiedConfig.volume_multiplier || 1.3) * 0.85), // 1.3 → 1.1
+        adx_threshold: Math.min(18, unifiedConfig.adx_threshold || 22), // 22 → 18
         bollinger_period: unifiedConfig.bollinger_period,
         bollinger_std: unifiedConfig.bollinger_std,
-        rsi_oversold: unifiedConfig.rsi_oversold,
-        rsi_overbought: unifiedConfig.rsi_overbought,
-        momentum_threshold: unifiedConfig.momentum_threshold,
+        rsi_oversold: Math.max(20, (unifiedConfig.rsi_oversold || 30) - 10), // 30 → 20
+        rsi_overbought: Math.min(80, (unifiedConfig.rsi_overbought || 70) + 10), // 70 → 80
+        momentum_threshold: Math.min(8, unifiedConfig.momentum_threshold || 10), // 10 → 8
         // MSTG specific
         mstg_weight_momentum: unifiedConfig.mstg_weight_momentum,
         mstg_weight_trend: unifiedConfig.mstg_weight_trend,

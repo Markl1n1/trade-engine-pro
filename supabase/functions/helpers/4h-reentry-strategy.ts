@@ -358,7 +358,7 @@ export function evaluate4hReentry(
   );
   
   // Calculate enhanced metrics
-  const volumeConfirmed = calculateVolumeConfirmation(candles, 20);
+  // Note: volumeConfirmed is now calculated inline in LONG/SHORT sections using config threshold
   const momentumScore = calculateMomentumScore(candles, rsi);
   
   // Calculate 4h EMA for trend filtering
@@ -502,19 +502,32 @@ export function evaluate4hReentry(
 
   // LONG setup: C_{t-1} < L_4h AND C_t >= L_4h
   if (C_prev < rangeLow && C_curr >= rangeLow) {
-    // Enhanced confirmation filters with trend - optimized to be less strict
-    const adxConfirmed = currentADX >= 18; // Reduced from 20 to 18
-    const rsiConfirmed = currentRSI > 25 && currentRSI < 75; // Expanded from 30-70 to 25-75
-    const momentumConfirmed = Math.abs(momentumScore) >= 8; // Reduced from 10 to 8
-    const bollingerConfirmed = bollingerPosition > 0.05 && bollingerPosition < 0.95; // Expanded from 0.1-0.9 to 0.05-0.95
+    // Enhanced confirmation filters with trend - further optimized to allow more entries
+    // Get thresholds from strategy config (passed via getStrategyBacktestConfig)
+    const config = strategy || {};
+    const adxThreshold = config.adx_threshold || 18;
+    const rsiOversold = config.rsi_oversold || 20;
+    const rsiOverbought = config.rsi_overbought || 80;
+    const momentumThreshold = config.momentum_threshold || 8;
+    const volumeThreshold = config.volume_threshold || 1.1;
+    
+    const adxConfirmed = currentADX >= adxThreshold;
+    const rsiConfirmed = currentRSI > rsiOversold && currentRSI < rsiOverbought; // 20-80 range
+    const momentumConfirmed = Math.abs(momentumScore) >= momentumThreshold;
+    const bollingerConfirmed = bollingerPosition >= 0.0 && bollingerPosition <= 1.0; // Expanded to full range
     const trendConfirmed = isBullishTrend; // Only LONG if above EMA20
     
+    // Update volume confirmation to use config threshold
+    const currentVolume = candles[candles.length - 1].volume;
+    const avgVolume = candles.slice(-21, -1).reduce((sum, c) => sum + c.volume, 0) / 20;
+    const volumeConfirmed = currentVolume >= avgVolume * volumeThreshold;
+    
     console.log('[4H-REENTRY] 🔍 LONG reentry filters:', {
-      adx: `${currentADX.toFixed(2)} (need ≥18): ${adxConfirmed ? '✅' : '❌'}`,
-      rsi: `${currentRSI.toFixed(2)} (need 25-75): ${rsiConfirmed ? '✅' : '❌'}`,
-      momentum: `${momentumScore.toFixed(2)} (need ≥8): ${momentumConfirmed ? '✅' : '❌'}`,
-      bollinger: `${bollingerPosition.toFixed(3)} (need 0.05-0.95): ${bollingerConfirmed ? '✅' : '❌'}`,
-      volume: volumeConfirmed ? '✅' : '❌',
+      adx: `${currentADX.toFixed(2)} (need ≥${adxThreshold}): ${adxConfirmed ? '✅' : '❌'}`,
+      rsi: `${currentRSI.toFixed(2)} (need ${rsiOversold}-${rsiOverbought}): ${rsiConfirmed ? '✅' : '❌'}`,
+      momentum: `${momentumScore.toFixed(2)} (need ≥${momentumThreshold}): ${momentumConfirmed ? '✅' : '❌'}`,
+      bollinger: `${bollingerPosition.toFixed(3)} (need 0.0-1.0): ${bollingerConfirmed ? '✅' : '❌'}`,
+      volume: `${(currentVolume / avgVolume).toFixed(2)}x (need ≥${volumeThreshold}x): ${volumeConfirmed ? '✅' : '❌'}`,
       trend: `Close ${currentCandle.close.toFixed(2)} > EMA20 ${currentEMA20.toFixed(2)}: ${trendConfirmed ? '✅' : '❌'}`
     });
     
@@ -563,19 +576,32 @@ export function evaluate4hReentry(
 
   // Enhanced SHORT setup with additional filters - optimized to be less strict
   if (C_prev > rangeHigh && C_curr <= rangeHigh) {
-    // Enhanced confirmation filters with trend - optimized to be less strict
-    const adxConfirmed = currentADX >= 18; // Reduced from 20 to 18
-    const rsiConfirmed = currentRSI > 25 && currentRSI < 75; // Expanded from 30-70 to 25-75
-    const momentumConfirmed = Math.abs(momentumScore) >= 8; // Reduced from 10 to 8
-    const bollingerConfirmed = bollingerPosition > 0.05 && bollingerPosition < 0.95; // Expanded from 0.1-0.9 to 0.05-0.95
+    // Enhanced confirmation filters with trend - further optimized to allow more entries
+    // Use same config values as LONG
+    const config = strategy || {};
+    const adxThreshold = config.adx_threshold || 18;
+    const rsiOversold = config.rsi_oversold || 20;
+    const rsiOverbought = config.rsi_overbought || 80;
+    const momentumThreshold = config.momentum_threshold || 8;
+    const volumeThreshold = config.volume_threshold || 1.1;
+    
+    const adxConfirmed = currentADX >= adxThreshold;
+    const rsiConfirmed = currentRSI > rsiOversold && currentRSI < rsiOverbought; // 20-80 range
+    const momentumConfirmed = Math.abs(momentumScore) >= momentumThreshold;
+    const bollingerConfirmed = bollingerPosition >= 0.0 && bollingerPosition <= 1.0; // Expanded to full range
     const trendConfirmed = isBearishTrend; // Only SHORT if below EMA20
     
+    // Update volume confirmation to use config threshold
+    const currentVolume = candles[candles.length - 1].volume;
+    const avgVolume = candles.slice(-21, -1).reduce((sum, c) => sum + c.volume, 0) / 20;
+    const volumeConfirmed = currentVolume >= avgVolume * volumeThreshold;
+    
     console.log('[4H-REENTRY] 🔍 SHORT reentry filters:', {
-      adx: `${currentADX.toFixed(2)} (need ≥18): ${adxConfirmed ? '✅' : '❌'}`,
-      rsi: `${currentRSI.toFixed(2)} (need 25-75): ${rsiConfirmed ? '✅' : '❌'}`,
-      momentum: `${momentumScore.toFixed(2)} (need ≥8): ${momentumConfirmed ? '✅' : '❌'}`,
-      bollinger: `${bollingerPosition.toFixed(3)} (need 0.05-0.95): ${bollingerConfirmed ? '✅' : '❌'}`,
-      volume: volumeConfirmed ? '✅' : '❌',
+      adx: `${currentADX.toFixed(2)} (need ≥${adxThreshold}): ${adxConfirmed ? '✅' : '❌'}`,
+      rsi: `${currentRSI.toFixed(2)} (need ${rsiOversold}-${rsiOverbought}): ${rsiConfirmed ? '✅' : '❌'}`,
+      momentum: `${momentumScore.toFixed(2)} (need ≥${momentumThreshold}): ${momentumConfirmed ? '✅' : '❌'}`,
+      bollinger: `${bollingerPosition.toFixed(3)} (need 0.0-1.0): ${bollingerConfirmed ? '✅' : '❌'}`,
+      volume: `${(currentVolume / avgVolume).toFixed(2)}x (need ≥${volumeThreshold}x): ${volumeConfirmed ? '✅' : '❌'}`,
       trend: `Close ${currentCandle.close.toFixed(2)} < EMA20 ${currentEMA20.toFixed(2)}: ${trendConfirmed ? '✅' : '❌'}`
     });
     
