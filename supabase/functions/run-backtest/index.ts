@@ -390,22 +390,38 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
                       currentRSI < athGuardConfig.rsi_threshold;
     
     if (buySignal && !position) {
-      // Position sizing (simplified like 4h Reentry)
+      // Position sizing (corrected to match Bybit logic)
       const positionSizePercent = strategy.position_size_percent || 100;
-      const positionSize = balance * (positionSizePercent / 100);
+      const positionSizeUSD = balance * (positionSizePercent / 100);
       
       // Calculate entry price with slippage
       const entryPriceWithSlippage = executionPrice * (1 + slippage);
       
-      // Simple quantity: positionSize / entryPrice / leverage
-      let quantity = (positionSize / entryPriceWithSlippage) / leverage;
+      // Correct calculation: notional = positionSize * leverage, then quantity = notional / price
+      let notional: number;
+      let quantity: number;
+      let marginRequired: number;
+      
+      if (productType === 'futures') {
+        notional = positionSizeUSD * leverage;
+        quantity = notional / entryPriceWithSlippage;
+        marginRequired = notional / leverage;
+      } else {
+        notional = positionSizeUSD;
+        quantity = notional / entryPriceWithSlippage;
+        marginRequired = notional;
+      }
+      
       quantity = Math.floor(quantity / stepSize) * stepSize;
       
-      // Validate exchange constraints
+      // Recalculate notional after rounding quantity
       const entryNotional = quantity * entryPriceWithSlippage;
       
+      if (productType === 'futures') {
+        marginRequired = entryNotional / leverage;
+      }
+      
       if (quantity >= minQty && entryNotional >= minNotional) {
-        const marginRequired = (entryNotional) / leverage;
         
         if (marginRequired <= balance) {
           // Calculate SL/TP based on user parameters
@@ -446,27 +462,51 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
                        currentRSI > (100 - athGuardConfig.rsi_threshold);
     
     if (sellSignal && !position) {
-      // SHORT entry (new SELL position)
-      const positionSize = Math.min(balance * 0.1, balance * 0.95); // Max 10% of balance
-      const quantity = Math.floor(positionSize / executionPrice / 0.00001) * 0.00001; // Apply step size
+      // SHORT entry (new SELL position) - corrected to match Bybit logic
+      const positionSizePercent = strategy.position_size_percent || 100;
+      const positionSizeUSD = balance * (positionSizePercent / 100);
       
-      if (quantity >= 0.001 && quantity * executionPrice >= 10) { // Min quantity and notional
-        const entryPrice = executionPrice * (1 - slippage); // Better price for SHORT
-        const marginRequired = (entryPrice * quantity) / leverage;
+      // Calculate entry price with slippage (better price for SHORT)
+      const entryPriceWithSlippage = executionPrice * (1 - slippage);
+      
+      // Correct calculation: notional = positionSize * leverage, then quantity = notional / price
+      let notional: number;
+      let quantity: number;
+      let marginRequired: number;
+      
+      if (productType === 'futures') {
+        notional = positionSizeUSD * leverage;
+        quantity = notional / entryPriceWithSlippage;
+        marginRequired = notional / leverage;
+      } else {
+        notional = positionSizeUSD;
+        quantity = notional / entryPriceWithSlippage;
+        marginRequired = notional;
+      }
+      
+      quantity = Math.floor(quantity / stepSize) * stepSize;
+      
+      // Recalculate notional after rounding quantity
+      const entryNotional = quantity * entryPriceWithSlippage;
+      
+      if (productType === 'futures') {
+        marginRequired = entryNotional / leverage;
+      }
+      
+      if (quantity >= minQty && entryNotional >= minNotional) {
         
         if (marginRequired <= balance) {
           // Calculate SL/TP based on user parameters
           const slPercent = stopLossPercent || strategy.stop_loss_percent || 2.0;
           const tpPercent = takeProfitPercent || strategy.take_profit_percent || 4.0;
           
-          const stopLossPrice = entryPrice * (1 + slPercent / 100);
-          const takeProfitPrice = entryPrice * (1 - tpPercent / 100);
+          const stopLossPrice = entryPriceWithSlippage * (1 + slPercent / 100);
+          const takeProfitPrice = entryPriceWithSlippage * (1 - tpPercent / 100);
           
-          const entryNotional = entryPrice * quantity;
           const entryFee = (entryNotional * makerFee) / 100;
           
           position = { 
-            entry_price: entryPrice, 
+            entry_price: entryPriceWithSlippage, 
             entry_time: currentCandle.open_time, 
             type: 'sell', // SHORT position
             quantity 
@@ -483,7 +523,7 @@ async function runATHGuardBacktest(strategy: any, candles: Candle[], initialBala
           
           // Initialize trailing stop for SHORT position
           if (trailingStopManager) {
-            trailingStopManager.initialize(entryPrice, 'sell');
+            trailingStopManager.initialize(entryPriceWithSlippage, 'sell');
           }
         }
       }
