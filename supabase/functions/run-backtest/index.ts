@@ -2482,15 +2482,24 @@ async function runSMACrossoverBacktest(
     JSON.stringify({
       success: true,
       results: {
-        initialBalance,
-        finalBalance: balance,
-        totalReturn,
-        totalTrades: normalizedTrades.length,
-        winRate,
-        maxDrawdown,
-        profitFactor,
+        initial_balance: initialBalance,
+        final_balance: balance,
+        total_return: totalReturn,
+        total_trades: normalizedTrades.length,
+        winning_trades: winTrades,
+        losing_trades: loseTrades,
+        win_rate: winRate,
+        max_drawdown: maxDrawdown,
+        profit_factor: profitFactor,
+        avg_win: avgWin,
+        avg_loss: avgLoss,
+        exit_summary: trades.reduce((acc: Record<string, number>, t: any) => {
+          const reason = t.exit_reason || 'UNKNOWN';
+          acc[reason] = (acc[reason] || 0) + 1;
+          return acc;
+        }, {}),
         trades: normalizedTrades,
-        balanceHistory
+        balance_history: balanceHistory
       }
     }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
