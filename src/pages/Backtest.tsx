@@ -294,8 +294,19 @@ const Backtest = () => {
           }
         }
 
-        setCandles(allCandles);
-        console.log(`[BACKTEST] Loaded ${allCandles.length} candles for date range`);
+        // Sample candles if dataset is too large (prevent stack overflow in chart rendering)
+        const MAX_CANDLES = 2000;
+        let sampledCandles = allCandles;
+        
+        if (allCandles.length > MAX_CANDLES) {
+          const step = Math.ceil(allCandles.length / MAX_CANDLES);
+          sampledCandles = allCandles.filter((_, index) => index % step === 0);
+          console.log(`[BACKTEST] Sampled ${sampledCandles.length} candles from ${allCandles.length} (step: ${step})`);
+        } else {
+          console.log(`[BACKTEST] Loaded ${allCandles.length} candles for date range`);
+        }
+        
+        setCandles(sampledCandles);
       } catch (e) {
         console.error('[BACKTEST] Candles fetch fail:', e);
         setCandles([]);

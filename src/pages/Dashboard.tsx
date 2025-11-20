@@ -18,6 +18,7 @@ interface TickerData {
   low: number;
   volume: number;
   quoteVolume: number;
+  error?: string;
 }
 interface AccountData {
   totalWalletBalance: number;
@@ -264,7 +265,7 @@ const Dashboard = () => {
       });
 
       const results = await Promise.all(tickerPromises);
-      const successData = results.filter((r: any) => !r.error);
+      const successData = results.filter((r: any) => !r.error) as TickerData[];
       const errors = results.filter((r: any) => r.error).map((r: any) => ({
         symbol: r.symbol,
         error: r.error
