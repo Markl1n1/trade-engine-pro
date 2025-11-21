@@ -384,7 +384,7 @@ export function evaluate4hReentry(
 
   // Get strategy config with defaults
   const sessionStart = strategy.reentry_session_start || "00:00";
-  const sessionEnd = strategy.reentry_session_end || "03:59";
+  const sessionEnd = strategy.reentry_session_end || "11:59";  // Extended to 12 hours (was 03:59)
   const riskRewardRatio = strategy.reentry_risk_reward || 3;
   
   // Use UI parameters or fallback to improved strategy defaults (3:1 R:R)

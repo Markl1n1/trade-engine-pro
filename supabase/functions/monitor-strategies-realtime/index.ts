@@ -208,7 +208,7 @@ serve(async (req) => {
             break;
           }
           
-          case 'ath_guard': {
+          case 'ath_guard_scalping': {
             const { evaluateATHGuardStrategy } = await import('../helpers/ath-guard-strategy.ts');
             const config = getStrategyMonitorConfig(strategy, 'ath_guard_scalping');
             signal = evaluateATHGuardStrategy(formattedCandles, config, false);
