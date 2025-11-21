@@ -83,7 +83,8 @@ export async function runEMACrossoverBacktest(
         config,
         true,
         position.entry_price,
-        position.entry_time
+        position.entry_time,
+        position.type  // Pass position type to fix SHORT profit calculation
       );
 
       if (signal.signal_type === 'SELL') {
