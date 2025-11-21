@@ -109,7 +109,8 @@ export function evaluateEMACrossoverScalping(
   config: EMACrossoverConfig,
   positionOpen: boolean,
   entryPrice?: number,
-  entryTime?: number
+  entryTime?: number,
+  positionType?: 'buy' | 'sell'  // Added to fix SHORT position profit calculation
 ): BaseSignal {
   
   const minCandles = Math.max(
@@ -151,32 +152,41 @@ export function evaluateEMACrossoverScalping(
     const priceChange = currentPrice - entryPrice;
     const priceChangePercent = (priceChange / entryPrice) * 100;
     
+    // CRITICAL FIX: Reverse profit calculation for SHORT positions
+    // For SHORT: price going DOWN is profit, price going UP is loss
+    // For LONG: price going UP is profit, price going DOWN is loss
+    const actualProfitPercent = positionType === 'sell' 
+      ? -priceChangePercent  // Reverse for short: negative price change = positive profit
+      : priceChangePercent;   // Normal for long: positive price change = positive profit
+    
     // Time-based exit (max position time)
     const positionDuration = (currentTime - entryTime) / 1000; // in seconds
     if (positionDuration >= config.max_position_time) {
       return {
         signal_type: 'SELL',
-        reason: `Time exit: ${positionDuration.toFixed(0)}s elapsed, PnL: ${priceChangePercent.toFixed(2)}%`,
+        reason: `Time exit: ${positionDuration.toFixed(0)}s elapsed, PnL: ${actualProfitPercent.toFixed(2)}%`,
         confidence: 70
       };
     }
     
-    // ATR-based stop loss
+    // ATR-based stop loss (loss = negative profit)
     const stopLossDistance = currentATR * config.atr_sl_multiplier;
-    if (Math.abs(priceChange) >= stopLossDistance && priceChange < 0) {
+    const stopLossPercent = (stopLossDistance / currentPrice) * 100;
+    if (actualProfitPercent <= -stopLossPercent) {
       return {
         signal_type: 'SELL',
-        reason: `Stop loss hit: ${priceChangePercent.toFixed(2)}% (ATR: ${currentATR.toFixed(2)})`,
+        reason: `Stop loss hit: ${actualProfitPercent.toFixed(2)}% (ATR: ${currentATR.toFixed(2)})`,
         confidence: 90
       };
     }
     
-    // ATR-based take profit
+    // ATR-based take profit (profit = positive profit)
     const takeProfitDistance = currentATR * config.atr_tp_multiplier;
-    if (priceChange >= takeProfitDistance) {
+    const takeProfitPercent = (takeProfitDistance / currentPrice) * 100;
+    if (actualProfitPercent >= takeProfitPercent) {
       return {
         signal_type: 'SELL',
-        reason: `Take profit hit: ${priceChangePercent.toFixed(2)}% (Target: ${config.atr_tp_multiplier}x ATR)`,
+        reason: `Take profit hit: ${actualProfitPercent.toFixed(2)}% (Target: ${config.atr_tp_multiplier}x ATR)`,
         confidence: 95
       };
     }
@@ -185,7 +195,7 @@ export function evaluateEMACrossoverScalping(
     if (prevFastEMA >= prevSlowEMA && currentFastEMA < currentSlowEMA) {
       return {
         signal_type: 'SELL',
-        reason: `Opposite crossover exit: Fast EMA crossed below Slow EMA, PnL: ${priceChangePercent.toFixed(2)}%`,
+        reason: `Opposite crossover exit: Fast EMA crossed below Slow EMA, PnL: ${actualProfitPercent.toFixed(2)}%`,
         confidence: 85
       };
     }
