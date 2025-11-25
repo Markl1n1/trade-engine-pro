@@ -386,6 +386,39 @@ export class UnifiedBacktestEngine {
       ? price * (1 + this.config.slippage / 100)  // Long: worse entry (higher price)
       : price * (1 - this.config.slippage / 100); // Short: worse entry (lower price)
     
+    // Calculate position details
+    const notional = quantity * entryPrice;
+    const margin = notional / (this.config.leverage || 1);
+    const stopLoss = signal.stop_loss || (signal.signal_type === 'BUY' 
+      ? entryPrice * (1 - (this.config.stopLossPercent || 2) / 100)
+      : entryPrice * (1 + (this.config.stopLossPercent || 2) / 100));
+    const takeProfit = signal.take_profit || (signal.signal_type === 'BUY'
+      ? entryPrice * (1 + (this.config.takeProfitPercent || 4) / 100)
+      : entryPrice * (1 - (this.config.takeProfitPercent || 4) / 100));
+    
+    // Enhanced entry logging
+    console.log('[BACKTEST] 🟢 ENTRY:', JSON.stringify({
+      timestamp: new Date(timestamp).toISOString(),
+      type: signal.signal_type,
+      price: entryPrice.toFixed(2),
+      quantity: quantity.toFixed(4),
+      notional: notional.toFixed(2),
+      margin_required: margin.toFixed(2),
+      leverage: this.config.leverage,
+      stop_loss: stopLoss.toFixed(2),
+      take_profit: takeProfit.toFixed(2),
+      sl_distance_percent: (Math.abs(entryPrice - stopLoss) / entryPrice * 100).toFixed(2),
+      tp_distance_percent: (Math.abs(takeProfit - entryPrice) / entryPrice * 100).toFixed(2),
+      indicators: {
+        confidence: signal.confidence?.toFixed(1) || 'N/A',
+        adx: signal.adx?.toFixed(1) || 'N/A',
+        bollinger_position: signal.bollinger_position?.toFixed(2) || 'N/A',
+        momentum_score: signal.momentum_score?.toFixed(1) || 'N/A',
+        session_strength: signal.session_strength?.toFixed(1) || 'N/A'
+      },
+      reason: signal.reason
+    }));
+    
     return {
       entry_price: entryPrice,
       entry_time: timestamp,
@@ -420,6 +453,33 @@ export class UnifiedBacktestEngine {
     const entryFee = (position.entry_price * position.quantity * this.config.makerFee) / 100;
     const exitFee = (exitPrice * position.quantity * this.config.takerFee) / 100;
     const netProfit = grossProfit - entryFee - exitFee;
+    
+    // Calculate P&L percentages
+    const profitPercent = position.type === 'buy'
+      ? ((exitPrice - position.entry_price) / position.entry_price) * 100
+      : ((position.entry_price - exitPrice) / position.entry_price) * 100;
+    
+    const positionDuration = (Date.now() - position.entry_time) / 60000; // minutes
+    
+    // Enhanced exit logging
+    console.log('[BACKTEST] 🔴 EXIT:', JSON.stringify({
+      timestamp: new Date().toISOString(),
+      reason: reason,
+      entry_price: position.entry_price.toFixed(2),
+      exit_price: exitPrice.toFixed(2),
+      pnl_usd: netProfit.toFixed(2),
+      pnl_percent: profitPercent.toFixed(2),
+      position_duration_minutes: positionDuration.toFixed(1),
+      fees: {
+        entry: entryFee.toFixed(2),
+        exit: exitFee.toFixed(2),
+        total: (entryFee + exitFee).toFixed(2)
+      },
+      indicators_at_exit: {
+        confidence: position.confidence?.toFixed(1) || 'N/A',
+        adx: position.adx?.toFixed(1) || 'N/A'
+      }
+    }));
     
     const trade: Trade = {
       ...position,
@@ -562,6 +622,39 @@ export class UnifiedBacktestEngine {
     const sessionStrengthAvg = trades.length > 0 
       ? trades.reduce((sum, t) => sum + (t.session_strength || 0), 0) / trades.length 
       : 0;
+    
+    // Calculate exit reason summary
+    const exitReasons = {
+      stop_loss: trades.filter(t => t.exit_reason?.includes('STOP_LOSS')).length,
+      take_profit: trades.filter(t => t.exit_reason?.includes('TAKE_PROFIT')).length,
+      trailing_stop: trades.filter(t => t.exit_reason?.includes('trailing_stop')).length,
+      time_exit: trades.filter(t => t.exit_reason?.includes('time_expired')).length,
+      opposite_signal: trades.filter(t => t.exit_reason && !t.exit_reason.includes('STOP_LOSS') && !t.exit_reason.includes('TAKE_PROFIT') && !t.exit_reason.includes('trailing') && !t.exit_reason.includes('time')).length
+    };
+    
+    // Enhanced summary logging
+    console.log('[BACKTEST] 📈 EXIT SUMMARY:', JSON.stringify({
+      stop_loss_exits: exitReasons.stop_loss,
+      take_profit_exits: exitReasons.take_profit,
+      trailing_stop_exits: exitReasons.trailing_stop,
+      time_exits: exitReasons.time_exit,
+      opposite_signal_exits: exitReasons.opposite_signal,
+      sl_tp_ratio: `${exitReasons.stop_loss}:${exitReasons.take_profit}`
+    }));
+    
+    console.log('[BACKTEST] 📊 FINAL RESULTS:', JSON.stringify({
+      initial_balance: initialBalance.toFixed(2),
+      final_balance: finalBalance.toFixed(2),
+      total_return: clampedTotalReturn.toFixed(2) + '%',
+      total_trades: totalTrades,
+      winning_trades: winningTrades,
+      losing_trades: losingTrades,
+      win_rate: clampedWinRate.toFixed(2) + '%',
+      avg_win: avgWin.toFixed(2),
+      avg_loss: avgLoss.toFixed(2),
+      profit_factor: clampedProfitFactor.toFixed(2),
+      max_drawdown: (maxDrawdown * 100).toFixed(2) + '%'
+    }));
     
     return {
       initial_balance: initialBalance,
