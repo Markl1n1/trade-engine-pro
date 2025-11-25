@@ -32,10 +32,6 @@ const Backtest = () => {
   const [isRunning, setIsRunning] = useState(false);
   const [results, setResults] = useState<any>(null);
   const [dataStats, setDataStats] = useState<any>(null);
-  const [backtestEngine, setBacktestEngine] = useState<string>("advanced");
-  const [comparisonResults, setComparisonResults] = useState<any>(null);
-  const [isComparing, setIsComparing] = useState(false);
-  const [debugMode, setDebugMode] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [candles, setCandles] = useState<any[]>([]);
   const { toast } = useToast();
@@ -115,26 +111,7 @@ const Backtest = () => {
   };
 
   const loadUserSettings = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data, error } = await supabase
-        .from('user_settings')
-        .select('debug_mode')
-        .eq('user_id', user.id)
-        .single();
-
-      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
-        console.warn('Error loading user settings:', error);
-        return;
-      }
-
-      // Debug mode can be toggled in the UI, default to false
-      setDebugMode(false);
-    } catch (error: any) {
-      console.warn('Error loading user settings:', error);
-    }
+    // No longer needed - removed debug mode functionality
   };
 
   const checkDataAvailability = async () => {
@@ -316,7 +293,7 @@ const Backtest = () => {
     fetchCandles();
   }, [results, selectedStrategy, startDate, endDate, strategies]);
 
-  const runBacktest = async (engineOverride?: string) => {
+  const runBacktest = async () => {
     if (!selectedStrategy) {
       toast({
         title: "Please select a strategy",
@@ -336,25 +313,12 @@ const Backtest = () => {
       return;
     }
 
-    const engine = engineOverride || backtestEngine;
+    // Always use advanced engine
     setIsRunning(true);
     setResults(null);
 
     try {
-      const functionName = engine === 'simple' ? 'run-backtest-simple' : 'run-backtest';
-      
-      // Save debug mode to user settings first
-      if (debugMode !== undefined) {
-        await supabase
-          .from('user_settings')
-          .upsert({
-            user_id: (await supabase.auth.getUser()).data.user?.id,
-            debug_mode: debugMode,
-            updated_at: new Date().toISOString()
-          });
-      }
-
-      const { data, error } = await supabase.functions.invoke(functionName, {
+      const { data, error } = await supabase.functions.invoke('run-backtest', {
         body: {
           strategyId: selectedStrategy,
           startDate,
@@ -368,7 +332,7 @@ const Backtest = () => {
           makerFee: parseFloat(makerFee),
           takerFee: parseFloat(takerFee),
           slippage: parseFloat(slippage),
-          executionTiming: engine === 'advanced' ? executionTiming : undefined,
+          executionTiming: executionTiming,
         },
       });
 
@@ -429,19 +393,9 @@ const Backtest = () => {
           });
         } else {
           toast({
-            title: `✅ Backtest Completed (${engine})`,
+            title: `✅ Backtest Completed`,
             description,
             duration: data.results.warnings?.length ? 10000 : 5000,
-          });
-        }
-        
-        // Debug mode notification
-        if (debugMode && data.debug) {
-          console.log('[BACKTEST-DEBUG] Full debug logs:', data.debug);
-          toast({
-            title: "🔍 Debug Mode Active",
-            description: `${data.debug.length} debug entries logged to console`,
-            duration: 3000,
           });
         }
         
@@ -472,41 +426,6 @@ const Backtest = () => {
       throw error;
     } finally {
       setIsRunning(false);
-    }
-  };
-
-  const runComparison = async () => {
-    setIsComparing(true);
-    setComparisonResults(null);
-
-    try {
-      toast({
-        title: "Running comparison",
-        description: "Testing both backtest engines...",
-      });
-
-      const [advancedResults, simpleResults] = await Promise.all([
-        runBacktest('advanced'),
-        runBacktest('simple'),
-      ]);
-
-      setComparisonResults({
-        advanced: advancedResults,
-        simple: simpleResults,
-      });
-
-      toast({
-        title: "Comparison complete",
-        description: "Both engines have completed",
-      });
-    } catch (error: any) {
-      toast({
-        title: "Comparison failed",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setIsComparing(false);
     }
   };
 
@@ -726,63 +645,22 @@ const Backtest = () => {
             )}
 
             <div>
-              <Label className="text-xs text-muted-foreground">Backtest Engine</Label>
-              <Select value={backtestEngine} onValueChange={setBacktestEngine}>
+              <Label className="text-xs text-muted-foreground">Execution Timing</Label>
+              <Select value={executionTiming} onValueChange={setExecutionTiming}>
                 <SelectTrigger className="mt-1">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="advanced">Advanced (Event-Based)</SelectItem>
-                  <SelectItem value="simple">Simple (Vectorized)</SelectItem>
+                  <SelectItem value="open">Candle Open</SelectItem>
+                  <SelectItem value="close">Candle Close</SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-[10px] text-muted-foreground mt-1">
-                <strong>Advanced:</strong> Bar-by-bar simulation with full logic.
-                <br />
-                <strong>Simple:</strong> Fast vectorized calculations for comparison.
+                <strong>Open:</strong> Uses previous candle's indicators, executes at current candle's open price (more realistic).
+                  <br />
+                <strong>Close:</strong> Uses previous candle's indicators, executes at current candle's close price.
               </p>
             </div>
-
-            <div className="flex items-center space-x-2">
-              <input
-                type="checkbox"
-                id="debugMode"
-                checked={debugMode}
-                onChange={(e) => setDebugMode(e.target.checked)}
-                className="rounded"
-              />
-              <Label htmlFor="debugMode" className="text-xs text-muted-foreground">
-                Debug Mode
-              </Label>
-              <UITooltip>
-                <TooltipTrigger asChild>
-                  <Info className="h-3 w-3 text-muted-foreground" />
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p className="text-xs">Enable detailed logging for troubleshooting</p>
-                </TooltipContent>
-              </UITooltip>
-            </div>
-
-            {backtestEngine === 'advanced' && (
-              <div>
-                <Label className="text-xs text-muted-foreground">Execution Timing</Label>
-                <Select value={executionTiming} onValueChange={setExecutionTiming}>
-                  <SelectTrigger className="mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="open">Candle Open</SelectItem>
-                    <SelectItem value="close">Candle Close</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-[10px] text-muted-foreground mt-1">
-                  <strong>Open:</strong> Uses previous candle's indicators, executes at current candle's open price (more realistic).
-                  <br />
-                  <strong>Close:</strong> Uses previous candle's indicators, executes at current candle's close price.
-                </p>
-              </div>
-            )}
 
             <div className="pt-2 border-t">
               <Label className="text-xs text-muted-foreground">Fees & Slippage</Label>
@@ -857,6 +735,17 @@ const Backtest = () => {
                   {isStrategyDefaults && (
                     <span className="text-[10px] text-primary">(from strategy)</span>
                   )}
+                  <UITooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="h-3 w-3 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="text-xs max-w-xs">
+                        <strong>Pure price movement %</strong> (not leveraged).
+                        <br/>Example: 2% with 20x leverage = 40% loss on margin
+                      </p>
+                    </TooltipContent>
+                  </UITooltip>
                 </Label>
                 <Input
                   type="number"
@@ -877,6 +766,17 @@ const Backtest = () => {
                   {isStrategyDefaults && (
                     <span className="text-[10px] text-primary">(from strategy)</span>
                   )}
+                  <UITooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="h-3 w-3 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="text-xs max-w-xs">
+                        <strong>Pure price movement %</strong> (not leveraged).
+                        <br/>Example: 4% with 20x leverage = 80% profit on margin
+                      </p>
+                    </TooltipContent>
+                  </UITooltip>
                 </Label>
                 <Input
                   type="number"
