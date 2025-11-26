@@ -39,7 +39,6 @@ const Backtest = () => {
   useEffect(() => {
     loadStrategies();
     checkDataAvailability();
-    loadUserSettings();
     
     // Set default dates (last 30 days)
     const end = new Date();
@@ -110,9 +109,6 @@ const Backtest = () => {
     }
   };
 
-  const loadUserSettings = async () => {
-    // No longer needed - removed debug mode functionality
-  };
 
   const checkDataAvailability = async () => {
     // Check data availability for user's trading pairs
@@ -735,17 +731,19 @@ const Backtest = () => {
                   {isStrategyDefaults && (
                     <span className="text-[10px] text-primary">(from strategy)</span>
                   )}
-                  <UITooltip>
-                    <TooltipTrigger asChild>
-                      <Info className="h-3 w-3 text-muted-foreground" />
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p className="text-xs max-w-xs">
-                        <strong>Pure price movement %</strong> (not leveraged).
-                        <br/>Example: 2% with 20x leverage = 40% loss on margin
-                      </p>
-                    </TooltipContent>
-                  </UITooltip>
+                  <TooltipProvider>
+                    <UITooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3 w-3 text-muted-foreground" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p className="text-xs max-w-xs">
+                          <strong>Pure price movement %</strong> (not leveraged).
+                          <br/>Example: 2% with 20x leverage = 40% loss on margin
+                        </p>
+                      </TooltipContent>
+                    </UITooltip>
+                  </TooltipProvider>
                 </Label>
                 <Input
                   type="number"
@@ -766,17 +764,19 @@ const Backtest = () => {
                   {isStrategyDefaults && (
                     <span className="text-[10px] text-primary">(from strategy)</span>
                   )}
-                  <UITooltip>
-                    <TooltipTrigger asChild>
-                      <Info className="h-3 w-3 text-muted-foreground" />
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p className="text-xs max-w-xs">
-                        <strong>Pure price movement %</strong> (not leveraged).
-                        <br/>Example: 4% with 20x leverage = 80% profit on margin
-                      </p>
-                    </TooltipContent>
-                  </UITooltip>
+                  <TooltipProvider>
+                    <UITooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3 w-3 text-muted-foreground" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p className="text-xs max-w-xs">
+                          <strong>Pure price movement %</strong> (not leveraged).
+                          <br/>Example: 4% with 20x leverage = 80% profit on margin
+                        </p>
+                      </TooltipContent>
+                    </UITooltip>
+                  </TooltipProvider>
                 </Label>
                 <Input
                   type="number"
