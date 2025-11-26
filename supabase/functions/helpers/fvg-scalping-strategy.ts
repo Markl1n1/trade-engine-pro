@@ -466,32 +466,12 @@ export function evaluateFVGStrategy(
 
   console.log('[FVG-STRATEGY] FVG detected:', fvg.type);
 
-  // PHASE 1: Check RSI momentum
+  // Calculate indicators for confidence scoring
   const closes = candles.map(c => c.close);
   const rsi = calculateRSI(closes, 14);
   const { passes: rsiPasses, rsiChange } = checkRSIMomentum(rsi, fvg.type);
   
-  if (!rsiPasses) {
-    return {
-      signal_type: null,
-      reason: `${fvg.type} FVG detected but RSI momentum insufficient`,
-      confidence: 15
-    };
-  }
-
-  // PHASE 3: Check trend alignment
-  if (config.require_trend_alignment) {
-    const trendAligned = checkTrendAlignment(candles, fvg.type);
-    if (!trendAligned) {
-      return {
-        signal_type: null,
-        reason: `${fvg.type} FVG detected but trend not aligned`,
-        confidence: 25
-      };
-    }
-  }
-
-  // Step 2: Check for retest (PHASE 6: with 50% check)
+  // Check for retest (PHASE 6: with 50% check)
   const currentCandle = candles[candles.length - 1];
   const { isRetest, touches50Percent } = detectRetestCandle(fvg, currentCandle, config);
 
@@ -499,70 +479,93 @@ export function evaluateFVGStrategy(
     return {
       signal_type: null,
       reason: `${fvg.type} FVG detected but no retest yet`,
-      confidence: 30
+      confidence: 0
     };
   }
 
   console.log('[FVG-STRATEGY] Retest detected', touches50Percent ? '(50% fill)' : '');
 
-  // PHASE 4: OPTIMIZED volume confirmation - stricter filter
-  const recentCandles = candles.slice(-20);
-  const avgVolume = recentCandles.reduce((sum, c) => sum + c.volume, 0) / recentCandles.length;
-  const volumeRatio = currentCandle.volume / avgVolume;
-  
-  // OPTIMIZED: Stricter volume requirement (1.8x instead of 1.5x * 0.6 = 0.9x)
-  const minVolumeRequired = config.min_volume_ratio || 1.8; // Default to 1.8 if not set
-  if (volumeRatio < minVolumeRequired) {
-    console.log('[FVG-VOLUME] Volume too low:', { ratio: volumeRatio.toFixed(2), required: minVolumeRequired.toFixed(2) });
-    return {
-      signal_type: null,
-      reason: `${fvg.type} FVG retest but volume too low (${volumeRatio.toFixed(2)}x, need ${minVolumeRequired}x)`,
-      confidence: 35
-    };
-  }
-
-  // Step 3: Check for engulfment confirmation
+  // Check for engulfment confirmation (ONLY BLOCKING CHECK)
   const hasEngulfment = checkEngulfment(currentCandle, fvg);
 
   if (!hasEngulfment) {
     return {
       signal_type: null,
-      reason: `${fvg.type} FVG retest but no engulfment confirmation`,
-      confidence: 45
+      reason: `${fvg.type} FVG retest but no engulfment`,
+      confidence: 0
     };
   }
 
   console.log('[FVG-STRATEGY] Engulfment confirmed');
 
-  // PHASE 5: Calculate quality score
+  // Calculate entry, SL, TP
+  const { entry, stopLoss, takeProfit } = calculateEntry(currentCandle, fvg, config);
+  
+  // START WITH BASE CONFIDENCE
+  let confidence = 100;
+  
+  // Calculate volume ratio for modifiers
+  const recentCandles = candles.slice(-20);
+  const avgVolume = recentCandles.reduce((sum, c) => sum + c.volume, 0) / recentCandles.length;
+  const volumeRatio = currentCandle.volume / avgVolume;
+  
+  // RSI momentum modifier (-20 if weak)
+  if (!rsiPasses) {
+    console.log(`[FVG-RSI] Weak RSI momentum (-20 confidence)`);
+    confidence -= 20;
+  }
+  
+  // Trend alignment modifier (-15 if not aligned)
+  if (config.require_trend_alignment) {
+    const trendAligned = checkTrendAlignment(candles, fvg.type);
+    if (!trendAligned) {
+      console.log(`[FVG-TREND] Not aligned (-15 confidence)`);
+      confidence -= 15;
+    }
+  }
+  
+  // Volume modifier (-20 if low)
+  if (volumeRatio < 1.2) {
+    console.log(`[FVG-VOLUME] Low volume: ${volumeRatio.toFixed(2)}x (-20 confidence)`);
+    confidence -= 20;
+  }
+  
+  // Quality score modifier
   const trendAligned = config.require_trend_alignment ? checkTrendAlignment(candles, fvg.type) : true;
   const qualityScore = calculateFVGQualityScore(fvg, currentCandle, volumeRatio, Math.abs(rsiChange), trendAligned);
   
-  // OPTIMIZED: Increased threshold from 65 to 75 for better winrate
-  if (qualityScore < 75) {
-    console.log('[FVG-QUALITY] Quality score too low:', qualityScore.toFixed(1));
+  if (qualityScore < 50) {
+    console.log(`[FVG-QUALITY] Low quality: ${qualityScore.toFixed(1)} (-15 confidence)`);
+    confidence -= 15;
+  }
+  
+  // 50% mitigation bonus
+  if (touches50Percent) {
+    console.log(`[FVG-50%] Touched 50% level (+10 confidence)`);
+    confidence += 10;
+  }
+  
+  // Block entry only if confidence < 30%
+  if (confidence < 30) {
+    console.log(`[FVG-CONFIDENCE] Too low: ${confidence}%`);
     return {
       signal_type: null,
-      reason: `${fvg.type} FVG quality score too low (${qualityScore.toFixed(1)}/100, need ≥75)`,
-      confidence: 50
+      reason: `${fvg.type} FVG low confidence (${confidence}%)`,
+      confidence
     };
   }
 
-  // Step 4: Calculate entry, SL, TP
-  const { entry, stopLoss, takeProfit } = calculateEntry(currentCandle, fvg, config);
-  const confidence = calculateConfidence(fvg, currentCandle, candles, touches50Percent, qualityScore);
+  console.log(`[FVG-STRATEGY] ✅ Signal confidence: ${confidence}%`);
 
   // Generate signal
   const signal: BaseSignal = {
     signal_type: fvg.type === 'bullish' ? 'BUY' : 'SELL',
-    reason: `${fvg.type.toUpperCase()} FVG (Q:${qualityScore.toFixed(0)}, V:${volumeRatio.toFixed(1)}x${touches50Percent ? ', 50%' : ''}). Entry: ${entry.toFixed(2)}, SL: ${stopLoss.toFixed(2)}, TP: ${takeProfit.toFixed(2)}`,
+    reason: `${fvg.type.toUpperCase()} FVG (conf:${confidence}%, Q:${qualityScore.toFixed(0)}, V:${volumeRatio.toFixed(1)}x)`,
     stop_loss: stopLoss,
     take_profit: takeProfit,
     confidence,
     time_to_expire: 30
   };
-
-  console.log('[FVG-STRATEGY] ✅ High-quality signal generated:', signal);
 
   return signal;
 }

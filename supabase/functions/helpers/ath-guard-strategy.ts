@@ -461,345 +461,192 @@ function checkATHSafety(
   return true;
 }
 
-// Main evaluation function
+// SIMPLIFIED Main evaluation function - EMA alignment + RSI, all else confidence modifiers
 export function evaluateATHGuardStrategy(
   candles: Candle[],
   config: ATHGuardConfig,
   positionOpen: boolean
 ): ATHGuardSignal {
-  console.log('[ATH-GUARD] 🔍 Starting evaluation...');
+  console.log('[ATH-GUARD] 🔍 Starting SIMPLIFIED evaluation...');
   
-  // Need minimum candles for all indicators (increased to 200 for new indicators)
-  const minCandles = Math.max(200, config.bollinger_period + 50);
-  if (candles.length < minCandles) {
-    console.log(`[ATH-GUARD] ❌ Insufficient data: ${candles.length} candles (need ${minCandles})`);
+  if (candles.length < 200) {
+    console.log(`[ATH-GUARD] ❌ Insufficient data: ${candles.length} candles`);
     return { signal_type: null, reason: 'Insufficient candle data' };
+  }
+  
+  if (positionOpen) {
+    return { signal_type: null, reason: 'Position already open' };
   }
   
   const closes = candles.map(c => c.close);
   
-  // Calculate all indicators
+  // Calculate only essential indicators
   const ema50 = calculateEMA(closes, 50);
-  const ema100 = calculateEMA(closes, 100);
   const ema150 = calculateEMA(closes, 150);
-  const vwap = calculateVWAP(candles);
-  const macd = calculateMACD(closes);
-  const stoch = calculateStochastic(candles, 14);
   const rsi = calculateRSI(closes, 14);
   const atr = calculateATR(candles, 14);
   
-  // Calculate new indicators
+  // Optional indicators for confidence
   const adx = calculateADX(candles, 14);
-  const bollinger = calculateBollingerBands(closes, config.bollinger_period, config.bollinger_std);
-  const supportResistance = calculateSupportResistance(candles, config.support_resistance_lookback);
+  const macd = calculateMACD(closes);
   
   const currentPrice = candles[candles.length - 1].close;
   const currentEMA50 = ema50[ema50.length - 1];
-  const currentEMA100 = ema100[ema100.length - 1];
   const currentEMA150 = ema150[ema150.length - 1];
-  const currentVWAP = vwap[vwap.length - 1];
   const currentRSI = rsi[rsi.length - 1];
   const currentATR = atr[atr.length - 1];
-  
-  // New indicator values
   const currentADX = adx[adx.length - 1];
-  const currentBollingerUpper = bollinger.upper[bollinger.upper.length - 1];
-  const currentBollingerMiddle = bollinger.middle[bollinger.middle.length - 1];
-  const currentBollingerLower = bollinger.lower[bollinger.lower.length - 1];
-  const bollingerPosition = calculateBollingerPosition(currentPrice, currentBollingerUpper, currentBollingerMiddle, currentBollingerLower);
+  const currentHistogram = macd.histogram[macd.histogram.length - 1];
   
   const ema150Slope = calculateEMASlope(ema150);
   
-  // Calculate momentum score
-  const momentumScore = calculateMomentumScore(candles, rsi, macd, stoch);
-  
-  // Calculate ATH distance
-  const athDistance = Math.abs(currentPrice - currentEMA150) / currentEMA150;
-  
-  console.log(`[ATH-GUARD] 📊 Current State:`, {
-    price: currentPrice.toFixed(2),
-    ema50: currentEMA50.toFixed(2),
-    ema100: currentEMA100.toFixed(2),
-    ema150: currentEMA150.toFixed(2),
-    vwap: currentVWAP.toFixed(2),
-    ema150Slope: ema150Slope.toFixed(4),
-    rsi: currentRSI.toFixed(2),
-    positionOpen
-  });
-  
-  // Calculate volume ratio early for breakout logic
+  // Calculate volume
   const currentVolume = candles[candles.length - 1].volume;
   const last20Volumes = candles.slice(-21, -1).map(c => c.volume);
   const avgVolume = last20Volumes.reduce((a, b) => a + b, 0) / 20;
   const volumeRatio = currentVolume / avgVolume;
   
-  // OPTIMIZED: Stricter volume confirmation (1.3 → 1.5)
-  const volumeConfirmed = volumeRatio >= config.volume_multiplier;
-  
-  // NEW: Breakout Entry (Priority entry - bypasses all other filters)
-  const recentHigh = Math.max(...candles.slice(-20).map(c => c.high));
-  const recentLow = Math.min(...candles.slice(-20).map(c => c.low));
-  const breakoutThreshold = 0.002; // 0.2% breakout
-  const volumeSpike = volumeRatio >= 1.5; // OPTIMIZED: 50% volume spike (was 1.3)
-  
-  if (!positionOpen && currentPrice > recentHigh * (1 + breakoutThreshold) && volumeSpike) {
-    const stopLoss = currentPrice - (config.atr_sl_multiplier * currentATR);
-    const takeProfit1 = currentPrice + (config.atr_tp1_multiplier * currentATR);
-    const takeProfit2 = currentPrice + (config.atr_tp2_multiplier * currentATR);
-    
-    console.log('[ATH-GUARD] 🚀 BREAKOUT LONG DETECTED', {
-      price: currentPrice.toFixed(2),
-      recentHigh: recentHigh.toFixed(2),
-      breakout: `+${((currentPrice / recentHigh - 1) * 100).toFixed(2)}%`,
-      volumeSpike: `${volumeRatio.toFixed(2)}x`
-    });
-    
-    return {
-      signal_type: 'BUY',
-      reason: 'ATH Guard BREAKOUT LONG: Price broke recent high with volume spike',
-      stop_loss: stopLoss,
-      take_profit_1: takeProfit1,
-      take_profit_2: takeProfit2,
-      adx: currentADX,
-      bollinger_position: bollingerPosition,
-      momentum_score: momentumScore,
-      support_resistance_level: recentHigh,
-      confidence: 85, // High confidence for breakouts
-      time_to_expire: 15 // Short expiration for breakout signals
-    };
-  }
-  
-  if (!positionOpen && currentPrice < recentLow * (1 - breakoutThreshold) && volumeSpike) {
-    const stopLoss = currentPrice + (config.atr_sl_multiplier * currentATR);
-    const takeProfit1 = currentPrice - (config.atr_tp1_multiplier * currentATR);
-    const takeProfit2 = currentPrice - (config.atr_tp2_multiplier * currentATR);
-    
-    console.log('[ATH-GUARD] 🚀 BREAKOUT SHORT DETECTED', {
-      price: currentPrice.toFixed(2),
-      recentLow: recentLow.toFixed(2),
-      breakout: `${((currentPrice / recentLow - 1) * 100).toFixed(2)}%`,
-      volumeSpike: `${volumeRatio.toFixed(2)}x`
-    });
-    
-    return {
-      signal_type: 'SELL',
-      reason: 'ATH Guard BREAKOUT SHORT: Price broke recent low with volume spike',
-      stop_loss: stopLoss,
-      take_profit_1: takeProfit1,
-      take_profit_2: takeProfit2,
-      adx: currentADX,
-      bollinger_position: bollingerPosition,
-      momentum_score: momentumScore,
-      support_resistance_level: recentLow,
-      confidence: 85, // High confidence for breakouts
-      time_to_expire: 15 // Short expiration for breakout signals
-    };
-  }
-  
-  // Step 1: Simplified Bias Filter (EMA alignment only)
-  const bias = checkBiasFilter(currentPrice, currentEMA50, currentEMA100, currentEMA150, ema150Slope, config);
-  
-  console.log(`[ATH-GUARD] 🎯 Step 1 - Simplified Bias Filter: ${bias}`, {
-    priceVsEMA150: currentPrice > currentEMA150 ? 'ABOVE' : 'BELOW',
-    emaAlignment: `EMA50(${currentEMA50.toFixed(2)}) ${currentEMA50 > currentEMA100 ? '>' : '<'} EMA100(${currentEMA100.toFixed(2)})`,
-    slope: `${ema150Slope.toFixed(4)}%`,
-    passed: bias !== 'NEUTRAL'
+  console.log(`[ATH-GUARD] 📊 Indicators:`, {
+    price: currentPrice.toFixed(2),
+    ema50: currentEMA50.toFixed(2),
+    ema150: currentEMA150.toFixed(2),
+    rsi: currentRSI.toFixed(2),
+    adx: currentADX.toFixed(2),
+    volumeRatio: volumeRatio.toFixed(2)
   });
+  
+  // STEP 1: EMA Alignment (ONLY BLOCKING CHECK)
+  // Determine bias from EMA alignment
+  let bias: 'LONG' | 'SHORT' | 'NEUTRAL' = 'NEUTRAL';
+  
+  if (currentPrice > currentEMA150 && currentEMA50 > currentEMA150 && ema150Slope > 0) {
+    bias = 'LONG';
+  } else if (currentPrice < currentEMA150 && currentEMA50 < currentEMA150 && ema150Slope < 0) {
+    bias = 'SHORT';
+  }
+  
+  console.log(`[ATH-GUARD] 🎯 Step 1 - EMA Alignment: ${bias}`);
   
   if (bias === 'NEUTRAL') {
-    return { signal_type: null, reason: 'No clear bias - EMA alignment not met' };
+    return { signal_type: null, reason: 'No EMA alignment' };
   }
   
-  // Step 2: OPTIMIZED Confirmation - Require Volume, ADX, and Momentum
-  // Stricter filters for better win rate
-  const momentumConfirmed = Math.abs(momentumScore) >= config.momentum_threshold;
-  const adxConfirmed = currentADX >= config.adx_threshold; // OPTIMIZED: Require ADX >= 25
-  const volumeConfirmedStep2 = volumeRatio >= config.volume_multiplier; // OPTIMIZED: Require volume >= 1.5
+  // STEP 2: RSI Direction Check (ONLY BLOCKING CHECK)
+  // Just check RSI is in the right direction - not overbought for longs, not oversold for shorts
+  const rsiOk = bias === 'LONG' ? currentRSI < 70 : currentRSI > 30;
   
-  console.log(`[ATH-GUARD] 📈 Step 2 - Optimized Confirmation:`, {
-    momentum_confirmed: momentumConfirmed ? '✅ PASS' : '❌ FAIL',
-    adx_confirmed: adxConfirmed ? '✅ PASS' : '❌ FAIL',
-    volume_confirmed: volumeConfirmedStep2 ? '✅ PASS' : '❌ FAIL',
-    currentVolume: currentVolume.toFixed(0),
-    avgVolume: avgVolume.toFixed(0),
-    ratio: `${volumeRatio.toFixed(2)}x (need ${config.volume_multiplier}x)`,
-    adx_value: `${currentADX.toFixed(2)} (need ${config.adx_threshold})`,
-    momentum_score: momentumScore.toFixed(2)
-  });
+  console.log(`[ATH-GUARD] 📊 Step 2 - RSI: ${currentRSI.toFixed(1)} ${rsiOk ? '✅' : '❌'}`);
   
-  if (!momentumConfirmed || !adxConfirmed || !volumeConfirmedStep2) {
-    return { signal_type: null, reason: `Confirmation failed: Momentum=${momentumConfirmed}, ADX=${adxConfirmed}, Volume=${volumeConfirmedStep2}` };
+  if (!rsiOk) {
+    return { signal_type: null, reason: `RSI extreme: ${currentRSI.toFixed(1)}` };
   }
   
-  // Step 3: OPTIMIZED Momentum Confirmation (RSI + MACD) with stricter RSI threshold
-  const hasMomentum = checkMomentum(macd, rsi, bias, config);
+  // ALL FILTERS PASS - Now calculate confidence
+  let confidence = 100;
   
-  const idx = macd.macd.length - 1;
-  const currentMACD = macd.macd[idx];
-  const currentSignal = macd.signal[idx];
-  const currentHistogram = macd.histogram[idx];
-  
-  // OPTIMIZED: Stricter RSI check for LONG (require RSI < threshold, not just < 50)
-  const rsiCheck = bias === 'LONG' 
-    ? currentRSI < config.rsi_threshold  // OPTIMIZED: Require RSI < 80 (not overbought)
-    : currentRSI > (100 - config.rsi_threshold); // OPTIMIZED: Require RSI > 20 (not oversold)
-  
-  console.log(`[ATH-GUARD] ⚡ Step 3 - Optimized Momentum Confirmation: ${hasMomentum && rsiCheck ? '✅ PASS' : '❌ FAIL'}`, {
-    bias,
-    rsi: `${currentRSI.toFixed(2)} (need ${bias === 'LONG' ? `<${config.rsi_threshold}` : `>${100 - config.rsi_threshold}`})`,
-    rsi_check: rsiCheck ? '✅ PASS' : '❌ FAIL',
-    macd: {
-      histogram: currentHistogram.toFixed(4),
-      condition: bias === 'LONG' ? '>0' : '<0'
-    }
-  });
-  
-  if (!hasMomentum || !rsiCheck) {
-    return { signal_type: null, reason: `Momentum not aligned: MACD=${hasMomentum}, RSI=${rsiCheck}` };
+  // ADX modifier (-20 if weak trend)
+  if (config.adx_threshold && currentADX < config.adx_threshold) {
+    console.log(`[ATH-GUARD] ⚠️ Weak ADX: ${currentADX.toFixed(1)} (-15 confidence)`);
+    confidence -= 15;
   }
   
-  // All conditions met - generate signal
-  console.log('[ATH-GUARD] ✅ ALL CONDITIONS PASSED!');
+  // Volume modifier (-15 if low volume)
+  if (volumeRatio < 1.2) {
+    console.log(`[ATH-GUARD] ⚠️ Low volume: ${volumeRatio.toFixed(2)}x (-15 confidence)`);
+    confidence -= 15;
+  }
   
-  if (!positionOpen && bias === 'LONG') {
-    // Enhanced signal generation with new parameters
+  // MACD modifier (-10 if not aligned)
+  const macdAligned = bias === 'LONG' ? currentHistogram > 0 : currentHistogram < 0;
+  if (!macdAligned) {
+    console.log(`[ATH-GUARD] ⚠️ MACD not aligned (-10 confidence)`);
+    confidence -= 10;
+  }
+  
+  // Block entry only if confidence < 30%
+  if (confidence < 30) {
+    console.log(`[ATH-GUARD] ❌ Confidence too low: ${confidence}%`);
+    return { signal_type: null, reason: `Low confidence: ${confidence}%` };
+  }
+  
+  console.log(`[ATH-GUARD] ✅ Signal confidence: ${confidence}%`);
+  
+  // Generate signal
+  if (bias === 'LONG') {
     const stopLoss = currentPrice - (config.atr_sl_multiplier * currentATR);
     const takeProfit1 = currentPrice + (config.atr_tp1_multiplier * currentATR);
     const takeProfit2 = currentPrice + (config.atr_tp2_multiplier * currentATR);
     
-    // Calculate confidence score
-    const confidence = calculateSignalConfidence(
-      currentRSI, 
-      currentADX, 
-      momentumScore, 
-      bollingerPosition,
-      volumeConfirmed, // OPTIMIZED: Use strict volume confirmation (>= 1.5x)
-      athDistance
-    );
-    
-    console.log('[ATH-GUARD] 🚀 GENERATING ENHANCED BUY SIGNAL', {
+    console.log('[ATH-GUARD] 🚀 BUY SIGNAL', {
       entry: currentPrice.toFixed(2),
       stopLoss: stopLoss.toFixed(2),
       tp1: takeProfit1.toFixed(2),
       tp2: takeProfit2.toFixed(2),
-      atr: currentATR.toFixed(2),
-      ratio: `1:2 (SL=${config.atr_sl_multiplier}x, TP2=${config.atr_tp2_multiplier}x ATR)`,
-      confidence: `${confidence.toFixed(1)}%`,
-      adx: currentADX.toFixed(2),
-      momentum: momentumScore.toFixed(2),
-      bollinger: bollingerPosition.toFixed(3)
+      confidence: `${confidence}%`
     });
     
     return {
       signal_type: 'BUY',
-      reason: 'ATH Guard LONG: Simplified 3-step (Bias + Momentum + Pullback)',
+      reason: `ATH Guard LONG (EMA+RSI, conf:${confidence}%)`,
       stop_loss: stopLoss,
       take_profit_1: takeProfit1,
       take_profit_2: takeProfit2,
       adx: currentADX,
-      bollinger_position: bollingerPosition,
-      momentum_score: momentumScore,
-      support_resistance_level: supportResistance.resistance,
       confidence: confidence,
       time_to_expire: config.max_position_time
     };
   }
   
-  if (!positionOpen && bias === 'SHORT') {
-    // Enhanced signal generation with new parameters
+  if (bias === 'SHORT') {
     const stopLoss = currentPrice + (config.atr_sl_multiplier * currentATR);
     const takeProfit1 = currentPrice - (config.atr_tp1_multiplier * currentATR);
     const takeProfit2 = currentPrice - (config.atr_tp2_multiplier * currentATR);
     
-    // Calculate confidence score
-    const confidence = calculateSignalConfidence(
-      currentRSI, 
-      currentADX, 
-      momentumScore, 
-      bollingerPosition,
-      volumeConfirmed, // OPTIMIZED: Use strict volume confirmation (>= 1.5x)
-      athDistance
-    );
-    
-    console.log('[ATH-GUARD] 🚀 GENERATING ENHANCED SELL SIGNAL', {
+    console.log('[ATH-GUARD] 🚀 SELL SIGNAL', {
       entry: currentPrice.toFixed(2),
       stopLoss: stopLoss.toFixed(2),
       tp1: takeProfit1.toFixed(2),
       tp2: takeProfit2.toFixed(2),
-      atr: currentATR.toFixed(2),
-      ratio: `1:2 (SL=${config.atr_sl_multiplier}x, TP2=${config.atr_tp2_multiplier}x ATR)`,
-      confidence: `${confidence.toFixed(1)}%`,
-      adx: currentADX.toFixed(2),
-      momentum: momentumScore.toFixed(2),
-      bollinger: bollingerPosition.toFixed(3)
+      confidence: `${confidence}%`
     });
     
     return {
       signal_type: 'SELL',
-      reason: 'ATH Guard SHORT: Enhanced 4-step (Bias + Volume + ADX + Momentum)',
+      reason: `ATH Guard SHORT (EMA+RSI, conf:${confidence}%)`,
       stop_loss: stopLoss,
       take_profit_1: takeProfit1,
       take_profit_2: takeProfit2,
       adx: currentADX,
-      bollinger_position: bollingerPosition,
-      momentum_score: momentumScore,
-      support_resistance_level: supportResistance.support,
       confidence: confidence,
       time_to_expire: config.max_position_time
     };
   }
   
-  // Exit logic: If position open and price closes below EMA50 (long) or above EMA50 (short)
-  if (positionOpen) {
-    const positionType = currentPrice > currentEMA50 ? 'LONG' : 'SHORT';
-    
-    console.log('[ATH-GUARD] 🔄 Checking exit conditions for open position', {
-      positionType,
-      currentPrice: currentPrice.toFixed(2),
-      ema50: currentEMA50.toFixed(2)
-    });
-    
-    if (positionType === 'LONG' && currentPrice < currentEMA50) {
-      console.log('[ATH-GUARD] 🛑 EXIT LONG: Price closed below EMA50');
-      return {
-        signal_type: 'SELL',
-        reason: 'Exit LONG: Price closed below EMA50',
-      };
-    }
-    
-    if (positionType === 'SHORT' && currentPrice > currentEMA50) {
-      console.log('[ATH-GUARD] 🛑 EXIT SHORT: Price closed above EMA50');
-      return {
-        signal_type: 'BUY',
-        reason: 'Exit SHORT: Price closed above EMA50',
-      };
-    }
-  }
-  
-  console.log('[ATH-GUARD] ⏸️ No signal generated (position already open or bias not aligned)');
   return { signal_type: null, reason: 'No signal' };
 }
 
-// Default configuration for ATH Guard strategy (1m timeframe)
+// Default configuration for SIMPLIFIED ATH Guard strategy
 export const defaultATHGuardConfig: ATHGuardConfig = {
-  // Original parameters
-  ema_slope_threshold: 0.15,
-  pullback_tolerance: 0.25,  // OPTIMIZED: Increased from 0.15 to 0.25 for pullback confirmation
-  volume_multiplier: 1.5,   // OPTIMIZED: Stricter volume (1.5) for strong volume confirmation
+  // Core parameters (used)
+  ema_slope_threshold: 0.05,  // Lower threshold for easier alignment
+  volume_multiplier: 1.2,      // Moderate volume requirement
+  atr_sl_multiplier: 1.5,
+  atr_tp1_multiplier: 2.0,
+  atr_tp2_multiplier: 3.0,
+  rsi_threshold: 70,           // Not overbought for longs, not oversold for shorts
+  
+  // Optional modifiers (used for confidence scoring)
+  adx_threshold: 20,           // Optional - reduces confidence if weak
+  
+  // Unused legacy parameters (kept for compatibility)
+  pullback_tolerance: 0.15,
   stoch_oversold: 25,
   stoch_overbought: 75,
-  atr_sl_multiplier: 1.0,   // OPTIMIZED: Tighter stop loss for 1m scalping
-  atr_tp1_multiplier: 0.6,  // OPTIMIZED: Adjusted take profit 1
-  atr_tp2_multiplier: 1.2,  // OPTIMIZED: Adjusted take profit 2
   ath_safety_distance: 0.2,
-  rsi_threshold: 80,        // OPTIMIZED: Stricter RSI (80) for overbought confirmation
-  
-  // New enhanced parameters
-  adx_threshold: 25,        // OPTIMIZED: Higher ADX (25) for stronger trend
   bollinger_period: 20,
   bollinger_std: 2.0,
   trailing_stop_percent: 0.5,
-  max_position_time: 45,    // OPTIMIZED: Shorter position time (45 min) for 1m scalping
+  max_position_time: 120,      // 2 hours max position time
   min_volume_spike: 1.2,
   momentum_threshold: 15,
   support_resistance_lookback: 20
