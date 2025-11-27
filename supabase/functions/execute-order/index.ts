@@ -132,7 +132,7 @@ Deno.serve(async (req) => {
       ? 'https://api-testnet.bybit.com'
       : 'https://api.bybit.com';
 
-    console.log(`[EXECUTE-ORDER] Executing ${side} order for ${symbol} at ${price} (${use_testnet ? 'TESTNET' : 'MAINNET'})`);
+    console.log(`[EXECUTE-ORDER] Executing ${side} order for ${symbol} at signal price ${price} (${use_testnet ? 'TESTNET' : 'MAINNET'})`);
 
     // Get exchange constraints
     const constraints = getBybitConstraints(symbol);
@@ -267,24 +267,71 @@ Deno.serve(async (req) => {
     }
 
     const orderData = orderResult.result;
-    console.log(`[EXECUTE-ORDER] Order created successfully: ${orderData.orderId}`);
+    const orderId = orderData.orderId;
+    console.log(`[EXECUTE-ORDER] Order created successfully: ${orderId}`);
 
-    // Update strategy live state
+    // Fetch actual execution price from order details
+    // Wait a bit for order to be filled (market order should be instant)
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    let executionPrice = roundedPrice; // Default to signal price
+    
+    try {
+      const orderDetailTimestamp = Date.now();
+      const orderDetailQuery = `category=linear&orderId=${orderId}`;
+      const orderDetailSignature = await crypto.subtle.sign(
+        'HMAC',
+        key,
+        encoder.encode(orderDetailTimestamp + apiKey + recvWindow + orderDetailQuery)
+      );
+      const orderDetailSignatureHex = Array.from(new Uint8Array(orderDetailSignature))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+
+      const orderDetailResponse = await fetch(
+        `${baseUrl}/v5/order/realtime?${orderDetailQuery}`,
+        {
+          headers: {
+            'X-BAPI-API-KEY': apiKey,
+            'X-BAPI-TIMESTAMP': orderDetailTimestamp.toString(),
+            'X-BAPI-SIGN': orderDetailSignatureHex,
+            'X-BAPI-RECV-WINDOW': recvWindow,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      if (orderDetailResponse.ok) {
+        const orderDetailData = await orderDetailResponse.json();
+        if (orderDetailData.retCode === 0 && orderDetailData.result?.list?.[0]) {
+          const filledOrder = orderDetailData.result.list[0];
+          const avgPrice = parseFloat(filledOrder.avgPrice || '0');
+          if (avgPrice > 0) {
+            executionPrice = avgPrice;
+            console.log(`[EXECUTE-ORDER] Actual execution price: ${executionPrice} (signal was ${roundedPrice})`);
+          }
+        }
+      }
+    } catch (detailError) {
+      console.warn(`[EXECUTE-ORDER] Could not fetch execution price, using signal price:`, detailError);
+    }
+
+    // Update strategy live state with actual execution price
     await supabaseClient
       .from('strategy_live_states')
       .upsert({
         strategy_id: strategy_id,
         user_id: user.id,
         position_open: true,
-        entry_price: roundedPrice,
+        entry_price: executionPrice, // Use actual execution price
         entry_time: new Date().toISOString(),
         updated_at: new Date().toISOString()
       }, {
         onConflict: 'strategy_id'
       });
 
-    // Store order execution record
-    const { error: insertError } = await supabaseClient
+    // Store order execution record with both signal and execution prices
+    const { error: insertError } = await supabaseServiceClient
       .from('order_executions')
       .insert({
         signal_id: signal_id,
@@ -292,9 +339,10 @@ Deno.serve(async (req) => {
         user_id: user.id,
         symbol: symbol,
         side: side,
-        order_id: orderData.orderId,
+        order_id: orderId,
         quantity: roundedQuantity,
-        price: roundedPrice,
+        signal_price: roundedPrice,
+        execution_price: executionPrice,
         stop_loss: stop_loss,
         take_profit: take_profit,
         status: 'filled',
@@ -311,11 +359,12 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        order_id: orderData.orderId,
+        order_id: orderId,
         symbol: symbol,
         side: side,
         quantity: roundedQuantity,
-        price: roundedPrice,
+        signal_price: roundedPrice,
+        execution_price: executionPrice,
         notional: notional,
         message: `Order executed successfully on ${use_testnet ? 'TESTNET' : 'MAINNET'}`,
       }),
@@ -337,4 +386,3 @@ Deno.serve(async (req) => {
     );
   }
 });
-
