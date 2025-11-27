@@ -133,10 +133,11 @@ Deno.serve(async (req) => {
       }
 
       const positionSize = parseFloat(position.size);
-      const side = position.side === 'Buy' ? 'Sell' : 'Buy'; // Opposite side to close
+      const closeSide = position.side === 'Buy' ? 'Sell' : 'Buy'; // Opposite side to close
+      const isLongPosition = position.side === 'Buy'; // Original position direction
       const quantity = Math.abs(positionSize);
 
-      console.log(`Closing ${position.symbol}: ${side} ${quantity}`);
+      console.log(`Closing ${position.symbol}: ${closeSide} ${quantity} (was ${position.side})`);
 
       // Place market order to close position via Bybit
       const orderTimestamp = Date.now();
@@ -144,7 +145,7 @@ Deno.serve(async (req) => {
       const orderBody = JSON.stringify({
         category: 'linear',
         symbol: position.symbol,
-        side: side,
+        side: closeSide,
         orderType: 'Market',
         qty: quantity.toFixed(3),
         reduceOnly: true
@@ -182,7 +183,7 @@ Deno.serve(async (req) => {
       const orderData = orderResult.result;
       closedPositions.push({
         symbol: position.symbol,
-        side: side,
+        side: closeSide,
         quantity: quantity,
         orderId: orderData.orderId,
       });
@@ -190,19 +191,13 @@ Deno.serve(async (req) => {
       // Update strategy live state if it exists
       const { data: liveState } = await supabaseClient
         .from('strategy_live_states')
-        .select('id, strategy_id')
+        .select('id, strategy_id, entry_price')
         .eq('user_id', user.id)
         .eq('position_open', true)
         .limit(1)
         .single();
 
       if (liveState) {
-        const { data: entryPriceData } = await supabaseClient
-          .from('strategy_live_states')
-          .select('entry_price')
-          .eq('id', liveState.id)
-          .single();
-        
         await supabaseClient
           .from('strategy_live_states')
           .update({
@@ -214,10 +209,34 @@ Deno.serve(async (req) => {
 
         console.log(`Updated strategy live state for ${position.symbol}`);
         
+        // Calculate P&L correctly based on position direction
+        const entryPrice = parseFloat(liveState.entry_price || position.avgPrice || '0');
+        const exitPrice = parseFloat(position.markPrice);
+        
+        // FIX: Correct P&L calculation for LONG vs SHORT positions
+        // LONG: profit when exitPrice > entryPrice
+        // SHORT: profit when exitPrice < entryPrice
+        let pnlPercent = 0;
+        let pnlAmount = 0;
+        
+        if (entryPrice > 0) {
+          if (isLongPosition) {
+            // LONG position: (exit - entry) / entry
+            pnlPercent = ((exitPrice - entryPrice) / entryPrice) * 100;
+            pnlAmount = (exitPrice - entryPrice) * quantity;
+          } else {
+            // SHORT position: (entry - exit) / entry
+            pnlPercent = ((entryPrice - exitPrice) / entryPrice) * 100;
+            pnlAmount = (entryPrice - exitPrice) * quantity;
+          }
+        }
+        
+        console.log(`[CLOSE-POSITION] P&L calculation: ${isLongPosition ? 'LONG' : 'SHORT'} position, entry=${entryPrice}, exit=${exitPrice}, pnl%=${pnlPercent.toFixed(2)}%`);
+        
         // Send "Position Closed" Telegram notification
         const { data: userSettingsData } = await supabaseClient
           .from('user_settings')
-          .select('telegram_enabled, telegram_bot_token, telegram_chat_id')
+          .select('telegram_enabled, telegram_bot_token, telegram_chat_id, trading_mode')
           .eq('user_id', user.id)
           .single();
         
@@ -229,29 +248,21 @@ Deno.serve(async (req) => {
         
         if (userSettingsData?.telegram_enabled && userSettingsData.telegram_bot_token && userSettingsData.telegram_chat_id) {
           try {
-            const pnlPercent = entryPriceData?.entry_price 
-              ? (((parseFloat(position.markPrice) - parseFloat(entryPriceData.entry_price)) / parseFloat(entryPriceData.entry_price)) * 100)
-              : 0;
-            
-            const pnlAmount = entryPriceData?.entry_price 
-              ? parseFloat(position.markPrice) - parseFloat(entryPriceData.entry_price)
-              : 0;
-
             // Create position event with enhanced signaling
             const positionEvent: PositionEvent = {
               id: crypto.randomUUID(),
               signalId: `close_${Date.now()}`,
-              originalSignalId: (entryPriceData as any)?.signal_id, // Reference to original signal
+              originalSignalId: undefined,
               eventType: 'closed',
               symbol: position.symbol,
-              entryPrice: parseFloat(entryPriceData?.entry_price || '0'),
-              exitPrice: parseFloat(position.markPrice),
-              positionSize: parseFloat(position.positionAmt),
+              entryPrice: entryPrice,
+              exitPrice: exitPrice,
+              positionSize: quantity,
               pnlPercent: pnlPercent,
               pnlAmount: pnlAmount,
               reason: 'Manual Close',
               timestamp: Date.now(),
-              tradingMode: (userSettingsData as any).trading_mode || 'mainnet_only'
+              tradingMode: userSettingsData.trading_mode || 'mainnet_only'
             };
 
             // Send enhanced Telegram notification
@@ -261,8 +272,6 @@ Deno.serve(async (req) => {
             await supabaseClient
               .from('position_events')
               .insert({
-                signal_id: positionEvent.signalId,
-                original_signal_id: positionEvent.originalSignalId,
                 user_id: user.id,
                 strategy_id: strategyData?.id,
                 event_type: positionEvent.eventType,
@@ -273,15 +282,29 @@ Deno.serve(async (req) => {
                 pnl_percent: positionEvent.pnlPercent,
                 pnl_amount: positionEvent.pnlAmount,
                 reason: positionEvent.reason,
-                timestamp: new Date(positionEvent.timestamp).toISOString(),
-                trading_mode: positionEvent.tradingMode
+                timestamp: new Date(positionEvent.timestamp).toISOString()
               });
             
-            console.log(`[ENHANCED-CLOSE] Sent enhanced position closed notification for ${position.symbol}`);
+            console.log(`[ENHANCED-CLOSE] Sent enhanced position closed notification for ${position.symbol}, P&L: ${pnlPercent.toFixed(2)}%`);
           } catch (telegramError) {
             console.error('[ENHANCED-CLOSE] Failed to send enhanced Telegram notification:', telegramError);
           }
         }
+
+        // Update order_executions if exists
+        await supabaseServiceClient
+          .from('order_executions')
+          .update({
+            closed_at: new Date().toISOString(),
+            exit_price: exitPrice,
+            pnl_percent: pnlPercent,
+            pnl_amount: pnlAmount,
+            close_reason: 'Manual Close',
+            status: 'closed'
+          })
+          .eq('strategy_id', liveState.strategy_id)
+          .eq('user_id', user.id)
+          .eq('status', 'filled');
       }
     }
 

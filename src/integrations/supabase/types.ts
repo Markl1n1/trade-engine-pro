@@ -124,6 +124,93 @@ export type Database = {
         }
         Relationships: []
       }
+      order_executions: {
+        Row: {
+          close_reason: string | null
+          closed_at: string | null
+          created_at: string
+          exchange: string
+          execution_price: number | null
+          exit_price: number | null
+          id: string
+          order_id: string
+          pnl_amount: number | null
+          pnl_percent: number | null
+          quantity: number
+          side: string
+          signal_id: string
+          signal_price: number
+          status: string
+          stop_loss: number | null
+          strategy_id: string | null
+          symbol: string
+          take_profit: number | null
+          testnet: boolean
+          user_id: string
+        }
+        Insert: {
+          close_reason?: string | null
+          closed_at?: string | null
+          created_at?: string
+          exchange?: string
+          execution_price?: number | null
+          exit_price?: number | null
+          id?: string
+          order_id: string
+          pnl_amount?: number | null
+          pnl_percent?: number | null
+          quantity: number
+          side: string
+          signal_id: string
+          signal_price: number
+          status?: string
+          stop_loss?: number | null
+          strategy_id?: string | null
+          symbol: string
+          take_profit?: number | null
+          testnet?: boolean
+          user_id: string
+        }
+        Update: {
+          close_reason?: string | null
+          closed_at?: string | null
+          created_at?: string
+          exchange?: string
+          execution_price?: number | null
+          exit_price?: number | null
+          id?: string
+          order_id?: string
+          pnl_amount?: number | null
+          pnl_percent?: number | null
+          quantity?: number
+          side?: string
+          signal_id?: string
+          signal_price?: number
+          status?: string
+          stop_loss?: number | null
+          strategy_id?: string | null
+          symbol?: string
+          take_profit?: number | null
+          testnet?: boolean
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_executions_strategy_id_fkey"
+            columns: ["strategy_id"]
+            isOneToOne: false
+            referencedRelation: "strategies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_executions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       position_events: {
         Row: {
           created_at: string | null
@@ -550,6 +637,7 @@ export type Database = {
           id: string
           last_cross_direction: string | null
           last_processed_candle_time: number | null
+          last_signal_candle_time: number | null
           last_signal_time: string | null
           position_open: boolean
           range_high: number | null
@@ -566,6 +654,7 @@ export type Database = {
           id?: string
           last_cross_direction?: string | null
           last_processed_candle_time?: number | null
+          last_signal_candle_time?: number | null
           last_signal_time?: string | null
           position_open?: boolean
           range_high?: number | null
@@ -582,6 +671,7 @@ export type Database = {
           id?: string
           last_cross_direction?: string | null
           last_processed_candle_time?: number | null
+          last_signal_candle_time?: number | null
           last_signal_time?: string | null
           position_open?: boolean
           range_high?: number | null

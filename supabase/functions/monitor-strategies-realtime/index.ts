@@ -7,6 +7,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Signal cooldown: 5 minutes per strategy
+const SIGNAL_COOLDOWN_MS = 5 * 60 * 1000;
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -70,11 +73,34 @@ serve(async (req) => {
       );
     }
 
+    // Get strategy live states for deduplication
+    const { data: liveStates } = await supabase
+      .from('strategy_live_states')
+      .select('strategy_id, last_signal_time, last_signal_candle_time')
+      .eq('user_id', user.id);
+
+    const liveStateMap = new Map(
+      (liveStates || []).map(s => [s.strategy_id, s])
+    );
+
     // Evaluate strategies directly without calling instant-signals
     const generatedSignals = [];
+    const now = Date.now();
     
     for (const strategy of strategies) {
       try {
+        // Check cooldown: skip if signal was generated recently
+        const liveState = liveStateMap.get(strategy.id);
+        if (liveState?.last_signal_time) {
+          const lastSignalTime = new Date(liveState.last_signal_time).getTime();
+          const timeSinceLastSignal = now - lastSignalTime;
+          
+          if (timeSinceLastSignal < SIGNAL_COOLDOWN_MS) {
+            console.log(`[REALTIME-MONITOR] Skipping ${strategy.name} - cooldown active (${Math.round((SIGNAL_COOLDOWN_MS - timeSinceLastSignal) / 1000)}s remaining)`);
+            continue;
+          }
+        }
+
         console.log(`[REALTIME-MONITOR] Evaluating strategy: ${strategy.name} (${strategy.id})`);
         
         // Fetch market data for this strategy
@@ -98,6 +124,14 @@ serve(async (req) => {
 
         // Sort candles by timestamp ascending for strategy evaluation
         const sortedCandles = candles.sort((a, b) => a.open_time - b.open_time);
+        const lastCandle = sortedCandles[sortedCandles.length - 1];
+        const currentCandleTime = lastCandle.close_time;
+
+        // Check if we already processed this candle
+        if (liveState?.last_signal_candle_time && liveState.last_signal_candle_time >= currentCandleTime) {
+          console.log(`[REALTIME-MONITOR] Skipping ${strategy.name} - candle ${currentCandleTime} already processed`);
+          continue;
+        }
         
         // Convert database candles to strategy format
         const formattedCandles = sortedCandles.map(c => ({
@@ -256,6 +290,20 @@ serve(async (req) => {
         // Check if signal is valid and actionable
         if (signal && signal.signal_type && signal.signal_type !== null) {
           console.log(`[REALTIME-MONITOR] Signal generated for ${strategy.name}:`, signal);
+          
+          // Update live state with last signal time to prevent duplicates
+          await supabase
+            .from('strategy_live_states')
+            .upsert({
+              strategy_id: strategy.id,
+              user_id: user.id,
+              last_signal_time: new Date().toISOString(),
+              last_signal_candle_time: currentCandleTime,
+              updated_at: new Date().toISOString()
+            }, {
+              onConflict: 'strategy_id'
+            });
+
           generatedSignals.push({
             strategy_id: strategy.id,
             strategy_name: strategy.name,
@@ -265,7 +313,8 @@ serve(async (req) => {
             reason: signal.reason || 'Strategy conditions met',
             confidence: signal.confidence,
             stop_loss: (signal as any).stop_loss,
-            take_profit: (signal as any).take_profit
+            take_profit: (signal as any).take_profit,
+            candle_close_time: currentCandleTime
           });
         } else {
           console.log(`[REALTIME-MONITOR] No signal for ${strategy.name}: ${signal?.reason || 'No reason provided'}`);
