@@ -461,13 +461,13 @@ function checkATHSafety(
   return true;
 }
 
-// SIMPLIFIED Main evaluation function - EMA alignment + RSI, all else confidence modifiers
+// IMPROVED Main evaluation function with global trend filter + volatility check
 export function evaluateATHGuardStrategy(
   candles: Candle[],
   config: ATHGuardConfig,
   positionOpen: boolean
 ): ATHGuardSignal {
-  console.log('[ATH-GUARD] 🔍 Starting SIMPLIFIED evaluation...');
+  console.log('[ATH-GUARD] 🔍 Starting IMPROVED evaluation with global trend filter...');
   
   if (candles.length < 200) {
     console.log(`[ATH-GUARD] ❌ Insufficient data: ${candles.length} candles`);
@@ -480,9 +480,10 @@ export function evaluateATHGuardStrategy(
   
   const closes = candles.map(c => c.close);
   
-  // Calculate only essential indicators
+  // Calculate essential indicators
   const ema50 = calculateEMA(closes, 50);
   const ema150 = calculateEMA(closes, 150);
+  const ema200 = calculateEMA(closes, 200); // GLOBAL TREND FILTER
   const rsi = calculateRSI(closes, 14);
   const atr = calculateATR(candles, 14);
   
@@ -493,6 +494,7 @@ export function evaluateATHGuardStrategy(
   const currentPrice = candles[candles.length - 1].close;
   const currentEMA50 = ema50[ema50.length - 1];
   const currentEMA150 = ema150[ema150.length - 1];
+  const currentEMA200 = ema200[ema200.length - 1];
   const currentRSI = rsi[rsi.length - 1];
   const currentATR = atr[atr.length - 1];
   const currentADX = adx[adx.length - 1];
@@ -506,17 +508,33 @@ export function evaluateATHGuardStrategy(
   const avgVolume = last20Volumes.reduce((a, b) => a + b, 0) / 20;
   const volumeRatio = currentVolume / avgVolume;
   
+  // Calculate volatility ratio for dynamic filter
+  const last20ATR = atr.slice(-20);
+  const avgATR = last20ATR.reduce((a, b) => a + b, 0) / 20;
+  const volatilityRatio = currentATR / avgATR;
+  
+  // GLOBAL TREND from EMA 200
+  const globalTrend = currentPrice > currentEMA200 ? 'UP' : 'DOWN';
+  
   console.log(`[ATH-GUARD] 📊 Indicators:`, {
     price: currentPrice.toFixed(2),
     ema50: currentEMA50.toFixed(2),
     ema150: currentEMA150.toFixed(2),
+    ema200: currentEMA200.toFixed(2),
+    globalTrend,
     rsi: currentRSI.toFixed(2),
     adx: currentADX.toFixed(2),
-    volumeRatio: volumeRatio.toFixed(2)
+    volumeRatio: volumeRatio.toFixed(2),
+    volatilityRatio: volatilityRatio.toFixed(2)
   });
   
-  // STEP 1: EMA Alignment (ONLY BLOCKING CHECK)
-  // Determine bias from EMA alignment
+  // VOLATILITY FILTER: Skip if market too volatile (> 2x average ATR)
+  if (volatilityRatio > 2.0) {
+    console.log(`[ATH-GUARD] ⚠️ Market too volatile: ${volatilityRatio.toFixed(2)}x average ATR`);
+    return { signal_type: null, reason: `High volatility: ${volatilityRatio.toFixed(2)}x ATR` };
+  }
+  
+  // STEP 1: EMA Alignment - determine bias
   let bias: 'LONG' | 'SHORT' | 'NEUTRAL' = 'NEUTRAL';
   
   if (currentPrice > currentEMA150 && currentEMA50 > currentEMA150 && ema150Slope > 0) {
@@ -531,8 +549,7 @@ export function evaluateATHGuardStrategy(
     return { signal_type: null, reason: 'No EMA alignment' };
   }
   
-  // STEP 2: RSI Direction Check (ONLY BLOCKING CHECK)
-  // Just check RSI is in the right direction - not overbought for longs, not oversold for shorts
+  // STEP 2: RSI Direction Check
   const rsiOk = bias === 'LONG' ? currentRSI < 70 : currentRSI > 30;
   
   console.log(`[ATH-GUARD] 📊 Step 2 - RSI: ${currentRSI.toFixed(1)} ${rsiOk ? '✅' : '❌'}`);
@@ -541,10 +558,17 @@ export function evaluateATHGuardStrategy(
     return { signal_type: null, reason: `RSI extreme: ${currentRSI.toFixed(1)}` };
   }
   
-  // ALL FILTERS PASS - Now calculate confidence
+  // ALL BLOCKING CHECKS PASS - Now calculate confidence
   let confidence = 100;
   
-  // ADX modifier (-20 if weak trend)
+  // GLOBAL TREND modifier (-30 if against global trend)
+  const trendAligned = (bias === 'LONG' && globalTrend === 'UP') || (bias === 'SHORT' && globalTrend === 'DOWN');
+  if (!trendAligned) {
+    console.log(`[ATH-GUARD] ⚠️ Against global trend (${globalTrend}) (-30 confidence)`);
+    confidence -= 30;
+  }
+  
+  // ADX modifier (-15 if weak trend)
   if (config.adx_threshold && currentADX < config.adx_threshold) {
     console.log(`[ATH-GUARD] ⚠️ Weak ADX: ${currentADX.toFixed(1)} (-15 confidence)`);
     confidence -= 15;
@@ -560,6 +584,12 @@ export function evaluateATHGuardStrategy(
   const macdAligned = bias === 'LONG' ? currentHistogram > 0 : currentHistogram < 0;
   if (!macdAligned) {
     console.log(`[ATH-GUARD] ⚠️ MACD not aligned (-10 confidence)`);
+    confidence -= 10;
+  }
+  
+  // Volatility modifier (-10 if elevated volatility)
+  if (volatilityRatio > 1.5) {
+    console.log(`[ATH-GUARD] ⚠️ Elevated volatility: ${volatilityRatio.toFixed(2)}x (-10 confidence)`);
     confidence -= 10;
   }
   
@@ -582,12 +612,13 @@ export function evaluateATHGuardStrategy(
       stopLoss: stopLoss.toFixed(2),
       tp1: takeProfit1.toFixed(2),
       tp2: takeProfit2.toFixed(2),
-      confidence: `${confidence}%`
+      confidence: `${confidence}%`,
+      globalTrend
     });
     
     return {
       signal_type: 'BUY',
-      reason: `ATH Guard LONG (EMA+RSI, conf:${confidence}%)`,
+      reason: `ATH Guard LONG (EMA+RSI+Trend:${globalTrend}, conf:${confidence}%)`,
       stop_loss: stopLoss,
       take_profit_1: takeProfit1,
       take_profit_2: takeProfit2,
@@ -607,12 +638,13 @@ export function evaluateATHGuardStrategy(
       stopLoss: stopLoss.toFixed(2),
       tp1: takeProfit1.toFixed(2),
       tp2: takeProfit2.toFixed(2),
-      confidence: `${confidence}%`
+      confidence: `${confidence}%`,
+      globalTrend
     });
     
     return {
       signal_type: 'SELL',
-      reason: `ATH Guard SHORT (EMA+RSI, conf:${confidence}%)`,
+      reason: `ATH Guard SHORT (EMA+RSI+Trend:${globalTrend}, conf:${confidence}%)`,
       stop_loss: stopLoss,
       take_profit_1: takeProfit1,
       take_profit_2: takeProfit2,

@@ -360,11 +360,11 @@ export function evaluate4hReentry(
   // Calculate enhanced metrics
   const momentumScore = calculateMomentumScore(candles, rsi);
   
-  // Calculate volume confirmation
+  // Calculate volume confirmation (used for logging)
   const currentVolume = currentCandle.volume;
   const avgVolume = candles.slice(-21, -1).reduce((sum, c) => sum + c.volume, 0) / 20;
-  const volumeThreshold = strategy.volume_multiplier || 1.1;
-  const volumeConfirmed = currentVolume >= avgVolume * volumeThreshold;
+  const volThresholdCheck = strategy.volume_multiplier || 1.1;
+  const volumeConfirmed = currentVolume >= avgVolume * volThresholdCheck;
   
   // Calculate 4h EMA for trend filtering
   const ema20 = calculateEMA(closes, 20);
@@ -495,6 +495,7 @@ export function evaluate4hReentry(
   }
 
   // Step 3: Check for re-entry signals (no open position)
+  // IMPROVED: Proximity-based entry instead of strict retest + confidence modifiers
   const C_prev = previousCandle.close;
   const C_curr = currentCandle.close;
   const H_prev = previousCandle.high;
@@ -505,66 +506,105 @@ export function evaluate4hReentry(
   console.log(`  - H_prev=${H_prev.toFixed(2)}, L_prev=${L_prev.toFixed(2)}`);
   console.log(`  - Range: H_4h=${rangeHigh.toFixed(2)}, L_4h=${rangeLow.toFixed(2)}`);
 
-  // LONG setup: C_{t-1} < L_4h AND C_t >= L_4h
-  if (C_prev < rangeLow && C_curr >= rangeLow) {
-    // Enhanced confirmation filters with trend - further optimized to allow more entries
-    // Get thresholds from strategy config (passed via getStrategyBacktestConfig)
-    const config = strategy || {};
-    const adxThreshold = config.adx_threshold || 18;
-    const rsiOversold = config.rsi_oversold || 20;
-    const rsiOverbought = config.rsi_overbought || 80;
-    const momentumThreshold = config.momentum_threshold || 8;
-    const volumeThreshold = config.volume_threshold || 1.1;
+  // Get thresholds from strategy config
+  const config = strategy || {};
+  const adxThreshold = config.adx_threshold || 12;
+  const rsiOversold = config.rsi_oversold || 15;
+  const rsiOverbought = config.rsi_overbought || 85;
+  const momentumThreshold = config.momentum_threshold || 5;
+  const volumeThreshold = config.volume_multiplier || 1.0;
+
+  // IMPROVED ENTRY CONDITIONS:
+  // Option A: Strict retest (original) - C_prev < rangeLow AND C_curr >= rangeLow
+  // Option B: Proximity (0.5% from level) + bullish momentum
+  const rangeSize = rangeHigh - rangeLow;
+  const proximityThreshold = rangeSize * 0.02; // 2% of range
+  
+  const nearRangeLow = Math.abs(C_curr - rangeLow) <= proximityThreshold;
+  const nearRangeHigh = Math.abs(C_curr - rangeHigh) <= proximityThreshold;
+  
+  const strictLongRetest = C_prev < rangeLow && C_curr >= rangeLow;
+  const strictShortRetest = C_prev > rangeHigh && C_curr <= rangeHigh;
+  
+  // Relaxed entry: near level with momentum confirmation
+  const bullishMomentum = currentRSI > 40 && C_curr > C_prev;
+  const bearishMomentum = currentRSI < 60 && C_curr < C_prev;
+  
+  const relaxedLongEntry = nearRangeLow && bullishMomentum && C_curr >= rangeLow * 0.998; // Within 0.2% below
+  const relaxedShortEntry = nearRangeHigh && bearishMomentum && C_curr <= rangeHigh * 1.002; // Within 0.2% above
+
+  // LONG setup: Strict retest OR relaxed proximity entry
+  if (strictLongRetest || relaxedLongEntry) {
+    const entryType = strictLongRetest ? 'STRICT' : 'PROXIMITY';
+    console.log(`[4H-REENTRY] 🔍 LONG ${entryType} entry detected`);
     
+    // Calculate confidence with MODIFIERS instead of blocking
+    let confidence = 100;
+    
+    // ADX modifier (not blocking)
     const adxConfirmed = currentADX >= adxThreshold;
-    const rsiConfirmed = currentRSI > rsiOversold && currentRSI < rsiOverbought; // 20-80 range
+    if (!adxConfirmed) {
+      console.log(`[4H-REENTRY] ⚠️ Weak ADX: ${currentADX.toFixed(2)} < ${adxThreshold} (-15 confidence)`);
+      confidence -= 15;
+    }
+    
+    // RSI modifier (not blocking)
+    const rsiInRange = currentRSI > rsiOversold && currentRSI < rsiOverbought;
+    if (!rsiInRange) {
+      console.log(`[4H-REENTRY] ⚠️ RSI outside range: ${currentRSI.toFixed(2)} (-10 confidence)`);
+      confidence -= 10;
+    }
+    
+    // Momentum modifier (not blocking)
     const momentumConfirmed = Math.abs(momentumScore) >= momentumThreshold;
-    const bollingerConfirmed = bollingerPosition >= 0.0 && bollingerPosition <= 1.0; // Expanded to full range
-    const trendConfirmed = isBullishTrend; // Only LONG if above EMA20
+    if (!momentumConfirmed) {
+      console.log(`[4H-REENTRY] ⚠️ Weak momentum: ${momentumScore.toFixed(2)} (-10 confidence)`);
+      confidence -= 10;
+    }
     
-    // Update volume confirmation to use config threshold
-    const currentVolume = candles[candles.length - 1].volume;
-    const avgVolume = candles.slice(-21, -1).reduce((sum, c) => sum + c.volume, 0) / 20;
-    const volumeConfirmed = currentVolume >= avgVolume * volumeThreshold;
+    // Volume modifier (not blocking)
+    const currentVol = candles[candles.length - 1].volume;
+    const avgVol = candles.slice(-21, -1).reduce((sum, c) => sum + c.volume, 0) / 20;
+    const volumeConfirmed = currentVol >= avgVol * volumeThreshold;
+    if (!volumeConfirmed) {
+      console.log(`[4H-REENTRY] ⚠️ Low volume: ${(currentVol / avgVol).toFixed(2)}x (-10 confidence)`);
+      confidence -= 10;
+    }
     
-    console.log('[4H-REENTRY] 🔍 LONG reentry filters:', {
-      adx: `${currentADX.toFixed(2)} (need ≥${adxThreshold}): ${adxConfirmed ? '✅' : '❌'}`,
-      rsi: `${currentRSI.toFixed(2)} (need ${rsiOversold}-${rsiOverbought}): ${rsiConfirmed ? '✅' : '❌'}`,
-      momentum: `${momentumScore.toFixed(2)} (need ≥${momentumThreshold}): ${momentumConfirmed ? '✅' : '❌'}`,
-      bollinger: `${bollingerPosition.toFixed(3)} (need 0.0-1.0): ${bollingerConfirmed ? '✅' : '❌'}`,
-      volume: `${(currentVolume / avgVolume).toFixed(2)}x (need ≥${volumeThreshold}x): ${volumeConfirmed ? '✅' : '❌'}`,
-      trend: `Close ${currentCandle.close.toFixed(2)} > EMA20 ${currentEMA20.toFixed(2)}: ${trendConfirmed ? '✅' : '❌'}`
+    // Entry type bonus
+    if (strictLongRetest) {
+      confidence += 10; // Bonus for strict retest pattern
+    }
+    
+    console.log('[4H-REENTRY] 🔍 LONG confidence calculation:', {
+      adx: `${currentADX.toFixed(2)} (${adxConfirmed ? '✅' : '⚠️'})`,
+      rsi: `${currentRSI.toFixed(2)} (${rsiInRange ? '✅' : '⚠️'})`,
+      momentum: `${momentumScore.toFixed(2)} (${momentumConfirmed ? '✅' : '⚠️'})`,
+      volume: `${(currentVol / avgVol).toFixed(2)}x (${volumeConfirmed ? '✅' : '⚠️'})`,
+      entryType,
+      finalConfidence: confidence
     });
     
-    if (!adxConfirmed || !rsiConfirmed || !momentumConfirmed || !bollingerConfirmed || !volumeConfirmed || !trendConfirmed) {
-      console.log('[4H-REENTRY] ❌ LONG reentry filters not met');
-      return { signal_type: null, reason: 'LONG reentry filters not met (trend or indicators)' };
+    // Block only if confidence < 30%
+    if (confidence < 30) {
+      console.log('[4H-REENTRY] ❌ LONG confidence too low:', confidence);
+      return { signal_type: null, reason: `LONG confidence too low: ${confidence}%` };
     }
     
     const entryPrice = C_curr;
     const stopLoss = entryPrice * (1 - slPercent / 100);
     const takeProfit = entryPrice * (1 + tpPercent / 100);
     
-    // Calculate session strength and confidence
     const sessionStrength = calculateSessionStrength(candles, sessionStart, sessionEnd);
-    const confidence = calculateSignalConfidence(
-      currentRSI, 
-      currentADX, 
-      momentumScore, 
-      bollingerPosition, 
-      volumeConfirmed, 
-      sessionStrength
-    );
     
-    console.log(`[4H-REENTRY] 🟢 ENHANCED LONG reentry detected!`);
-    console.log(`  - Previous close (${C_prev.toFixed(2)}) < L_4h (${rangeLow.toFixed(2)})`);
-    console.log(`  - Current close (${C_curr.toFixed(2)}) >= L_4h (${rangeLow.toFixed(2)})`);
+    console.log(`[4H-REENTRY] 🟢 LONG signal generated!`);
+    console.log(`  - Entry type: ${entryType}`);
     console.log(`  - Entry: ${entryPrice.toFixed(2)}, SL: ${stopLoss.toFixed(2)} (-${slPercent}%), TP: ${takeProfit.toFixed(2)} (+${tpPercent}%)`);
-    console.log(`  - Confidence: ${confidence.toFixed(1)}%, Session Strength: ${sessionStrength.toFixed(3)}`);
+    console.log(`  - Confidence: ${confidence}%`);
     
     return {
       signal_type: 'BUY',
-      reason: `ENHANCED LONG reentry: Previous close ${C_prev.toFixed(2)} < L_4h ${rangeLow.toFixed(2)}, Current close ${C_curr.toFixed(2)} >= L_4h`,
+      reason: `${entryType} LONG reentry (conf:${confidence}%)`,
       range_high: rangeHigh,
       range_low: rangeLow,
       stop_loss: stopLoss,
@@ -575,70 +615,82 @@ export function evaluate4hReentry(
       volume_confirmation: volumeConfirmed,
       session_strength: sessionStrength,
       confidence: confidence,
-      time_to_expire: 240 // 4 hours for 4h reentry
+      time_to_expire: 240
     };
   }
 
-  // Enhanced SHORT setup with additional filters - optimized to be less strict
-  if (C_prev > rangeHigh && C_curr <= rangeHigh) {
-    // Enhanced confirmation filters with trend - further optimized to allow more entries
-    // Use same config values as LONG
-    const config = strategy || {};
-    const adxThreshold = config.adx_threshold || 18;
-    const rsiOversold = config.rsi_oversold || 20;
-    const rsiOverbought = config.rsi_overbought || 80;
-    const momentumThreshold = config.momentum_threshold || 8;
-    const volumeThreshold = config.volume_threshold || 1.1;
+  // SHORT setup: Strict retest OR relaxed proximity entry
+  if (strictShortRetest || relaxedShortEntry) {
+    const entryType = strictShortRetest ? 'STRICT' : 'PROXIMITY';
+    console.log(`[4H-REENTRY] 🔍 SHORT ${entryType} entry detected`);
     
+    // Calculate confidence with MODIFIERS instead of blocking
+    let confidence = 100;
+    
+    // ADX modifier (not blocking)
     const adxConfirmed = currentADX >= adxThreshold;
-    const rsiConfirmed = currentRSI > rsiOversold && currentRSI < rsiOverbought; // 20-80 range
+    if (!adxConfirmed) {
+      console.log(`[4H-REENTRY] ⚠️ Weak ADX: ${currentADX.toFixed(2)} < ${adxThreshold} (-15 confidence)`);
+      confidence -= 15;
+    }
+    
+    // RSI modifier (not blocking)
+    const rsiInRange = currentRSI > rsiOversold && currentRSI < rsiOverbought;
+    if (!rsiInRange) {
+      console.log(`[4H-REENTRY] ⚠️ RSI outside range: ${currentRSI.toFixed(2)} (-10 confidence)`);
+      confidence -= 10;
+    }
+    
+    // Momentum modifier (not blocking)
     const momentumConfirmed = Math.abs(momentumScore) >= momentumThreshold;
-    const bollingerConfirmed = bollingerPosition >= 0.0 && bollingerPosition <= 1.0; // Expanded to full range
-    const trendConfirmed = isBearishTrend; // Only SHORT if below EMA20
+    if (!momentumConfirmed) {
+      console.log(`[4H-REENTRY] ⚠️ Weak momentum: ${momentumScore.toFixed(2)} (-10 confidence)`);
+      confidence -= 10;
+    }
     
-    // Update volume confirmation to use config threshold
-    const currentVolume = candles[candles.length - 1].volume;
-    const avgVolume = candles.slice(-21, -1).reduce((sum, c) => sum + c.volume, 0) / 20;
-    const volumeConfirmed = currentVolume >= avgVolume * volumeThreshold;
+    // Volume modifier (not blocking)
+    const currentVol = candles[candles.length - 1].volume;
+    const avgVol = candles.slice(-21, -1).reduce((sum, c) => sum + c.volume, 0) / 20;
+    const volumeConfirmed = currentVol >= avgVol * volumeThreshold;
+    if (!volumeConfirmed) {
+      console.log(`[4H-REENTRY] ⚠️ Low volume: ${(currentVol / avgVol).toFixed(2)}x (-10 confidence)`);
+      confidence -= 10;
+    }
     
-    console.log('[4H-REENTRY] 🔍 SHORT reentry filters:', {
-      adx: `${currentADX.toFixed(2)} (need ≥${adxThreshold}): ${adxConfirmed ? '✅' : '❌'}`,
-      rsi: `${currentRSI.toFixed(2)} (need ${rsiOversold}-${rsiOverbought}): ${rsiConfirmed ? '✅' : '❌'}`,
-      momentum: `${momentumScore.toFixed(2)} (need ≥${momentumThreshold}): ${momentumConfirmed ? '✅' : '❌'}`,
-      bollinger: `${bollingerPosition.toFixed(3)} (need 0.0-1.0): ${bollingerConfirmed ? '✅' : '❌'}`,
-      volume: `${(currentVolume / avgVolume).toFixed(2)}x (need ≥${volumeThreshold}x): ${volumeConfirmed ? '✅' : '❌'}`,
-      trend: `Close ${currentCandle.close.toFixed(2)} < EMA20 ${currentEMA20.toFixed(2)}: ${trendConfirmed ? '✅' : '❌'}`
+    // Entry type bonus
+    if (strictShortRetest) {
+      confidence += 10; // Bonus for strict retest pattern
+    }
+    
+    console.log('[4H-REENTRY] 🔍 SHORT confidence calculation:', {
+      adx: `${currentADX.toFixed(2)} (${adxConfirmed ? '✅' : '⚠️'})`,
+      rsi: `${currentRSI.toFixed(2)} (${rsiInRange ? '✅' : '⚠️'})`,
+      momentum: `${momentumScore.toFixed(2)} (${momentumConfirmed ? '✅' : '⚠️'})`,
+      volume: `${(currentVol / avgVol).toFixed(2)}x (${volumeConfirmed ? '✅' : '⚠️'})`,
+      entryType,
+      finalConfidence: confidence
     });
     
-    if (!adxConfirmed || !rsiConfirmed || !momentumConfirmed || !bollingerConfirmed || !volumeConfirmed || !trendConfirmed) {
-      console.log('[4H-REENTRY] ❌ SHORT reentry filters not met');
-      return { signal_type: null, reason: 'SHORT reentry filters not met (trend or indicators)' };
+    // Block only if confidence < 30%
+    if (confidence < 30) {
+      console.log('[4H-REENTRY] ❌ SHORT confidence too low:', confidence);
+      return { signal_type: null, reason: `SHORT confidence too low: ${confidence}%` };
     }
     
     const entryPrice = C_curr;
     const stopLoss = entryPrice * (1 + slPercent / 100);
     const takeProfit = entryPrice * (1 - tpPercent / 100);
     
-    // Calculate session strength and confidence
     const sessionStrength = calculateSessionStrength(candles, sessionStart, sessionEnd);
-    const confidence = calculateSignalConfidence(
-      currentRSI, 
-      currentADX, 
-      momentumScore, 
-      bollingerPosition, 
-      volumeConfirmed, 
-      sessionStrength
-    );
     
-    console.log(`[4H-REENTRY] 🔴 ENHANCED SHORT reentry detected!`);
-    console.log(`  - Previous close (${C_prev.toFixed(2)}) > H_4h (${rangeHigh.toFixed(2)})`);
-    console.log(`  - Current close (${C_curr.toFixed(2)}) <= H_4h (${rangeHigh.toFixed(2)})`);
+    console.log(`[4H-REENTRY] 🔴 SHORT signal generated!`);
+    console.log(`  - Entry type: ${entryType}`);
     console.log(`  - Entry: ${entryPrice.toFixed(2)}, SL: ${stopLoss.toFixed(2)} (+${slPercent}%), TP: ${takeProfit.toFixed(2)} (-${tpPercent}%)`);
-    console.log(`  - Confidence: ${confidence.toFixed(1)}%, Session Strength: ${sessionStrength.toFixed(3)}`);
+    console.log(`  - Confidence: ${confidence}%`);
     
     return {
       signal_type: 'SELL',
-      reason: `ENHANCED SHORT reentry: Previous close ${C_prev.toFixed(2)} > H_4h ${rangeHigh.toFixed(2)}, Current close ${C_curr.toFixed(2)} <= H_4h`,
+      reason: `${entryType} SHORT reentry (conf:${confidence}%)`,
       range_high: rangeHigh,
       range_low: rangeLow,
       stop_loss: stopLoss,
@@ -649,14 +701,15 @@ export function evaluate4hReentry(
       volume_confirmation: volumeConfirmed,
       session_strength: sessionStrength,
       confidence: confidence,
-      time_to_expire: 240 // 4 hours for 4h reentry
+      time_to_expire: 240
     };
   }
 
   // No signal conditions met
   console.log('[4H-REENTRY] ⏸️ No reentry conditions met');
-  console.log(`  - LONG would need: C_prev < ${rangeLow.toFixed(2)} AND C_curr >= ${rangeLow.toFixed(2)}`);
-  console.log(`  - SHORT would need: C_prev > ${rangeHigh.toFixed(2)} AND C_curr <= ${rangeHigh.toFixed(2)}`);
+  console.log(`  - STRICT LONG: C_prev < ${rangeLow.toFixed(2)} AND C_curr >= ${rangeLow.toFixed(2)}`);
+  console.log(`  - STRICT SHORT: C_prev > ${rangeHigh.toFixed(2)} AND C_curr <= ${rangeHigh.toFixed(2)}`);
+  console.log(`  - PROXIMITY: Within ${proximityThreshold.toFixed(2)} of levels with momentum`);
   console.log(`  - Current: C_prev=${C_prev.toFixed(2)}, C_curr=${C_curr.toFixed(2)}`);
   
   return {
