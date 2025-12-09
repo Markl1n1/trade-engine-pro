@@ -148,10 +148,28 @@ serve(async (req) => {
         const currentPrice = formattedCandles[formattedCandles.length - 1].close;
 
         switch (strategy.strategy_type) {
-          case 'sma_crossover': {
+          case 'sma_crossover':
+          case 'sma_20_200_rsi': {
             const { evaluateSMACrossoverStrategy } = await import('../helpers/sma-crossover-strategy.ts');
-            const config = getStrategyMonitorConfig(strategy, 'sma_crossover');
-            signal = evaluateSMACrossoverStrategy(formattedCandles, config, false);
+            // Build config from database values
+            const smaConfig = {
+              sma_fast_period: strategy.sma_fast_period || 20,
+              sma_slow_period: strategy.sma_slow_period || 200,
+              rsi_period: strategy.rsi_period || 14,
+              rsi_overbought: strategy.rsi_overbought || 75,
+              rsi_oversold: strategy.rsi_oversold || 25,
+              volume_multiplier: strategy.volume_multiplier || 0.9,
+              atr_sl_multiplier: strategy.atr_sl_multiplier || 2.0,
+              atr_tp_multiplier: strategy.atr_tp_multiplier || 4.0,
+              adx_threshold: strategy.adx_threshold || 15,
+              bollinger_period: strategy.bollinger_period || 20,
+              bollinger_std: strategy.bollinger_std || 2.0,
+              trailing_stop_percent: strategy.trailing_stop_percent || 0,
+              max_position_time: strategy.max_position_time || 480,
+              min_trend_strength: strategy.min_trend_strength || 0.2,
+            };
+            console.log(`[REALTIME-MONITOR] SMA Crossover config for ${strategy.name}: Fast=${smaConfig.sma_fast_period}, Slow=${smaConfig.sma_slow_period}`);
+            signal = evaluateSMACrossoverStrategy(formattedCandles, smaConfig, false);
             break;
           }
           
@@ -216,29 +234,18 @@ serve(async (req) => {
           }
           
           case 'ema_crossover_scalping': {
-            const { evaluateEMACrossoverScalping } = await import('../helpers/ema-crossover-scalping-strategy.ts');
-            const emaCrossoverConfig = {
-              fast_ema_period: strategy.ema_fast_period || 9,
-              slow_ema_period: strategy.ema_slow_period || 21,
-              atr_period: 14,
-              rsi_period: strategy.rsi_period || 14,
-              rsi_long_threshold: strategy.rsi_oversold || 35,
-              rsi_short_threshold: strategy.rsi_overbought || 65,
-              atr_sl_multiplier: strategy.atr_sl_multiplier || 1.5,
-              atr_tp_multiplier: strategy.atr_tp_multiplier || 2.5,
-              use_rsi_filter: true,
-              max_position_time: strategy.max_position_time || 30,
-              // BaseConfig required fields
-              adx_threshold: strategy.adx_threshold || 22,
-              bollinger_period: strategy.bollinger_period || 20,
-              bollinger_std: strategy.bollinger_std || 2.0,
-              rsi_oversold: strategy.rsi_oversold || 30,
-              rsi_overbought: strategy.rsi_overbought || 70,
-              momentum_threshold: strategy.momentum_threshold || 12,
-              volume_multiplier: strategy.volume_multiplier || 1.2,
-              trailing_stop_percent: strategy.trailing_stop_percent || 0.75
+            const { evaluateEMACrossoverScalping, getDefaultEMACrossoverConfig } = await import('../helpers/ema-crossover-scalping-strategy.ts');
+            // Build config from database values - use sma_fast_period/sma_slow_period for EMA too
+            const emaConfig = {
+              ...getDefaultEMACrossoverConfig(),
+              fast_ema_period: strategy.sma_fast_period || 9,
+              slow_ema_period: strategy.sma_slow_period || 21,
+              atr_sl_multiplier: strategy.atr_sl_multiplier || 1.0,
+              atr_tp_multiplier: strategy.atr_tp_multiplier || 1.5,
+              max_position_time: (strategy.max_position_time || 15) * 60, // Convert minutes to seconds
             };
-            signal = evaluateEMACrossoverScalping(formattedCandles, formattedCandles.length - 1, emaCrossoverConfig, false);
+            console.log(`[REALTIME-MONITOR] EMA Crossover config for ${strategy.name}: Fast=${emaConfig.fast_ema_period}, Slow=${emaConfig.slow_ema_period}`);
+            signal = evaluateEMACrossoverScalping(formattedCandles, formattedCandles.length - 1, emaConfig, false);
             break;
           }
           

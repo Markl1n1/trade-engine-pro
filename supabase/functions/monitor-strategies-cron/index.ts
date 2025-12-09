@@ -812,7 +812,95 @@ Deno.serve(async (req) => {
             console.log(`[CRON] ⏸️ FVG: ${fvgSignal.reason}`);
           }
         }
+        // Handle SMA Crossover strategies (including SMA 20/200, custom SMA)
+        else if (strategy.strategy_type === 'sma_crossover' || strategy.strategy_type === 'sma_20_200_rsi') {
+          // Build config from database values
+          const smaConfig = {
+            sma_fast_period: strategy.sma_fast_period || 20,
+            sma_slow_period: strategy.sma_slow_period || 200,
+            rsi_period: strategy.rsi_period || 14,
+            rsi_overbought: strategy.rsi_overbought || 75,
+            rsi_oversold: strategy.rsi_oversold || 25,
+            volume_multiplier: strategy.volume_multiplier || 0.9,
+            atr_sl_multiplier: strategy.atr_sl_multiplier || 2.0,
+            atr_tp_multiplier: strategy.atr_tp_multiplier || 4.0,
+            adx_threshold: strategy.adx_threshold || 15,
+            bollinger_period: strategy.bollinger_period || 20,
+            bollinger_std: strategy.bollinger_std || 2.0,
+            trailing_stop_percent: strategy.trailing_stop_percent || 0,
+            max_position_time: strategy.max_position_time || 480,
+            min_trend_strength: strategy.min_trend_strength || 0.2,
+          };
+          
+          console.log(`[CRON] 📊 SMA Crossover config for ${strategy.name}: Fast=${smaConfig.sma_fast_period}, Slow=${smaConfig.sma_slow_period}`);
+          
+          const smaSignal = evaluateSMACrossoverStrategy(
+            candles.map(c => ({
+              open: c.open,
+              high: c.high,
+              low: c.low,
+              close: c.close,
+              volume: c.volume,
+              timestamp: c.timestamp,
+            })),
+            smaConfig,
+            liveState?.position_open || false
+          );
+          
+          if (smaSignal.signal_type) {
+            signalType = smaSignal.signal_type;
+            signalReason = smaSignal.reason;
+            signalStopLoss = smaSignal.stop_loss;
+            signalTakeProfit = smaSignal.take_profit;
+            console.log(`[CRON] ✅ SMA Crossover signal: ${signalType} - ${signalReason}`);
+          } else {
+            console.log(`[CRON] ⏸️ SMA Crossover: ${smaSignal.reason}`);
+          }
+        }
+        // Handle EMA Crossover Scalping strategies (EMA 9/21)
+        else if (strategy.strategy_type === 'ema_crossover_scalping') {
+          const { evaluateEMACrossoverScalping, getDefaultEMACrossoverConfig } = await import('../helpers/ema-crossover-scalping-strategy.ts');
+          
+          // Build config from database values
+          const emaConfig = {
+            ...getDefaultEMACrossoverConfig(),
+            fast_ema_period: strategy.sma_fast_period || 9,  // Uses sma_fast_period for EMA too
+            slow_ema_period: strategy.sma_slow_period || 21, // Uses sma_slow_period for EMA too
+            atr_sl_multiplier: strategy.atr_sl_multiplier || 1.0,
+            atr_tp_multiplier: strategy.atr_tp_multiplier || 1.5,
+            max_position_time: (strategy.max_position_time || 15) * 60, // Convert minutes to seconds
+          };
+          
+          console.log(`[CRON] 📊 EMA Crossover config for ${strategy.name}: Fast=${emaConfig.fast_ema_period}, Slow=${emaConfig.slow_ema_period}`);
+          
+          const emaSignal = evaluateEMACrossoverScalping(
+            candles.map(c => ({
+              open: c.open,
+              high: c.high,
+              low: c.low,
+              close: c.close,
+              volume: c.volume,
+              timestamp: c.timestamp,
+            })),
+            candles.length - 1,
+            emaConfig,
+            liveState?.position_open || false,
+            liveState?.entry_price || undefined,
+            liveState?.entry_time ? new Date(liveState.entry_time).getTime() : undefined
+          );
+          
+          if (emaSignal.signal_type) {
+            signalType = emaSignal.signal_type;
+            signalReason = emaSignal.reason;
+            signalStopLoss = emaSignal.stop_loss;
+            signalTakeProfit = emaSignal.take_profit;
+            console.log(`[CRON] ✅ EMA Crossover signal: ${signalType} - ${signalReason}`);
+          } else {
+            console.log(`[CRON] ⏸️ EMA Crossover: ${emaSignal.reason}`);
+          }
+        }
         else if (!liveState.position_open) {
+          // Fallback for custom condition-based strategies
           // Check if position already exists on exchange before generating entry signal
           const exchangeType = userSettings?.exchange_type || 'bybit';
           const useTestnet = userSettings?.use_testnet || false;
@@ -859,32 +947,6 @@ Deno.serve(async (req) => {
               } else if (positionExists === null) {
                 console.log(`[CRON] ⚠️ Could not verify Bybit position for ${strategy.name} - continuing with signal generation`);
               }
-            }
-          }
-
-          // Support code-defined strategies: SMA 20/200 with RSI filter (scalping)
-          if (strategy.strategy_type === 'sma_20_200_rsi') {
-            const smaConfig = getStrategyBacktestConfig(strategy, 'sma_20_200_rsi');
-            const smaSignal = evaluateSMACrossoverStrategy(
-              candles.map(c => ({
-                open: c.open,
-                high: c.high,
-                low: c.low,
-                close: c.close,
-                volume: c.volume,
-                timestamp: c.timestamp,
-              })),
-              smaConfig,
-              false
-            );
-            if (smaSignal.signal_type) {
-              signalType = smaSignal.signal_type;
-              signalReason = smaSignal.reason;
-              signalStopLoss = smaSignal.stop_loss;
-              signalTakeProfit = smaSignal.take_profit;
-              console.log(`[CRON] ✅ SMA 20/200 with RSI signal: ${signalType} - ${signalReason}`);
-            } else {
-              console.log(`[CRON] ⏸️ SMA: ${smaSignal.reason}`);
             }
           }
 
