@@ -591,6 +591,20 @@ const Backtest = () => {
               <div className="p-3 bg-secondary/50 rounded text-xs space-y-1">
                 <p><span className="font-medium">Symbol:</span> {selectedStrategyData.symbol}</p>
                 <p><span className="font-medium">Timeframe:</span> {selectedStrategyData.timeframe}</p>
+                <div className="mt-2 pt-2 border-t border-border/50">
+                  <p className="font-medium text-primary mb-1">📋 Optimized Preset:</p>
+                  {(() => {
+                    const defaults = getStrategyDefaults(selectedStrategyData.strategy_type);
+                    return (
+                      <div className="grid grid-cols-2 gap-1 text-[10px]">
+                        <span>SL: <span className="text-destructive font-bold">{defaults.sl}%</span></span>
+                        <span>TP: <span className="text-green-500 font-bold">{defaults.tp}%</span></span>
+                        <span>Trailing: <span className="text-blue-500 font-bold">{defaults.trailing}%</span></span>
+                        <span>Leverage: <span className="text-yellow-500 font-bold">{defaults.leverage}x</span></span>
+                      </div>
+                    );
+                  })()}
+                </div>
               </div>
             )}
 

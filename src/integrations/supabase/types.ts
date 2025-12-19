@@ -1023,24 +1023,39 @@ export type Database = {
         Row: {
           accessed_at: string | null
           action: string
+          changed_fields: string[] | null
+          entity_id: string | null
+          entity_type: string | null
           id: string
           ip_address: string | null
+          new_values: Json | null
+          old_values: Json | null
           user_agent: string | null
           user_id: string
         }
         Insert: {
           accessed_at?: string | null
           action: string
+          changed_fields?: string[] | null
+          entity_id?: string | null
+          entity_type?: string | null
           id?: string
           ip_address?: string | null
+          new_values?: Json | null
+          old_values?: Json | null
           user_agent?: string | null
           user_id: string
         }
         Update: {
           accessed_at?: string | null
           action?: string
+          changed_fields?: string[] | null
+          entity_id?: string | null
+          entity_type?: string | null
           id?: string
           ip_address?: string | null
+          new_values?: Json | null
+          old_values?: Json | null
           user_agent?: string | null
           user_id?: string
         }
