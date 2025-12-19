@@ -558,45 +558,55 @@ export function evaluateATHGuardStrategy(
     return { signal_type: null, reason: `RSI extreme: ${currentRSI.toFixed(1)}` };
   }
   
-  // ALL BLOCKING CHECKS PASS - Now calculate confidence
+  // CRITICAL FIX: BLOCK entry when against global trend (not just reduce confidence)
+  const trendAligned = (bias === 'LONG' && globalTrend === 'UP') || (bias === 'SHORT' && globalTrend === 'DOWN');
+  
+  if (!trendAligned) {
+    console.log(`[ATH-GUARD] ❌ BLOCKED: Against global trend (${globalTrend}). Bias: ${bias}`);
+    return { signal_type: null, reason: `Blocked: ${bias} against global trend (${globalTrend})` };
+  }
+  
+  // CRITICAL FIX: BLOCK entry if ADX is too weak (no trend to trade)
+  if (config.adx_threshold && currentADX < config.adx_threshold) {
+    console.log(`[ATH-GUARD] ❌ BLOCKED: ADX too weak ${currentADX.toFixed(1)} < ${config.adx_threshold}`);
+    return { signal_type: null, reason: `ADX too weak: ${currentADX.toFixed(1)}` };
+  }
+  
+  // CRITICAL FIX: BLOCK if volume is too low
+  if (volumeRatio < 1.0) {
+    console.log(`[ATH-GUARD] ❌ BLOCKED: Volume too low ${volumeRatio.toFixed(2)}x`);
+    return { signal_type: null, reason: `Volume too low: ${volumeRatio.toFixed(2)}x` };
+  }
+  
+  // CRITICAL FIX: Stricter RSI filter
+  if (bias === 'LONG' && currentRSI > 60) {
+    console.log(`[ATH-GUARD] ❌ BLOCKED: RSI too high for LONG ${currentRSI.toFixed(1)} > 60`);
+    return { signal_type: null, reason: `RSI too high for LONG: ${currentRSI.toFixed(1)}` };
+  }
+  if (bias === 'SHORT' && currentRSI < 40) {
+    console.log(`[ATH-GUARD] ❌ BLOCKED: RSI too low for SHORT ${currentRSI.toFixed(1)} < 40`);
+    return { signal_type: null, reason: `RSI too low for SHORT: ${currentRSI.toFixed(1)}` };
+  }
+  
+  // Now calculate confidence for remaining modifiers
   let confidence = 100;
   
-  // GLOBAL TREND modifier (-30 if against global trend)
-  const trendAligned = (bias === 'LONG' && globalTrend === 'UP') || (bias === 'SHORT' && globalTrend === 'DOWN');
-  if (!trendAligned) {
-    console.log(`[ATH-GUARD] ⚠️ Against global trend (${globalTrend}) (-30 confidence)`);
-    confidence -= 30;
-  }
-  
-  // ADX modifier (-15 if weak trend)
-  if (config.adx_threshold && currentADX < config.adx_threshold) {
-    console.log(`[ATH-GUARD] ⚠️ Weak ADX: ${currentADX.toFixed(1)} (-15 confidence)`);
-    confidence -= 15;
-  }
-  
-  // Volume modifier (-15 if low volume)
-  if (volumeRatio < 1.2) {
-    console.log(`[ATH-GUARD] ⚠️ Low volume: ${volumeRatio.toFixed(2)}x (-15 confidence)`);
-    confidence -= 15;
+  // Volume boost if high
+  if (volumeRatio < 1.5) {
+    confidence -= 10;
   }
   
   // MACD modifier (-10 if not aligned)
   const macdAligned = bias === 'LONG' ? currentHistogram > 0 : currentHistogram < 0;
   if (!macdAligned) {
-    console.log(`[ATH-GUARD] ⚠️ MACD not aligned (-10 confidence)`);
-    confidence -= 10;
+    console.log(`[ATH-GUARD] ⚠️ MACD not aligned (-15 confidence)`);
+    confidence -= 15;
   }
   
   // Volatility modifier (-10 if elevated volatility)
   if (volatilityRatio > 1.5) {
     console.log(`[ATH-GUARD] ⚠️ Elevated volatility: ${volatilityRatio.toFixed(2)}x (-10 confidence)`);
     confidence -= 10;
-  }
-  
-  // Block entry only if confidence < 30%
-  if (confidence < 30) {
-    console.log(`[ATH-GUARD] ❌ Confidence too low: ${confidence}%`);
-    return { signal_type: null, reason: `Low confidence: ${confidence}%` };
   }
   
   console.log(`[ATH-GUARD] ✅ Signal confidence: ${confidence}%`);
@@ -657,18 +667,18 @@ export function evaluateATHGuardStrategy(
   return { signal_type: null, reason: 'No signal' };
 }
 
-// Default configuration for SIMPLIFIED ATH Guard strategy
+// CRITICAL FIX: Configuration optimized for 50%+ win rate with STRICT filtering
 export const defaultATHGuardConfig: ATHGuardConfig = {
-  // Core parameters (used)
-  ema_slope_threshold: 0.05,  // Lower threshold for easier alignment
-  volume_multiplier: 1.2,      // Moderate volume requirement
-  atr_sl_multiplier: 1.5,
-  atr_tp1_multiplier: 2.0,
-  atr_tp2_multiplier: 3.0,
-  rsi_threshold: 70,           // Not overbought for longs, not oversold for shorts
+  // Core parameters (used for STRICT filtering)
+  ema_slope_threshold: 0.05,
+  volume_multiplier: 1.2,
+  atr_sl_multiplier: 2.5,           // WIDER: Give trades room to breathe
+  atr_tp1_multiplier: 3.0,          // WIDER: Better R:R ratio
+  atr_tp2_multiplier: 4.5,          // WIDER: Extended target
+  rsi_threshold: 60,                // STRICTER: Block overbought earlier
   
-  // Optional modifiers (used for confidence scoring)
-  adx_threshold: 20,           // Optional - reduces confidence if weak
+  // STRICT filter (required for entry, not just confidence)
+  adx_threshold: 22,                // STRICTER: Require stronger trend
   
   // Unused legacy parameters (kept for compatibility)
   pullback_tolerance: 0.15,
@@ -677,8 +687,8 @@ export const defaultATHGuardConfig: ATHGuardConfig = {
   ath_safety_distance: 0.2,
   bollinger_period: 20,
   bollinger_std: 2.0,
-  trailing_stop_percent: 0.5,
-  max_position_time: 120,      // 2 hours max position time
+  trailing_stop_percent: 1.0,       // WIDER: Trailing stop
+  max_position_time: 180,           // 3 hours max position time
   min_volume_spike: 1.2,
   momentum_threshold: 15,
   support_resistance_lookback: 20

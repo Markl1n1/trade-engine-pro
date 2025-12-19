@@ -237,40 +237,40 @@ export function evaluateEMACrossoverScalping(
     // LONG signal: Fast EMA crosses above Slow EMA
     const bullishCrossover = prevFastEMA <= prevSlowEMA && currentFastEMA > currentSlowEMA;
     const priceAboveSlow = currentPrice > currentSlowEMA;
-    const rsiOk = !config.use_rsi_filter || rsiValue > config.rsi_long_threshold;
     
-    if (bullishCrossover && priceAboveSlow && rsiOk) {
-      let confidence = 85;
+    if (bullishCrossover && priceAboveSlow) {
+      // CRITICAL FIX: STRICT RSI filter - BLOCK if not in "strength zone"
+      if (config.use_rsi_filter && (rsiValue < config.rsi_long_threshold || rsiValue > 70)) {
+        console.log(`[EMA-CROSSOVER] ❌ LONG BLOCKED: RSI ${rsiValue.toFixed(1)} not in range ${config.rsi_long_threshold}-70`);
+        return { signal_type: null, reason: `LONG blocked: RSI ${rsiValue.toFixed(1)} outside strength zone` };
+      }
       
-      // Apply confidence modifiers
+      // STRICT: Block if global trend is bearish and filter is enabled
       if (config.use_trend_filter && !globalTrendBullish) {
-        console.log(`[EMA-CROSSOVER] ⚠️ Counter-trend LONG: price below EMA 200 (-30 confidence)`);
-        confidence -= 30;
+        console.log(`[EMA-CROSSOVER] ❌ LONG BLOCKED: Counter-trend (price below EMA 200)`);
+        return { signal_type: null, reason: `LONG blocked: Counter-trend` };
       }
       
+      // STRICT: Block if volatility too high
       if (volatilityTooHigh) {
-        console.log(`[EMA-CROSSOVER] ⚠️ High volatility: ATR ${currentATR.toFixed(4)} > ${(avgATR * config.volatility_multiplier).toFixed(4)} (-20 confidence)`);
-        confidence -= 20;
+        console.log(`[EMA-CROSSOVER] ❌ LONG BLOCKED: High volatility ATR ${currentATR.toFixed(4)} > ${(avgATR * config.volatility_multiplier).toFixed(4)}`);
+        return { signal_type: null, reason: `LONG blocked: High volatility` };
       }
+      
+      let confidence = 90;
       
       if (isLowLiquidityHour()) {
-        console.log(`[EMA-CROSSOVER] ⚠️ Low liquidity hours (-15 confidence)`);
         confidence -= 15;
-      }
-      
-      // Skip if confidence too low
-      if (confidence < 30) {
-        return { signal_type: null, reason: `LONG signal rejected: confidence ${confidence}% too low` };
       }
       
       const stopLoss = currentPrice - (currentATR * config.atr_sl_multiplier);
       const takeProfit = currentPrice + (currentATR * config.atr_tp_multiplier);
       
-      console.log(`[EMA-CROSSOVER] 🚀 LONG ENTRY: Fast(${currentFastEMA.toFixed(2)}) > Slow(${currentSlowEMA.toFixed(2)}), Global EMA: ${currentGlobalEMA.toFixed(2)}, Confidence: ${confidence}%`);
+      console.log(`[EMA-CROSSOVER] 🚀 LONG ENTRY: Fast(${currentFastEMA.toFixed(2)}) > Slow(${currentSlowEMA.toFixed(2)}), Global EMA: ${currentGlobalEMA.toFixed(2)}, RSI: ${rsiValue.toFixed(1)}, Confidence: ${confidence}%`);
       
       return {
         signal_type: 'BUY',
-        reason: `Bullish EMA crossover: Fast(${currentFastEMA.toFixed(2)}) > Slow(${currentSlowEMA.toFixed(2)})${config.use_trend_filter ? `, Trend: ${globalTrendBullish ? 'ALIGNED' : 'COUNTER'}` : ''}${config.use_rsi_filter ? `, RSI: ${rsiValue.toFixed(1)}` : ''}`,
+        reason: `Bullish EMA crossover (Trend ALIGNED, RSI: ${rsiValue.toFixed(1)})`,
         stop_loss: stopLoss,
         take_profit: takeProfit,
         confidence: confidence,
@@ -281,40 +281,40 @@ export function evaluateEMACrossoverScalping(
     // SHORT signal: Fast EMA crosses below Slow EMA
     const bearishCrossover = prevFastEMA >= prevSlowEMA && currentFastEMA < currentSlowEMA;
     const priceBelowSlow = currentPrice < currentSlowEMA;
-    const rsiOkShort = !config.use_rsi_filter || rsiValue < config.rsi_short_threshold;
     
-    if (bearishCrossover && priceBelowSlow && rsiOkShort) {
-      let confidence = 85;
+    if (bearishCrossover && priceBelowSlow) {
+      // CRITICAL FIX: STRICT RSI filter - BLOCK if not in "weakness zone"
+      if (config.use_rsi_filter && (rsiValue > config.rsi_short_threshold || rsiValue < 30)) {
+        console.log(`[EMA-CROSSOVER] ❌ SHORT BLOCKED: RSI ${rsiValue.toFixed(1)} not in range 30-${config.rsi_short_threshold}`);
+        return { signal_type: null, reason: `SHORT blocked: RSI ${rsiValue.toFixed(1)} outside weakness zone` };
+      }
       
-      // Apply confidence modifiers
+      // STRICT: Block if global trend is bullish and filter is enabled
       if (config.use_trend_filter && !globalTrendBearish) {
-        console.log(`[EMA-CROSSOVER] ⚠️ Counter-trend SHORT: price above EMA 200 (-30 confidence)`);
-        confidence -= 30;
+        console.log(`[EMA-CROSSOVER] ❌ SHORT BLOCKED: Counter-trend (price above EMA 200)`);
+        return { signal_type: null, reason: `SHORT blocked: Counter-trend` };
       }
       
+      // STRICT: Block if volatility too high
       if (volatilityTooHigh) {
-        console.log(`[EMA-CROSSOVER] ⚠️ High volatility: ATR ${currentATR.toFixed(4)} > ${(avgATR * config.volatility_multiplier).toFixed(4)} (-20 confidence)`);
-        confidence -= 20;
+        console.log(`[EMA-CROSSOVER] ❌ SHORT BLOCKED: High volatility ATR ${currentATR.toFixed(4)} > ${(avgATR * config.volatility_multiplier).toFixed(4)}`);
+        return { signal_type: null, reason: `SHORT blocked: High volatility` };
       }
+      
+      let confidence = 90;
       
       if (isLowLiquidityHour()) {
-        console.log(`[EMA-CROSSOVER] ⚠️ Low liquidity hours (-15 confidence)`);
         confidence -= 15;
-      }
-      
-      // Skip if confidence too low
-      if (confidence < 30) {
-        return { signal_type: null, reason: `SHORT signal rejected: confidence ${confidence}% too low` };
       }
       
       const stopLoss = currentPrice + (currentATR * config.atr_sl_multiplier);
       const takeProfit = currentPrice - (currentATR * config.atr_tp_multiplier);
       
-      console.log(`[EMA-CROSSOVER] 🔻 SHORT ENTRY: Fast(${currentFastEMA.toFixed(2)}) < Slow(${currentSlowEMA.toFixed(2)}), Global EMA: ${currentGlobalEMA.toFixed(2)}, Confidence: ${confidence}%`);
+      console.log(`[EMA-CROSSOVER] 🔻 SHORT ENTRY: Fast(${currentFastEMA.toFixed(2)}) < Slow(${currentSlowEMA.toFixed(2)}), Global EMA: ${currentGlobalEMA.toFixed(2)}, RSI: ${rsiValue.toFixed(1)}, Confidence: ${confidence}%`);
       
       return {
         signal_type: 'SELL',
-        reason: `Bearish EMA crossover: Fast(${currentFastEMA.toFixed(2)}) < Slow(${currentSlowEMA.toFixed(2)})${config.use_trend_filter ? `, Trend: ${globalTrendBearish ? 'ALIGNED' : 'COUNTER'}` : ''}${config.use_rsi_filter ? `, RSI: ${rsiValue.toFixed(1)}` : ''}`,
+        reason: `Bearish EMA crossover (Trend ALIGNED, RSI: ${rsiValue.toFixed(1)})`,
         stop_loss: stopLoss,
         take_profit: takeProfit,
         confidence: confidence,
@@ -326,22 +326,22 @@ export function evaluateEMACrossoverScalping(
   return { signal_type: null, reason: 'No crossover detected' };
 }
 
-// Default configuration - optimized for 50%+ win rate
+// Default configuration - optimized for 50%+ win rate with STRICT filtering
 export function getDefaultEMACrossoverConfig(): EMACrossoverConfig {
   return {
     fast_ema_period: 9,
     slow_ema_period: 21,
     global_ema_period: 200,          // EMA 200 for global trend
     atr_period: 14,
-    atr_sl_multiplier: 1.5,          // Increased SL multiplier
-    atr_tp_multiplier: 2.0,          // Increased TP multiplier (1.33 R:R)
-    use_rsi_filter: true,            // Enabled RSI filter
+    atr_sl_multiplier: 2.0,          // WIDER: Give trades room to breathe
+    atr_tp_multiplier: 3.0,          // WIDER: 1.5 R:R ratio (key for 50%+ profitability)
+    use_rsi_filter: true,            // Enabled RSI filter (STRICT)
     rsi_period: 14,
-    rsi_long_threshold: 35,          // RSI > 35 for LONG
-    rsi_short_threshold: 65,         // RSI < 65 for SHORT
-    max_position_time: 900,          // 15 minutes
-    use_trend_filter: true,          // Enable global trend filter
-    use_volatility_filter: true,     // Enable volatility filter
+    rsi_long_threshold: 45,          // RSI > 45 for LONG (momentum zone)
+    rsi_short_threshold: 55,         // RSI < 55 for SHORT (weakness zone)
+    max_position_time: 1800,         // 30 minutes (longer for trend)
+    use_trend_filter: true,          // Enable global trend filter (STRICT)
+    use_volatility_filter: true,     // Enable volatility filter (STRICT)
     volatility_multiplier: 2.0,      // Skip if ATR > 2x average
     
     // BaseConfig required fields
@@ -352,6 +352,6 @@ export function getDefaultEMACrossoverConfig(): EMACrossoverConfig {
     rsi_overbought: 70,
     momentum_threshold: 10,
     volume_multiplier: 1.2,
-    trailing_stop_percent: 0.75
+    trailing_stop_percent: 1.0
   };
 }

@@ -350,52 +350,62 @@ export function evaluateSMACrossoverStrategy(
     };
   }
   
+  // Calculate SMA 200 for global trend filter
+  const sma200 = calculateSMA(closes, 200);
+  const currentSMA200 = sma200[sma200.length - 1] || currentSMASlow;
+  const globalTrendBullish = currentPrice > currentSMA200;
+  const globalTrendBearish = currentPrice < currentSMA200;
+  
   // Enhanced entry logic for new positions
   if (!positionOpen) {
     // Golden Cross: SMA Fast crosses above SMA Slow
     if (prevSMAFast <= prevSMASlow && currentSMAFast > currentSMASlow) {
-      // OPTIMIZED: Calculate confidence based on filter quality instead of blocking
-      let confidence = 100;
       
+      // CRITICAL FIX: STRICT filters - BLOCK trade if conditions not met (not just reduce confidence)
+      // 1. RSI must NOT be overbought
       if (currentRSI > config.rsi_overbought) {
-        console.log(`[SMA-CROSSOVER] ⚠️ RSI overbought: ${currentRSI.toFixed(2)} > ${config.rsi_overbought} (-15 confidence)`);
-        confidence -= 15;
+        console.log(`[SMA-CROSSOVER] ❌ LONG BLOCKED: RSI overbought ${currentRSI.toFixed(2)} > ${config.rsi_overbought}`);
+        return { signal_type: null, reason: `LONG blocked: RSI overbought ${currentRSI.toFixed(2)}` };
       }
       
+      // 2. Global trend must be bullish (price > SMA 200)
+      if (!globalTrendBullish) {
+        console.log(`[SMA-CROSSOVER] ❌ LONG BLOCKED: Counter-trend (price ${currentPrice.toFixed(2)} < SMA200 ${currentSMA200.toFixed(2)})`);
+        return { signal_type: null, reason: `LONG blocked: Counter-trend` };
+      }
+      
+      // 3. RSI must be in "strength zone" for LONG (not oversold, not overbought)
+      if (currentRSI < 40) {
+        console.log(`[SMA-CROSSOVER] ❌ LONG BLOCKED: RSI too low ${currentRSI.toFixed(2)} < 40 (momentum weak)`);
+        return { signal_type: null, reason: `LONG blocked: RSI momentum weak` };
+      }
+      
+      let confidence = 100;
+      
       if (!volumeConfirmed) {
-        console.log(`[SMA-CROSSOVER] ⚠️ Volume insufficient: ${volumeRatio.toFixed(2)}x < ${config.volume_multiplier}x (-10 confidence)`);
         confidence -= 10;
       }
       
       if (!adxConfirmed) {
-        console.log(`[SMA-CROSSOVER] ⚠️ ADX weak: ${currentADX.toFixed(2)} < ${config.adx_threshold} (-10 confidence)`);
         confidence -= 10;
       }
       
-      if (trendStrength < config.min_trend_strength) {
-        console.log(`[SMA-CROSSOVER] ⚠️ Trend strength low: ${trendStrength.toFixed(2)} < ${config.min_trend_strength} (-15 confidence)`);
-        confidence -= 15;
-      }
-      
-      // Calculate stop loss and take profit
+      // Calculate stop loss and take profit with WIDER ratios for trend following
       const stopLoss = currentPrice - (config.atr_sl_multiplier * currentATR);
       const takeProfit = currentPrice + (config.atr_tp_multiplier * currentATR);
       
       console.log('[SMA-CROSSOVER] 🚀 LONG ENTRY (Golden Cross)', {
         smaFast: currentSMAFast.toFixed(2),
         smaSlow: currentSMASlow.toFixed(2),
+        sma200: currentSMA200.toFixed(2),
         rsi: currentRSI.toFixed(2),
         adx: currentADX.toFixed(2),
-        trendStrength: trendStrength.toFixed(2),
-        volume: volumeRatio.toFixed(2),
-        confidence: confidence,
-        stopLoss: stopLoss.toFixed(2),
-        takeProfit: takeProfit.toFixed(2)
+        confidence: confidence
       });
       
       return {
         signal_type: 'BUY',
-        reason: 'Golden Cross: SMA Fast crossed above SMA Slow',
+        reason: 'Golden Cross: SMA Fast crossed above SMA Slow (Trend aligned)',
         stop_loss: stopLoss,
         take_profit: takeProfit,
         sma_fast: currentSMAFast,
@@ -411,27 +421,34 @@ export function evaluateSMACrossoverStrategy(
     
     // Death Cross: SMA Fast crosses below SMA Slow
     if (prevSMAFast >= prevSMASlow && currentSMAFast < currentSMASlow) {
-      // OPTIMIZED: Calculate confidence based on filter quality instead of blocking
-      let confidenceShort = 100;
       
+      // CRITICAL FIX: STRICT filters - BLOCK trade if conditions not met
+      // 1. RSI must NOT be oversold
       if (currentRSI < config.rsi_oversold) {
-        console.log(`[SMA-CROSSOVER] ⚠️ RSI oversold: ${currentRSI.toFixed(2)} < ${config.rsi_oversold} (-15 confidence)`);
-        confidenceShort -= 15;
+        console.log(`[SMA-CROSSOVER] ❌ SHORT BLOCKED: RSI oversold ${currentRSI.toFixed(2)} < ${config.rsi_oversold}`);
+        return { signal_type: null, reason: `SHORT blocked: RSI oversold ${currentRSI.toFixed(2)}` };
       }
       
+      // 2. Global trend must be bearish (price < SMA 200)
+      if (!globalTrendBearish) {
+        console.log(`[SMA-CROSSOVER] ❌ SHORT BLOCKED: Counter-trend (price ${currentPrice.toFixed(2)} > SMA200 ${currentSMA200.toFixed(2)})`);
+        return { signal_type: null, reason: `SHORT blocked: Counter-trend` };
+      }
+      
+      // 3. RSI must be in "weakness zone" for SHORT (not overbought, not oversold)
+      if (currentRSI > 60) {
+        console.log(`[SMA-CROSSOVER] ❌ SHORT BLOCKED: RSI too high ${currentRSI.toFixed(2)} > 60 (momentum strong)`);
+        return { signal_type: null, reason: `SHORT blocked: RSI momentum too strong` };
+      }
+      
+      let confidenceShort = 100;
+      
       if (!volumeConfirmed) {
-        console.log(`[SMA-CROSSOVER] ⚠️ Volume insufficient: ${volumeRatio.toFixed(2)}x < ${config.volume_multiplier}x (-10 confidence)`);
         confidenceShort -= 10;
       }
       
       if (!adxConfirmed) {
-        console.log(`[SMA-CROSSOVER] ⚠️ ADX weak: ${currentADX.toFixed(2)} < ${config.adx_threshold} (-10 confidence)`);
         confidenceShort -= 10;
-      }
-      
-      if (trendStrength < config.min_trend_strength) {
-        console.log(`[SMA-CROSSOVER] ⚠️ Trend strength low: ${trendStrength.toFixed(2)} < ${config.min_trend_strength} (-15 confidence)`);
-        confidenceShort -= 15;
       }
       
       // Calculate stop loss and take profit
@@ -441,18 +458,15 @@ export function evaluateSMACrossoverStrategy(
       console.log('[SMA-CROSSOVER] 🔻 SHORT ENTRY (Death Cross)', {
         smaFast: currentSMAFast.toFixed(2),
         smaSlow: currentSMASlow.toFixed(2),
+        sma200: currentSMA200.toFixed(2),
         rsi: currentRSI.toFixed(2),
         adx: currentADX.toFixed(2),
-        trendStrength: trendStrength.toFixed(2),
-        volume: volumeRatio.toFixed(2),
-        confidence: confidenceShort,
-        stopLoss: stopLoss.toFixed(2),
-        takeProfit: takeProfit.toFixed(2)
+        confidence: confidenceShort
       });
       
       return {
         signal_type: 'SELL',
-        reason: 'Death Cross: SMA Fast crossed below SMA Slow',
+        reason: 'Death Cross: SMA Fast crossed below SMA Slow (Trend aligned)',
         stop_loss: stopLoss,
         take_profit: takeProfit,
         sma_fast: currentSMAFast,
@@ -483,21 +497,20 @@ export function evaluateSMACrossoverStrategy(
   return { signal_type: null, reason: 'No signal' };
 }
 
-// OPTIMIZED: Configuration for better signal generation and 50%+ win rate
+// CRITICAL FIX: Configuration optimized for 50%+ win rate with strict filtering
 export const defaultSMACrossoverConfig: SMACrossoverConfig = {
-  sma_fast_period: 20,              // OPTIMIZED: SMA 20 for faster response
-  sma_slow_period: 50,              // OPTIMIZED: SMA 50 instead of 200 (too slow for 15m)
+  sma_fast_period: 20,              // SMA 20 for faster response
+  sma_slow_period: 50,              // SMA 50 (SMA 200 used separately as global filter)
   rsi_period: 14,
-  rsi_overbought: 70,               // OPTIMIZED: RSI < 70 for LONG (not overbought)
-  rsi_oversold: 30,                 // OPTIMIZED: RSI > 30 for SHORT (not oversold)
-  volume_multiplier: 0.8,           // OPTIMIZED: 80% of average volume (allows most trades)
-  atr_sl_multiplier: 1.8,           // OPTIMIZED: Wider stop loss for trend following
-  atr_tp_multiplier: 3.0,           // OPTIMIZED: Wider take profit for trend following
-  // OPTIMIZED: Relaxed enhanced parameters for more trades
-  adx_threshold: 18,                // OPTIMIZED: Lower threshold (18) to allow weaker trends
-  bollinger_period: 20,             // Bollinger Bands period
-  bollinger_std: 2,                 // Bollinger Bands standard deviation
-  trailing_stop_percent: 1.0,       // Trailing stop for trends
-  max_position_time: 2880,          // OPTIMIZED: Longer position time (2880 min = 48 hours) for trend strategy
-  min_trend_strength: 0.3            // OPTIMIZED: Lower threshold (0.3) to allow weaker trends
+  rsi_overbought: 65,               // STRICTER: RSI < 65 for LONG (block overbought earlier)
+  rsi_oversold: 35,                 // STRICTER: RSI > 35 for SHORT (block oversold earlier)
+  volume_multiplier: 0.8,           // 80% of average volume
+  atr_sl_multiplier: 2.5,           // WIDER: Stop loss for trend following (give room to breathe)
+  atr_tp_multiplier: 4.0,           // WIDER: Take profit (1.6 R:R ratio)
+  adx_threshold: 20,                // Require some trend strength
+  bollinger_period: 20,
+  bollinger_std: 2,
+  trailing_stop_percent: 1.5,       // Wider trailing stop
+  max_position_time: 2880,          // 48 hours for trend strategy
+  min_trend_strength: 0.3
 };
