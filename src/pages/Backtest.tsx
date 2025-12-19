@@ -57,20 +57,43 @@ const Backtest = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Auto-populate backtest parameters from selected strategy
+  // Strategy-specific default presets for optimal backtest parameters
+  const getStrategyDefaults = (strategyType: string) => {
+    const presets: Record<string, { sl: number; tp: number; trailing: number; leverage: number; productType: string }> = {
+      // EMA Crossover - средняя волатильность, умеренные стопы
+      'ema_crossover_scalping': { sl: 2.0, tp: 4.0, trailing: 1.0, leverage: 5, productType: 'futures' },
+      // SMA Crossover - трендовая стратегия, широкие стопы
+      'sma_crossover': { sl: 2.5, tp: 5.0, trailing: 1.5, leverage: 3, productType: 'futures' },
+      // MTF Momentum - агрессивная, быстрые движения
+      'mtf_momentum': { sl: 1.5, tp: 3.0, trailing: 0.75, leverage: 10, productType: 'futures' },
+      // FVG Scalping - точные входы, узкие стопы
+      'fvg_scalping': { sl: 1.0, tp: 2.5, trailing: 0.5, leverage: 15, productType: 'futures' },
+      // ATH Guard - консервативная, большие движения
+      'ath_guard_scalping': { sl: 3.0, tp: 6.0, trailing: 1.5, leverage: 5, productType: 'futures' },
+      // 4H Reentry - высокий риск, высокий reward
+      '4h_reentry': { sl: 3.0, tp: 9.0, trailing: 2.0, leverage: 20, productType: 'futures' },
+      // JavaScript custom strategy
+      'javascript_custom': { sl: 2.0, tp: 4.0, trailing: 1.0, leverage: 5, productType: 'futures' },
+    };
+    return presets[strategyType] || { sl: 2.5, tp: 5.0, trailing: 1.0, leverage: 3, productType: 'futures' };
+  };
+
+  // Auto-populate backtest parameters from selected strategy with optimized defaults
   useEffect(() => {
     if (selectedStrategy && strategies.length > 0) {
       const strategy = strategies.find(s => s.id === selectedStrategy);
       if (strategy && isStrategyDefaults) {
-        setInitialBalance(String(strategy.initial_capital || 1000));
-        setStopLossPercent(String(strategy.stop_loss_percent || 3));
-        setTakeProfitPercent(String(strategy.take_profit_percent || 6));
+        const defaults = getStrategyDefaults(strategy.strategy_type);
         
-        // Auto-set product type and leverage for 4h_reentry strategy
-        if (strategy.strategy_type === '4h_reentry') {
-          setProductType('futures');
-          setLeverage('20');
-        }
+        // Use strategy-specific preset values (ignore DB values for backtest optimization)
+        setInitialBalance(String(strategy.initial_capital || 1000));
+        setStopLossPercent(String(defaults.sl));
+        setTakeProfitPercent(String(defaults.tp));
+        setTrailingStopPercent(String(defaults.trailing));
+        setLeverage(String(defaults.leverage));
+        setProductType(defaults.productType);
+        
+        console.log(`[BACKTEST] Loaded presets for ${strategy.strategy_type}:`, defaults);
       }
     }
   }, [selectedStrategy, strategies, isStrategyDefaults]);

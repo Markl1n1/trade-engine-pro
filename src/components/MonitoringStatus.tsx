@@ -100,9 +100,10 @@ export function MonitoringStatus() {
       setCronStatus(isActive ? 'active' : 'inactive');
       setCronLastRun(lastRun.toLocaleString());
       
-      console.log(`[MONITORING-STATUS] Cron check: last run ${diffMs}ms ago, status: ${isActive ? 'active' : 'inactive'}`);
+      // Debug log only on error - reduce noise
     } else {
-      console.log('[MONITORING-STATUS] No cron status found in system_settings');
+      // No need to log every time - this is expected for new installations
+      setCronStatus('unknown');
     }
   };
   const loadSystemHealth = async () => {

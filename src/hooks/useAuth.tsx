@@ -11,9 +11,17 @@ export const useAuth = () => {
   const { toast } = useToast();
 
   useEffect(() => {
+    let lastEvent: string | null = null;
+    
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
+        // Prevent duplicate logs for same event
+        if (event === lastEvent && event === 'SIGNED_IN') {
+          return;
+        }
+        lastEvent = event;
+        
         console.log('[useAuth] Auth state change:', event);
         
         if (event === 'INITIAL_SESSION') {
