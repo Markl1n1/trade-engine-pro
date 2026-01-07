@@ -44,3 +44,7 @@ verify_jwt = true
 
 [functions.test-telegram]
 verify_jwt = true
+
+# SCHEDULED BACKTEST RUNNER (daily at 13:30 UTC = 8:30 AM NY)
+[functions.scheduled-backtest-runner]
+verify_jwt = false

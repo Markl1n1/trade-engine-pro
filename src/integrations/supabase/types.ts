@@ -294,6 +294,62 @@ export type Database = {
         }
         Relationships: []
       }
+      scheduled_backtest_runs: {
+        Row: {
+          backtest_params: Json
+          completed_at: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          results: Json | null
+          run_date: string
+          started_at: string | null
+          status: string
+          strategy_id: string
+          strategy_name: string
+          summary_log: string | null
+          trigger_type: string
+        }
+        Insert: {
+          backtest_params?: Json
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          results?: Json | null
+          run_date?: string
+          started_at?: string | null
+          status?: string
+          strategy_id: string
+          strategy_name: string
+          summary_log?: string | null
+          trigger_type?: string
+        }
+        Update: {
+          backtest_params?: Json
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          results?: Json | null
+          run_date?: string
+          started_at?: string | null
+          status?: string
+          strategy_id?: string
+          strategy_name?: string
+          summary_log?: string | null
+          trigger_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduled_backtest_runs_strategy_id_fkey"
+            columns: ["strategy_id"]
+            isOneToOne: false
+            referencedRelation: "strategies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       strategies: {
         Row: {
           adx_threshold: number | null

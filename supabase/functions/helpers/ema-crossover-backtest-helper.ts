@@ -281,6 +281,15 @@ export async function runEMACrossoverBacktest(
   console.log(`[EMA-CROSSOVER-BT] Exit Reasons:`, exitSummary);
   console.log(`[EMA-CROSSOVER-BT] ═══════════════════════════════════════════════════════`);
 
+  // === SUMMARY LOG FOR AI ANALYSIS ===
+  const slPercent = stopLossPercent || strategy.stop_loss_percent || 2.0;
+  const tpPercent = takeProfitPercent || strategy.take_profit_percent || 4.0;
+  const trailingPercent = trailingStopPercent || strategy.trailing_stop_percent || 0;
+  
+  const summaryLog = `📊 BACKTEST SUMMARY | Strategy: ${strategy.name} | Type: EMA Crossover | Symbol: ${strategy.symbol} | TF: ${strategy.timeframe} | SL: ${slPercent}% | TP: ${tpPercent}% | Trailing: ${trailingPercent}% | Leverage: ${leverage}x | Product: ${productType} | Return: ${totalReturn.toFixed(2)}% | Win Rate: ${winRate.toFixed(1)}% | Max DD: ${maxDrawdown.toFixed(2)}% | PF: ${profitFactor.toFixed(2)} | Trades: ${trades.length} (W:${winningTrades}/L:${losingTrades}) | Final: $${balance.toFixed(2)}`;
+  
+  console.log(summaryLog);
+
   // Save backtest results
   await supabaseClient
     .from('strategy_backtest_results')
@@ -317,7 +326,8 @@ export async function runEMACrossoverBacktest(
         },
         signals_generated: signalsGenerated,
         signals_blocked: signalsBlocked,
-        exit_summary: exitSummary
+        exit_summary: exitSummary,
+        summary_log: summaryLog
       }
     });
 
