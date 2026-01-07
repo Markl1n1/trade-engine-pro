@@ -4213,6 +4213,15 @@ async function run4hReentryBacktest(
 
   console.log(`4h Reentry backtest complete: ${trades.length} trades, ${winRate.toFixed(1)}% win rate, PF: ${profitFactor.toFixed(2)}`);
 
+  // === SUMMARY LOG FOR AI ANALYSIS ===
+  const slPercent = stopLossPercent || strategy.stop_loss_percent || 2.0;
+  const tpPercent = takeProfitPercent || strategy.take_profit_percent || 4.0;
+  const trailingPercent = trailingStopPercent || strategy.trailing_stop_percent || 0;
+  
+  const summaryLog = `📊 BACKTEST SUMMARY | Strategy: ${strategy.name} | Type: ${strategy.strategy_type || 'standard'} | Symbol: ${strategy.symbol} | TF: ${strategy.timeframe} | SL: ${slPercent}% | TP: ${tpPercent}% | Trailing: ${trailingPercent}% | Leverage: ${leverage}x | Product: ${productType} | Return: ${totalReturn.toFixed(2)}% | Win Rate: ${winRate.toFixed(1)}% | Max DD: ${maxDrawdown.toFixed(2)}% | PF: ${profitFactor.toFixed(2)} | Trades: ${trades.length} (W:${winningTrades}/L:${losingTrades}) | Final: $${balance.toFixed(2)}`;
+  
+  console.log(summaryLog);
+
   // Exit reason summary
   const exitSummary = trades.reduce((acc: Record<string, number>, t: any) => {
     const reason = (t as any).exit_reason || 'UNKNOWN';
@@ -4236,7 +4245,8 @@ async function run4hReentryBacktest(
       win_rate: winRate,
       max_drawdown: maxDrawdown,
       trades: trades,
-      balance_history: balanceHistory
+      balance_history: balanceHistory,
+      diagnostics: { exit_summary: exitSummary, summary_log: summaryLog }
     });
 
   // Normalize trades before returning

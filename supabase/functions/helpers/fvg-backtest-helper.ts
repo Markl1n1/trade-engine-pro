@@ -377,6 +377,15 @@ export async function runFVGScalpingBacktest(
 
   console.log(`[FVG-BACKTEST] Complete: ${trades.length} trades, Win Rate: ${winRate.toFixed(1)}%, PF: ${profitFactor.toFixed(2)}`);
 
+  // === SUMMARY LOG FOR AI ANALYSIS ===
+  const slPercent = stopLossPercent || strategy.stop_loss_percent || 2.0;
+  const tpPercent = takeProfitPercent || strategy.take_profit_percent || 4.0;
+  const trailingPercent = trailingStopPercent || strategy.trailing_stop_percent || 0;
+  
+  const summaryLog = `📊 BACKTEST SUMMARY | Strategy: ${strategy.name} | Type: FVG Scalping | Symbol: ${strategy.symbol} | TF: ${strategy.timeframe} | SL: ${slPercent}% | TP: ${tpPercent}% | Trailing: ${trailingPercent}% | Leverage: ${leverage}x | Product: ${productType} | Return: ${totalReturn.toFixed(2)}% | Win Rate: ${winRate.toFixed(1)}% | Max DD: ${(maxDrawdown * 100).toFixed(2)}% | PF: ${profitFactor.toFixed(2)} | Trades: ${trades.length} (W:${winningTrades}/L:${losingTrades}) | Final: $${balance.toFixed(2)}`;
+  
+  console.log(summaryLog);
+
   // Save results to database
   const { error: insertError } = await supabaseClient
     .from('strategy_backtest_results')
@@ -394,7 +403,7 @@ export async function runFVGScalpingBacktest(
       max_drawdown: results.max_drawdown,
       trades: results.trades,
       balance_history: results.balance_history,
-      diagnostics: results.diagnostics
+      diagnostics: { ...results.diagnostics, summary_log: summaryLog }
     });
 
   if (insertError) {
