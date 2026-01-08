@@ -506,36 +506,46 @@ export function evaluate4hReentry(
   console.log(`  - H_prev=${H_prev.toFixed(2)}, L_prev=${L_prev.toFixed(2)}`);
   console.log(`  - Range: H_4h=${rangeHigh.toFixed(2)}, L_4h=${rangeLow.toFixed(2)}`);
 
-  // Get thresholds from strategy config
+  // Get thresholds from strategy config - RELAXED defaults
   const config = strategy || {};
-  const adxThreshold = config.adx_threshold || 12;
-  const rsiOversold = config.rsi_oversold || 15;
-  const rsiOverbought = config.rsi_overbought || 85;
-  const momentumThreshold = config.momentum_threshold || 5;
-  const volumeThreshold = config.volume_multiplier || 1.0;
+  const adxThreshold = config.adx_threshold || 10; // RELAXED from 12
+  const rsiOversold = config.rsi_oversold || 20;   // RELAXED from 15
+  const rsiOverbought = config.rsi_overbought || 80; // RELAXED from 85
+  const momentumThreshold = config.momentum_threshold || 3; // RELAXED from 5
+  const volumeThreshold = config.volume_multiplier || 0.8; // RELAXED from 1.0
 
-  // IMPROVED ENTRY CONDITIONS:
-  // Option A: Strict retest (original) - C_prev < rangeLow AND C_curr >= rangeLow
-  // Option B: Proximity (0.5% from level) + bullish momentum
+  // IMPROVED ENTRY CONDITIONS - MORE FLEXIBLE
   const rangeSize = rangeHigh - rangeLow;
-  const proximityThreshold = rangeSize * 0.02; // 2% of range
+  const proximityThreshold = rangeSize * 0.05; // WIDENED: 5% of range (was 2%)
+  const wideProximityThreshold = rangeSize * 0.10; // NEW: 10% for alternative entries
   
   const nearRangeLow = Math.abs(C_curr - rangeLow) <= proximityThreshold;
   const nearRangeHigh = Math.abs(C_curr - rangeHigh) <= proximityThreshold;
+  const wideNearRangeLow = Math.abs(C_curr - rangeLow) <= wideProximityThreshold;
+  const wideNearRangeHigh = Math.abs(C_curr - rangeHigh) <= wideProximityThreshold;
   
+  // Original strict retest
   const strictLongRetest = C_prev < rangeLow && C_curr >= rangeLow;
   const strictShortRetest = C_prev > rangeHigh && C_curr <= rangeHigh;
   
-  // Relaxed entry: near level with momentum confirmation
-  const bullishMomentum = currentRSI > 40 && C_curr > C_prev;
-  const bearishMomentum = currentRSI < 60 && C_curr < C_prev;
+  // NEW: Breakout retest (price broke level and came back)
+  const breakoutLongRetest = C_prev >= rangeLow && previousCandle.low < rangeLow && C_curr > rangeLow;
+  const breakoutShortRetest = C_prev <= rangeHigh && previousCandle.high > rangeHigh && C_curr < rangeHigh;
   
-  const relaxedLongEntry = nearRangeLow && bullishMomentum && C_curr >= rangeLow * 0.998; // Within 0.2% below
-  const relaxedShortEntry = nearRangeHigh && bearishMomentum && C_curr <= rangeHigh * 1.002; // Within 0.2% above
+  // Relaxed entry: near level with momentum confirmation - WIDENED
+  const bullishMomentum = currentRSI > 35 && C_curr > C_prev; // RELAXED from 40
+  const bearishMomentum = currentRSI < 65 && C_curr < C_prev; // RELAXED from 60
+  
+  // NEW: Trend-following entry (price bouncing off level in trend direction)
+  const trendLongEntry = wideNearRangeLow && bullishMomentum && isBullishTrend && C_curr > rangeLow * 0.995;
+  const trendShortEntry = wideNearRangeHigh && bearishMomentum && isBearishTrend && C_curr < rangeHigh * 1.005;
+  
+  const relaxedLongEntry = nearRangeLow && bullishMomentum && C_curr >= rangeLow * 0.995; // WIDENED from 0.998
+  const relaxedShortEntry = nearRangeHigh && bearishMomentum && C_curr <= rangeHigh * 1.005; // WIDENED from 1.002
 
-  // LONG setup: Strict retest OR relaxed proximity entry
-  if (strictLongRetest || relaxedLongEntry) {
-    const entryType = strictLongRetest ? 'STRICT' : 'PROXIMITY';
+  // LONG setup: Strict retest OR breakout retest OR relaxed proximity OR trend-following
+  if (strictLongRetest || breakoutLongRetest || relaxedLongEntry || trendLongEntry) {
+    const entryType = strictLongRetest ? 'STRICT' : breakoutLongRetest ? 'BREAKOUT' : trendLongEntry ? 'TREND' : 'PROXIMITY';
     console.log(`[4H-REENTRY] 🔍 LONG ${entryType} entry detected`);
     
     // Calculate confidence with MODIFIERS instead of blocking
@@ -573,7 +583,11 @@ export function evaluate4hReentry(
     
     // Entry type bonus
     if (strictLongRetest) {
-      confidence += 10; // Bonus for strict retest pattern
+      confidence += 15; // Bonus for strict retest pattern
+    } else if (breakoutLongRetest) {
+      confidence += 10; // Bonus for breakout retest
+    } else if (trendLongEntry) {
+      confidence += 5; // Small bonus for trend-following
     }
     
     console.log('[4H-REENTRY] 🔍 LONG confidence calculation:', {
@@ -585,8 +599,8 @@ export function evaluate4hReentry(
       finalConfidence: confidence
     });
     
-    // Block only if confidence < 30%
-    if (confidence < 30) {
+    // RELAXED: Block only if confidence < 25% (was 30%)
+    if (confidence < 25) {
       console.log('[4H-REENTRY] ❌ LONG confidence too low:', confidence);
       return { signal_type: null, reason: `LONG confidence too low: ${confidence}%` };
     }
@@ -619,9 +633,9 @@ export function evaluate4hReentry(
     };
   }
 
-  // SHORT setup: Strict retest OR relaxed proximity entry
-  if (strictShortRetest || relaxedShortEntry) {
-    const entryType = strictShortRetest ? 'STRICT' : 'PROXIMITY';
+  // SHORT setup: Strict retest OR breakout retest OR relaxed proximity OR trend-following
+  if (strictShortRetest || breakoutShortRetest || relaxedShortEntry || trendShortEntry) {
+    const entryType = strictShortRetest ? 'STRICT' : breakoutShortRetest ? 'BREAKOUT' : trendShortEntry ? 'TREND' : 'PROXIMITY';
     console.log(`[4H-REENTRY] 🔍 SHORT ${entryType} entry detected`);
     
     // Calculate confidence with MODIFIERS instead of blocking
@@ -659,7 +673,11 @@ export function evaluate4hReentry(
     
     // Entry type bonus
     if (strictShortRetest) {
-      confidence += 10; // Bonus for strict retest pattern
+      confidence += 15; // Bonus for strict retest pattern
+    } else if (breakoutShortRetest) {
+      confidence += 10; // Bonus for breakout retest
+    } else if (trendShortEntry) {
+      confidence += 5; // Small bonus for trend-following
     }
     
     console.log('[4H-REENTRY] 🔍 SHORT confidence calculation:', {
@@ -671,8 +689,8 @@ export function evaluate4hReentry(
       finalConfidence: confidence
     });
     
-    // Block only if confidence < 30%
-    if (confidence < 30) {
+    // RELAXED: Block only if confidence < 25% (was 30%)
+    if (confidence < 25) {
       console.log('[4H-REENTRY] ❌ SHORT confidence too low:', confidence);
       return { signal_type: null, reason: `SHORT confidence too low: ${confidence}%` };
     }
