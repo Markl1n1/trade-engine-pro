@@ -178,21 +178,21 @@ export function evaluateMTFMomentum(
   config: MTFMomentumConfig,
   positionOpen: boolean
 ): MTFMomentumSignal {
-  // CRITICAL FIX: Optimized configuration for 50%+ win rate
+  // IMPROVED: Balanced configuration for more trades with reasonable win rate
   const cfg = {
     rsi_period: config.rsi_period ?? 14,
-    rsi_entry_threshold: config.rsi_entry_threshold ?? 55,  // STRICTER: Require stronger momentum
+    rsi_entry_threshold: config.rsi_entry_threshold ?? 52,  // RELAXED: Lower threshold (was 55)
     macd_fast: config.macd_fast ?? 8,
     macd_slow: config.macd_slow ?? 21,
     macd_signal: config.macd_signal ?? 5,
     supertrend_atr_period: config.supertrend_atr_period ?? 10,
     supertrend_multiplier: config.supertrend_multiplier ?? 3,
-    volume_multiplier: config.volume_multiplier ?? 1.3,      // STRICTER: Require volume spike
-    atr_sl_multiplier: config.atr_sl_multiplier ?? 2.0,      // WIDER: Give trades room
-    atr_tp_multiplier: config.atr_tp_multiplier ?? 3.0,      // WIDER: Better R:R (1.5:1)
-    trailing_stop_percent: config.trailing_stop_percent ?? 0.5,
-    max_position_time: config.max_position_time ?? 30,
-    min_profit_percent: config.min_profit_percent ?? 0.2
+    volume_multiplier: config.volume_multiplier ?? 1.0,      // RELAXED: Accept normal volume (was 1.3)
+    atr_sl_multiplier: config.atr_sl_multiplier ?? 2.5,      // WIDER: More room (was 2.0)
+    atr_tp_multiplier: config.atr_tp_multiplier ?? 2.0,      // CLOSER: Easier TP (was 3.0), 1.25:1 R:R
+    trailing_stop_percent: config.trailing_stop_percent ?? 0.75,
+    max_position_time: config.max_position_time ?? 45,       // LONGER: More time (was 30)
+    min_profit_percent: config.min_profit_percent ?? 0.15    // LOWER: Earlier trailing activation
   };
 
   if (candles1m.length < 100 || candles5m.length < 100 || candles15m.length < 100) {
@@ -234,8 +234,8 @@ export function evaluateMTFMomentum(
   const currentMACD5 = last(macd5.histogram);
   const currentMACD15 = last(macd15.histogram);
   
-  // CRITICAL FIX: Block if volatility too high
-  if (volatilityRatio > 2.0) {
+  // RELAXED: Block only if volatility extremely high
+  if (volatilityRatio > 2.5) {
     return { 
       signal_type: null, 
       reason: `Volatility too high: ${volatilityRatio.toFixed(2)}x average ATR`,
@@ -243,52 +243,65 @@ export function evaluateMTFMomentum(
     };
   }
   
-  // CRITICAL FIX: Block if volume too low
-  if (!volOk) {
+  // RELAXED: Volume is now a confidence modifier, not blocker
+  const volumeConfirmed = volOk;
+
+  // IMPROVED: Check RSI extremes to avoid entering at tops/bottoms
+  const rsiExtremeLong = currentRSI1 > 78 || currentRSI5 > 75 || currentRSI15 > 72;
+  const rsiExtremeShort = currentRSI1 < 22 || currentRSI5 < 25 || currentRSI15 < 28;
+  
+  if (rsiExtremeLong) {
     return { 
       signal_type: null, 
-      reason: `Volume too low: ${volumeRatio.toFixed(2)}x (need ${cfg.volume_multiplier}x)`,
+      reason: `RSI extreme for LONG: 1m=${currentRSI1.toFixed(1)}, 5m=${currentRSI5.toFixed(1)}, 15m=${currentRSI15.toFixed(1)}`,
+      confidence: 0
+    };
+  }
+  
+  if (rsiExtremeShort) {
+    return { 
+      signal_type: null, 
+      reason: `RSI extreme for SHORT: 1m=${currentRSI1.toFixed(1)}, 5m=${currentRSI5.toFixed(1)}, 15m=${currentRSI15.toFixed(1)}`,
       confidence: 0
     };
   }
 
-  // CRITICAL FIX: REQUIRE ALL 3 timeframes to align (not just 2/3)
-  // This significantly improves win rate
+  // IMPROVED: Require 2/3 timeframes instead of 3/3 for more trades
   const rsi1Long = currentRSI1 > cfg.rsi_entry_threshold;
-  const rsi5Long = currentRSI5 > 50;
-  const rsi15Long = currentRSI15 > 50;
+  const rsi5Long = currentRSI5 > 48; // RELAXED from 50
+  const rsi15Long = currentRSI15 > 48; // RELAXED from 50
   const macd1Long = currentMACD1 > 0;
   const macd5Long = currentMACD5 > 0;
   const macd15Long = currentMACD15 > 0;
   
-  // CRITICAL FIX: Require ALL 3 RSI and ALL 3 MACD to align
-  const mtfConvergenceLong = rsi1Long && rsi5Long && rsi15Long && 
-                              macd1Long && macd5Long && macd15Long;
+  // Count alignments
+  const rsiLongCount = (rsi1Long ? 1 : 0) + (rsi5Long ? 1 : 0) + (rsi15Long ? 1 : 0);
+  const macdLongCount = (macd1Long ? 1 : 0) + (macd5Long ? 1 : 0) + (macd15Long ? 1 : 0);
+  
+  // IMPROVED: Require 2/3 RSI AND 2/3 MACD (was 3/3)
+  const mtfConvergenceLong = rsiLongCount >= 2 && macdLongCount >= 2 && rsi1Long; // 1m must align
 
-  // SHORT: Require ALL 3 timeframes
+  // SHORT: Require 2/3 timeframes
   const rsi1Short = currentRSI1 < (100 - cfg.rsi_entry_threshold);
-  const rsi5Short = currentRSI5 < 50;
-  const rsi15Short = currentRSI15 < 50;
+  const rsi5Short = currentRSI5 < 52; // RELAXED from 50
+  const rsi15Short = currentRSI15 < 52; // RELAXED from 50
   const macd1Short = currentMACD1 < 0;
   const macd5Short = currentMACD5 < 0;
   const macd15Short = currentMACD15 < 0;
   
-  const mtfConvergenceShort = rsi1Short && rsi5Short && rsi15Short && 
-                               macd1Short && macd5Short && macd15Short;
+  const rsiShortCount = (rsi1Short ? 1 : 0) + (rsi5Short ? 1 : 0) + (rsi15Short ? 1 : 0);
+  const macdShortCount = (macd1Short ? 1 : 0) + (macd5Short ? 1 : 0) + (macd15Short ? 1 : 0);
+  
+  const mtfConvergenceShort = rsiShortCount >= 2 && macdShortCount >= 2 && rsi1Short; // 1m must align
 
   const condLong = !positionOpen && mtfConvergenceLong;
   const condShort = !positionOpen && mtfConvergenceShort;
   
   // Check if we have any convergence
   if (!positionOpen && !mtfConvergenceLong && !mtfConvergenceShort) {
-    const rsiLongCount = (rsi1Long ? 1 : 0) + (rsi5Long ? 1 : 0) + (rsi15Long ? 1 : 0);
-    const macdLongCount = (macd1Long ? 1 : 0) + (macd5Long ? 1 : 0) + (macd15Long ? 1 : 0);
-    const rsiShortCount = (rsi1Short ? 1 : 0) + (rsi5Short ? 1 : 0) + (rsi15Short ? 1 : 0);
-    const macdShortCount = (macd1Short ? 1 : 0) + (macd5Short ? 1 : 0) + (macd15Short ? 1 : 0);
-    
     return { 
       signal_type: null, 
-      reason: `No full MTF convergence (RSI: ${rsiLongCount}/3 long, ${rsiShortCount}/3 short; MACD: ${macdLongCount}/3 long, ${macdShortCount}/3 short)`,
+      reason: `MTF not aligned (RSI: ${rsiLongCount}/3 L, ${rsiShortCount}/3 S; MACD: ${macdLongCount}/3 L, ${macdShortCount}/3 S)`,
       confidence: 0,
       time_to_expire: 5
     };
@@ -347,20 +360,20 @@ export function evaluateMTFMomentum(
   return { signal_type: null, reason: 'No MTF confluence' };
 }
 
-// CRITICAL FIX: Configuration optimized for 50%+ win rate with STRICT filtering
+// IMPROVED: Balanced configuration for more trades with reasonable win rate
 export const defaultMTFMomentumConfig: MTFMomentumConfig = {
   rsi_period: 14,
-  rsi_entry_threshold: 55,        // STRICTER: Require stronger momentum
+  rsi_entry_threshold: 52,        // RELAXED: Lower threshold (was 55)
   macd_fast: 8,
   macd_slow: 21,
   macd_signal: 5,
   supertrend_atr_period: 10,
   supertrend_multiplier: 3,
-  volume_multiplier: 1.3,         // STRICTER: Require volume spike
-  atr_sl_multiplier: 2.0,         // WIDER: Give trades room to breathe
-  atr_tp_multiplier: 3.0,         // WIDER: 1.5:1 R:R ratio
+  volume_multiplier: 1.0,         // RELAXED: Accept normal volume (was 1.3)
+  atr_sl_multiplier: 2.5,         // WIDER: More room (was 2.0)
+  atr_tp_multiplier: 2.0,         // CLOSER: Easier TP (was 3.0)
   trailing_stop_percent: 0.75,    // Wider trailing stop
-  max_position_time: 30,          // 30 min max
-  min_profit_percent: 0.3         // Higher min profit for trailing
+  max_position_time: 45,          // LONGER: 45 min max (was 30)
+  min_profit_percent: 0.15        // LOWER: Earlier trailing activation (was 0.3)
 };
 

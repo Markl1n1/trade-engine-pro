@@ -549,8 +549,8 @@ export function evaluateATHGuardStrategy(
     return { signal_type: null, reason: 'No EMA alignment' };
   }
   
-  // STEP 2: RSI Direction Check
-  const rsiOk = bias === 'LONG' ? currentRSI < 70 : currentRSI > 30;
+  // STEP 2: RSI Direction Check - RELAXED for more trades
+  const rsiOk = bias === 'LONG' ? currentRSI < 75 : currentRSI > 25;
   
   console.log(`[ATH-GUARD] 📊 Step 2 - RSI: ${currentRSI.toFixed(1)} ${rsiOk ? '✅' : '❌'}`);
   
@@ -558,55 +558,67 @@ export function evaluateATHGuardStrategy(
     return { signal_type: null, reason: `RSI extreme: ${currentRSI.toFixed(1)}` };
   }
   
-  // CRITICAL FIX: BLOCK entry when against global trend (not just reduce confidence)
+  // RELAXED: Allow counter-trend trades with reduced confidence (not blocked)
   const trendAligned = (bias === 'LONG' && globalTrend === 'UP') || (bias === 'SHORT' && globalTrend === 'DOWN');
   
-  if (!trendAligned) {
-    console.log(`[ATH-GUARD] ❌ BLOCKED: Against global trend (${globalTrend}). Bias: ${bias}`);
-    return { signal_type: null, reason: `Blocked: ${bias} against global trend (${globalTrend})` };
-  }
+  // RELAXED: ADX is now a confidence modifier, not a blocker
+  const adxStrong = config.adx_threshold ? currentADX >= config.adx_threshold : currentADX >= 15;
   
-  // CRITICAL FIX: BLOCK entry if ADX is too weak (no trend to trade)
-  if (config.adx_threshold && currentADX < config.adx_threshold) {
-    console.log(`[ATH-GUARD] ❌ BLOCKED: ADX too weak ${currentADX.toFixed(1)} < ${config.adx_threshold}`);
-    return { signal_type: null, reason: `ADX too weak: ${currentADX.toFixed(1)}` };
-  }
-  
-  // CRITICAL FIX: BLOCK if volume is too low
-  if (volumeRatio < 1.0) {
-    console.log(`[ATH-GUARD] ❌ BLOCKED: Volume too low ${volumeRatio.toFixed(2)}x`);
+  // RELAXED: Volume is now a confidence modifier, not a blocker (except very low)
+  if (volumeRatio < 0.5) {
+    console.log(`[ATH-GUARD] ❌ BLOCKED: Volume extremely low ${volumeRatio.toFixed(2)}x`);
     return { signal_type: null, reason: `Volume too low: ${volumeRatio.toFixed(2)}x` };
   }
   
-  // CRITICAL FIX: Stricter RSI filter
-  if (bias === 'LONG' && currentRSI > 60) {
-    console.log(`[ATH-GUARD] ❌ BLOCKED: RSI too high for LONG ${currentRSI.toFixed(1)} > 60`);
+  // RELAXED RSI filter - only block at extremes
+  if (bias === 'LONG' && currentRSI > 72) {
+    console.log(`[ATH-GUARD] ❌ BLOCKED: RSI too high for LONG ${currentRSI.toFixed(1)} > 72`);
     return { signal_type: null, reason: `RSI too high for LONG: ${currentRSI.toFixed(1)}` };
   }
-  if (bias === 'SHORT' && currentRSI < 40) {
-    console.log(`[ATH-GUARD] ❌ BLOCKED: RSI too low for SHORT ${currentRSI.toFixed(1)} < 40`);
+  if (bias === 'SHORT' && currentRSI < 28) {
+    console.log(`[ATH-GUARD] ❌ BLOCKED: RSI too low for SHORT ${currentRSI.toFixed(1)} < 28`);
     return { signal_type: null, reason: `RSI too low for SHORT: ${currentRSI.toFixed(1)}` };
   }
   
   // Now calculate confidence for remaining modifiers
   let confidence = 100;
   
-  // Volume boost if high
-  if (volumeRatio < 1.5) {
+  // Trend alignment modifier (not blocker anymore)
+  if (!trendAligned) {
+    console.log(`[ATH-GUARD] ⚠️ Counter-trend trade (-20 confidence)`);
+    confidence -= 20;
+  }
+  
+  // ADX modifier (not blocker anymore)
+  if (!adxStrong) {
+    console.log(`[ATH-GUARD] ⚠️ Weak ADX: ${currentADX.toFixed(1)} (-10 confidence)`);
     confidence -= 10;
+  }
+  
+  // Volume modifier
+  if (volumeRatio < 1.0) {
+    confidence -= 10;
+  } else if (volumeRatio >= 1.5) {
+    confidence += 5; // Bonus for strong volume
   }
   
   // MACD modifier (-10 if not aligned)
   const macdAligned = bias === 'LONG' ? currentHistogram > 0 : currentHistogram < 0;
   if (!macdAligned) {
-    console.log(`[ATH-GUARD] ⚠️ MACD not aligned (-15 confidence)`);
-    confidence -= 15;
+    console.log(`[ATH-GUARD] ⚠️ MACD not aligned (-10 confidence)`);
+    confidence -= 10;
   }
   
-  // Volatility modifier (-10 if elevated volatility)
+  // Volatility modifier
   if (volatilityRatio > 1.5) {
-    console.log(`[ATH-GUARD] ⚠️ Elevated volatility: ${volatilityRatio.toFixed(2)}x (-10 confidence)`);
-    confidence -= 10;
+    console.log(`[ATH-GUARD] ⚠️ Elevated volatility: ${volatilityRatio.toFixed(2)}x (-5 confidence)`);
+    confidence -= 5;
+  }
+  
+  // Block only if confidence too low
+  if (confidence < 40) {
+    console.log(`[ATH-GUARD] ❌ BLOCKED: Confidence too low ${confidence}%`);
+    return { signal_type: null, reason: `Confidence too low: ${confidence}%` };
   }
   
   console.log(`[ATH-GUARD] ✅ Signal confidence: ${confidence}%`);
@@ -667,29 +679,29 @@ export function evaluateATHGuardStrategy(
   return { signal_type: null, reason: 'No signal' };
 }
 
-// CRITICAL FIX: Configuration optimized for 50%+ win rate with STRICT filtering
+// IMPROVED: Configuration balanced for more trades with reasonable win rate
 export const defaultATHGuardConfig: ATHGuardConfig = {
-  // Core parameters (used for STRICT filtering)
-  ema_slope_threshold: 0.05,
-  volume_multiplier: 1.2,
-  atr_sl_multiplier: 2.5,           // WIDER: Give trades room to breathe
-  atr_tp1_multiplier: 3.0,          // WIDER: Better R:R ratio
-  atr_tp2_multiplier: 4.5,          // WIDER: Extended target
-  rsi_threshold: 60,                // STRICTER: Block overbought earlier
+  // Core parameters - RELAXED for more trades
+  ema_slope_threshold: 0.03,        // RELAXED: Lower slope requirement
+  volume_multiplier: 0.8,           // RELAXED: Accept lower volume
+  atr_sl_multiplier: 3.5,           // WIDER: Give trades more room (was 2.5)
+  atr_tp1_multiplier: 2.5,          // CLOSER: Easier TP1 (was 3.0)
+  atr_tp2_multiplier: 4.0,          // CLOSER: More achievable TP2 (was 4.5)
+  rsi_threshold: 72,                // RELAXED: Allow higher RSI (was 60)
   
-  // STRICT filter (required for entry, not just confidence)
-  adx_threshold: 22,                // STRICTER: Require stronger trend
+  // ADX now a modifier, not strict blocker
+  adx_threshold: 15,                // RELAXED: Lower ADX requirement (was 22)
   
   // Unused legacy parameters (kept for compatibility)
-  pullback_tolerance: 0.15,
-  stoch_oversold: 25,
-  stoch_overbought: 75,
-  ath_safety_distance: 0.2,
+  pullback_tolerance: 0.20,         // RELAXED: Wider pullback tolerance
+  stoch_oversold: 20,               // RELAXED
+  stoch_overbought: 80,             // RELAXED
+  ath_safety_distance: 0.3,         // RELAXED
   bollinger_period: 20,
   bollinger_std: 2.0,
-  trailing_stop_percent: 1.0,       // WIDER: Trailing stop
-  max_position_time: 180,           // 3 hours max position time
-  min_volume_spike: 1.2,
-  momentum_threshold: 15,
+  trailing_stop_percent: 1.5,       // WIDER: More room for trailing
+  max_position_time: 240,           // 4 hours max position time
+  min_volume_spike: 0.8,            // RELAXED
+  momentum_threshold: 10,           // RELAXED
   support_resistance_lookback: 20
 };
