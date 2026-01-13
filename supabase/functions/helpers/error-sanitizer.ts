@@ -6,6 +6,7 @@
 
 export const ERROR_MESSAGES = {
   AUTH_FAILED: 'Authentication failed. Please check your credentials.',
+  API_KEY_EXPIRED: 'Your exchange API key has expired. Please update it in Settings.',
   INVALID_INPUT: 'Invalid request parameters provided.',
   EXCHANGE_ERROR: 'Exchange API error occurred. Please try again.',
   SETTINGS_NOT_FOUND: 'User settings not found. Please configure your account.',
@@ -29,36 +30,41 @@ interface ErrorContext {
  */
 export function sanitizeError(error: any): string {
   const message = error?.message?.toLowerCase() || '';
-  
+
+  // Expired / revoked API keys (common for exchange integrations)
+  if ((message.includes('api key') && message.includes('expired')) || message.includes('api key has expired')) {
+    return ERROR_MESSAGES.API_KEY_EXPIRED;
+  }
+
   // Map specific error types to generic messages
   if (message.includes('unauthorized') || message.includes('authentication')) {
     return ERROR_MESSAGES.AUTH_FAILED;
   }
-  
+
   if (message.includes('validation') || message.includes('invalid')) {
     return ERROR_MESSAGES.INVALID_INPUT;
   }
-  
+
   if (message.includes('binance') || message.includes('bybit') || message.includes('exchange')) {
     return ERROR_MESSAGES.EXCHANGE_ERROR;
   }
-  
+
   if (message.includes('not found') && message.includes('settings')) {
     return ERROR_MESSAGES.SETTINGS_NOT_FOUND;
   }
-  
+
   if (message.includes('rate limit') || message.includes('too many')) {
     return ERROR_MESSAGES.RATE_LIMIT;
   }
-  
+
   if (message.includes('symbol')) {
     return ERROR_MESSAGES.INVALID_SYMBOL;
   }
-  
+
   if (message.includes('position')) {
     return ERROR_MESSAGES.POSITION_ERROR;
   }
-  
+
   // Default generic message
   return ERROR_MESSAGES.INTERNAL_ERROR;
 }
