@@ -178,21 +178,21 @@ export function evaluateMTFMomentum(
   config: MTFMomentumConfig,
   positionOpen: boolean
 ): MTFMomentumSignal {
-  // IMPROVED: Balanced configuration for more trades with reasonable win rate
+  // IMPROVED v2: Better R:R ratio (1:1.8) for profitable momentum trading
   const cfg = {
     rsi_period: config.rsi_period ?? 14,
-    rsi_entry_threshold: config.rsi_entry_threshold ?? 52,  // RELAXED: Lower threshold (was 55)
+    rsi_entry_threshold: config.rsi_entry_threshold ?? 50,  // NEUTRAL: RSI > 50 for LONG
     macd_fast: config.macd_fast ?? 8,
     macd_slow: config.macd_slow ?? 21,
     macd_signal: config.macd_signal ?? 5,
     supertrend_atr_period: config.supertrend_atr_period ?? 10,
     supertrend_multiplier: config.supertrend_multiplier ?? 3,
-    volume_multiplier: config.volume_multiplier ?? 1.0,      // RELAXED: Accept normal volume (was 1.3)
-    atr_sl_multiplier: config.atr_sl_multiplier ?? 2.5,      // WIDER: More room (was 2.0)
-    atr_tp_multiplier: config.atr_tp_multiplier ?? 2.0,      // CLOSER: Easier TP (was 3.0), 1.25:1 R:R
-    trailing_stop_percent: config.trailing_stop_percent ?? 0.75,
-    max_position_time: config.max_position_time ?? 45,       // LONGER: More time (was 30)
-    min_profit_percent: config.min_profit_percent ?? 0.15    // LOWER: Earlier trailing activation
+    volume_multiplier: config.volume_multiplier ?? 0.8,      // VERY RELAXED: Accept low volume
+    atr_sl_multiplier: config.atr_sl_multiplier ?? 1.8,      // TIGHTER: Better R:R
+    atr_tp_multiplier: config.atr_tp_multiplier ?? 3.2,      // WIDER: Capture moves, 1:1.8 R:R
+    trailing_stop_percent: config.trailing_stop_percent ?? 0.5,
+    max_position_time: config.max_position_time ?? 60,       // 1 hour to let momentum develop
+    min_profit_percent: config.min_profit_percent ?? 0.25    // Trailing at 0.25% profit
   };
 
   if (candles1m.length < 100 || candles5m.length < 100 || candles15m.length < 100) {
@@ -360,20 +360,21 @@ export function evaluateMTFMomentum(
   return { signal_type: null, reason: 'No MTF confluence' };
 }
 
-// IMPROVED: Balanced configuration for more trades with reasonable win rate
+// IMPROVED v2: Optimized R:R for momentum trading - need 40%+ WR to be profitable
+// Key: Wider SL (survive noise) + Wider TP (capture momentum moves) = 1:1.8 R:R
 export const defaultMTFMomentumConfig: MTFMomentumConfig = {
   rsi_period: 14,
-  rsi_entry_threshold: 52,        // RELAXED: Lower threshold (was 55)
+  rsi_entry_threshold: 50,        // NEUTRAL: RSI > 50 for LONG (was 52)
   macd_fast: 8,
   macd_slow: 21,
   macd_signal: 5,
   supertrend_atr_period: 10,
   supertrend_multiplier: 3,
-  volume_multiplier: 1.0,         // RELAXED: Accept normal volume (was 1.3)
-  atr_sl_multiplier: 2.5,         // WIDER: More room (was 2.0)
-  atr_tp_multiplier: 2.0,         // CLOSER: Easier TP (was 3.0)
-  trailing_stop_percent: 0.75,    // Wider trailing stop
-  max_position_time: 45,          // LONGER: 45 min max (was 30)
-  min_profit_percent: 0.15        // LOWER: Earlier trailing activation (was 0.3)
+  volume_multiplier: 0.8,         // VERY RELAXED: Accept low volume
+  atr_sl_multiplier: 1.8,         // TIGHTER: Smaller SL for better R:R
+  atr_tp_multiplier: 3.2,         // WIDER: Capture momentum moves, 1:1.8 R:R
+  trailing_stop_percent: 0.5,     // Tighter trailing once in profit
+  max_position_time: 60,          // LONGER: 1 hour to let momentum play out
+  min_profit_percent: 0.25        // Activate trailing at 0.25% profit
 };
 
