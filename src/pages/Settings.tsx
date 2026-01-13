@@ -505,33 +505,32 @@ const Settings = () => {
   const handleTestExchange = async (useTestnet: boolean) => {
     setTestingBinance(true);
     try {
-      const {
-        data,
-        error
-      } = await supabase.functions.invoke('test-exchange', {
+      const { data, error } = await supabase.functions.invoke('test-exchange', {
         body: {
           useTestnet,
-          exchangeType: settings.exchange_type
-        }
+          exchangeType: settings.exchange_type,
+        },
       });
+
       if (error) throw error;
+
       if (data.success) {
-        const exchangeName = settings.exchange_type === 'bybit' ? 'Bybit' : 'Bybit';
+        const exchangeName = settings.exchange_type === 'bybit' ? 'Bybit' : 'Binance';
         const networkType = useTestnet ? 'Testnet' : 'Mainnet';
         toast({
-          title: "Success",
-          description: `Connected to ${exchangeName} ${networkType}! Balance: $${data.data.totalWalletBalance.toFixed(2)}`
+          title: 'Success',
+          description: `Connected to ${exchangeName} ${networkType}! Balance: $${data.data.totalWalletBalance.toFixed(2)}`,
         });
       } else {
         throw new Error(data.error || `Failed to connect to ${settings.exchange_type}`);
       }
     } catch (error: any) {
-      console.error("Error testing exchange:", error);
-      const exchangeName = settings.exchange_type === 'bybit' ? 'Bybit' : 'Bybit';
+      console.error('Error testing exchange:', error);
+      const exchangeName = settings.exchange_type === 'bybit' ? 'Bybit' : 'Binance';
       toast({
-        title: "Error",
+        title: 'Error',
         description: error.message || `Failed to connect to ${exchangeName}`,
-        variant: "destructive"
+        variant: 'destructive',
       });
     } finally {
       setTestingBinance(false);
@@ -725,39 +724,6 @@ const Settings = () => {
           
           <TabsContent value="mainnet" className="space-y-4 mt-4">
             {settings.exchange_type === 'bybit' ? (
-              credentialStatus.binance_mainnet ? (
-                <div className="flex items-center justify-between p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle className="h-5 w-5 text-green-500" />
-                    <div>
-                      <p className="font-medium">Mainnet API Keys Configured</p>
-                      <p className="text-sm text-muted-foreground">Encrypted and stored securely</p>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={() => handleOpenCredentialDialog('binance_mainnet')}>
-                      Update Keys
-                    </Button>
-                    <Button variant="destructive" size="sm" onClick={() => handleDeleteCredentials('binance_mainnet')}>
-                      Delete
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-center justify-between p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
-                  <div className="flex items-center gap-2">
-                    <AlertTriangle className="h-5 w-5 text-yellow-500" />
-                    <div>
-                      <p className="font-medium">No Mainnet API Keys</p>
-                      <p className="text-sm text-muted-foreground">Add your API keys to enable mainnet trading</p>
-                    </div>
-                  </div>
-                  <Button onClick={() => handleOpenCredentialDialog('binance_mainnet')}>
-                    Add Keys
-                  </Button>
-                </div>
-              )
-            ) : (
               credentialStatus.bybit_mainnet ? (
                 <div className="flex items-center justify-between p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
                   <div className="flex items-center gap-2">
@@ -785,9 +751,38 @@ const Settings = () => {
                       <p className="text-sm text-muted-foreground">Add your API keys to enable mainnet trading</p>
                     </div>
                   </div>
-                  <Button onClick={() => handleOpenCredentialDialog('bybit_mainnet')}>
-                    Add Keys
-                  </Button>
+                  <Button onClick={() => handleOpenCredentialDialog('bybit_mainnet')}>Add Keys</Button>
+                </div>
+              )
+            ) : (
+              credentialStatus.binance_mainnet ? (
+                <div className="flex items-center justify-between p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-5 w-5 text-green-500" />
+                    <div>
+                      <p className="font-medium">Mainnet API Keys Configured</p>
+                      <p className="text-sm text-muted-foreground">Encrypted and stored securely</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={() => handleOpenCredentialDialog('binance_mainnet')}>
+                      Update Keys
+                    </Button>
+                    <Button variant="destructive" size="sm" onClick={() => handleDeleteCredentials('binance_mainnet')}>
+                      Delete
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="h-5 w-5 text-yellow-500" />
+                    <div>
+                      <p className="font-medium">No Mainnet API Keys</p>
+                      <p className="text-sm text-muted-foreground">Add your API keys to enable mainnet trading</p>
+                    </div>
+                  </div>
+                  <Button onClick={() => handleOpenCredentialDialog('binance_mainnet')}>Add Keys</Button>
                 </div>
               )
             )}
@@ -798,7 +793,7 @@ const Settings = () => {
               disabled={testingBinance || (
                 settings.exchange_type === 'bybit' 
                   ? !credentialStatus.bybit_mainnet 
-                  : !credentialStatus.bybit_mainnet
+                  : !credentialStatus.binance_mainnet
               )} 
               className="mt-4 w-full"
             >
@@ -818,39 +813,6 @@ const Settings = () => {
 
           <TabsContent value="testnet" className="space-y-4 mt-4">
             {settings.exchange_type === 'bybit' ? (
-              credentialStatus.binance_testnet ? (
-                <div className="flex items-center justify-between p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle className="h-5 w-5 text-green-500" />
-                    <div>
-                      <p className="font-medium">Testnet API Keys Configured</p>
-                      <p className="text-sm text-muted-foreground">Encrypted and stored securely</p>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={() => handleOpenCredentialDialog('binance_testnet')}>
-                      Update Keys
-                    </Button>
-                    <Button variant="destructive" size="sm" onClick={() => handleDeleteCredentials('binance_testnet')}>
-                      Delete
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-center justify-between p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
-                  <div className="flex items-center gap-2">
-                    <AlertTriangle className="h-5 w-5 text-yellow-500" />
-                    <div>
-                      <p className="font-medium">No Testnet API Keys</p>
-                      <p className="text-sm text-muted-foreground">Add your API keys to enable testnet trading</p>
-                    </div>
-                  </div>
-                  <Button onClick={() => handleOpenCredentialDialog('binance_testnet')}>
-                    Add Keys
-                  </Button>
-                </div>
-              )
-            ) : (
               credentialStatus.bybit_testnet ? (
                 <div className="flex items-center justify-between p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
                   <div className="flex items-center gap-2">
@@ -878,9 +840,38 @@ const Settings = () => {
                       <p className="text-sm text-muted-foreground">Add your API keys to enable testnet trading</p>
                     </div>
                   </div>
-                  <Button onClick={() => handleOpenCredentialDialog('bybit_testnet')}>
-                    Add Keys
-                  </Button>
+                  <Button onClick={() => handleOpenCredentialDialog('bybit_testnet')}>Add Keys</Button>
+                </div>
+              )
+            ) : (
+              credentialStatus.binance_testnet ? (
+                <div className="flex items-center justify-between p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-5 w-5 text-green-500" />
+                    <div>
+                      <p className="font-medium">Testnet API Keys Configured</p>
+                      <p className="text-sm text-muted-foreground">Encrypted and stored securely</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={() => handleOpenCredentialDialog('binance_testnet')}>
+                      Update Keys
+                    </Button>
+                    <Button variant="destructive" size="sm" onClick={() => handleDeleteCredentials('binance_testnet')}>
+                      Delete
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="h-5 w-5 text-yellow-500" />
+                    <div>
+                      <p className="font-medium">No Testnet API Keys</p>
+                      <p className="text-sm text-muted-foreground">Add your API keys to enable testnet trading</p>
+                    </div>
+                  </div>
+                  <Button onClick={() => handleOpenCredentialDialog('binance_testnet')}>Add Keys</Button>
                 </div>
               )
             )}
