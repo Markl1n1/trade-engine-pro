@@ -356,16 +356,20 @@ export function evaluateSMACrossoverStrategy(
   const globalTrendBullish = currentPrice > currentSMA200;
   const globalTrendBearish = currentPrice < currentSMA200;
   
-  // Enhanced entry logic for new positions
+  // Enhanced entry logic for new positions - WIN RATE OPTIMIZATION v3
   if (!positionOpen) {
     // Golden Cross: SMA Fast crosses above SMA Slow
     if (prevSMAFast <= prevSMASlow && currentSMAFast > currentSMASlow) {
       
-      // CRITICAL FIX: STRICT filters - BLOCK trade if conditions not met (not just reduce confidence)
-      // 1. RSI must NOT be overbought
-      if (currentRSI > config.rsi_overbought) {
-        console.log(`[SMA-CROSSOVER] ❌ LONG BLOCKED: RSI overbought ${currentRSI.toFixed(2)} > ${config.rsi_overbought}`);
-        return { signal_type: null, reason: `LONG blocked: RSI overbought ${currentRSI.toFixed(2)}` };
+      // CRITICAL: STRICT filters for HIGH WIN RATE
+      // 1. RSI must be in "momentum zone" for LONG (45-65)
+      if (currentRSI > 65) {
+        console.log(`[SMA-CROSSOVER] ❌ LONG BLOCKED: RSI too high ${currentRSI.toFixed(2)} > 65`);
+        return { signal_type: null, reason: `LONG blocked: RSI too high ${currentRSI.toFixed(2)}` };
+      }
+      if (currentRSI < 45) {
+        console.log(`[SMA-CROSSOVER] ❌ LONG BLOCKED: RSI too low ${currentRSI.toFixed(2)} < 45`);
+        return { signal_type: null, reason: `LONG blocked: RSI too low ${currentRSI.toFixed(2)}` };
       }
       
       // 2. Global trend must be bullish (price > SMA 200)
@@ -374,25 +378,25 @@ export function evaluateSMACrossoverStrategy(
         return { signal_type: null, reason: `LONG blocked: Counter-trend` };
       }
       
-      // 3. RSI must be in "strength zone" for LONG (not oversold, not overbought)
-      if (currentRSI < 40) {
-        console.log(`[SMA-CROSSOVER] ❌ LONG BLOCKED: RSI too low ${currentRSI.toFixed(2)} < 40 (momentum weak)`);
-        return { signal_type: null, reason: `LONG blocked: RSI momentum weak` };
+      // 3. ADX must show trend (not blocked, but required minimum)
+      if (!adxConfirmed && currentADX < 15) {
+        console.log(`[SMA-CROSSOVER] ❌ LONG BLOCKED: ADX too weak ${currentADX.toFixed(2)} < 15`);
+        return { signal_type: null, reason: `LONG blocked: ADX weak` };
       }
       
-      let confidence = 100;
+      let confidence = 85;
       
       if (!volumeConfirmed) {
         confidence -= 10;
       }
       
-      if (!adxConfirmed) {
-        confidence -= 10;
+      if (adxConfirmed && currentADX > 25) {
+        confidence += 10;
       }
       
-      // Calculate stop loss and take profit with WIDER ratios for trend following
+      // Calculate stop loss and take profit with TIGHTER TP for quick wins
       const stopLoss = currentPrice - (config.atr_sl_multiplier * currentATR);
-      const takeProfit = currentPrice + (config.atr_tp_multiplier * currentATR);
+      const takeProfit = currentPrice + (config.atr_tp_multiplier * currentATR * 0.75); // 75% of original TP
       
       console.log('[SMA-CROSSOVER] 🚀 LONG ENTRY (Golden Cross)', {
         smaFast: currentSMAFast.toFixed(2),
@@ -415,18 +419,22 @@ export function evaluateSMACrossoverStrategy(
         bollinger_position: bollingerPosition,
         trend_strength: trendStrength,
         confidence: confidence / 100,
-        time_to_expire: 240
+        time_to_expire: 180 // Shorter expiration
       };
     }
     
     // Death Cross: SMA Fast crosses below SMA Slow
     if (prevSMAFast >= prevSMASlow && currentSMAFast < currentSMASlow) {
       
-      // CRITICAL FIX: STRICT filters - BLOCK trade if conditions not met
-      // 1. RSI must NOT be oversold
-      if (currentRSI < config.rsi_oversold) {
-        console.log(`[SMA-CROSSOVER] ❌ SHORT BLOCKED: RSI oversold ${currentRSI.toFixed(2)} < ${config.rsi_oversold}`);
-        return { signal_type: null, reason: `SHORT blocked: RSI oversold ${currentRSI.toFixed(2)}` };
+      // CRITICAL: STRICT filters for HIGH WIN RATE
+      // 1. RSI must be in "weakness zone" for SHORT (35-55)
+      if (currentRSI < 35) {
+        console.log(`[SMA-CROSSOVER] ❌ SHORT BLOCKED: RSI too low ${currentRSI.toFixed(2)} < 35`);
+        return { signal_type: null, reason: `SHORT blocked: RSI too low ${currentRSI.toFixed(2)}` };
+      }
+      if (currentRSI > 55) {
+        console.log(`[SMA-CROSSOVER] ❌ SHORT BLOCKED: RSI too high ${currentRSI.toFixed(2)} > 55`);
+        return { signal_type: null, reason: `SHORT blocked: RSI too high ${currentRSI.toFixed(2)}` };
       }
       
       // 2. Global trend must be bearish (price < SMA 200)
@@ -435,25 +443,25 @@ export function evaluateSMACrossoverStrategy(
         return { signal_type: null, reason: `SHORT blocked: Counter-trend` };
       }
       
-      // 3. RSI must be in "weakness zone" for SHORT (not overbought, not oversold)
-      if (currentRSI > 60) {
-        console.log(`[SMA-CROSSOVER] ❌ SHORT BLOCKED: RSI too high ${currentRSI.toFixed(2)} > 60 (momentum strong)`);
-        return { signal_type: null, reason: `SHORT blocked: RSI momentum too strong` };
+      // 3. ADX must show trend
+      if (!adxConfirmed && currentADX < 15) {
+        console.log(`[SMA-CROSSOVER] ❌ SHORT BLOCKED: ADX too weak ${currentADX.toFixed(2)} < 15`);
+        return { signal_type: null, reason: `SHORT blocked: ADX weak` };
       }
       
-      let confidenceShort = 100;
+      let confidenceShort = 85;
       
       if (!volumeConfirmed) {
         confidenceShort -= 10;
       }
       
-      if (!adxConfirmed) {
-        confidenceShort -= 10;
+      if (adxConfirmed && currentADX > 25) {
+        confidenceShort += 10;
       }
       
-      // Calculate stop loss and take profit
+      // Calculate stop loss and take profit with TIGHTER TP
       const stopLoss = currentPrice + (config.atr_sl_multiplier * currentATR);
-      const takeProfit = currentPrice - (config.atr_tp_multiplier * currentATR);
+      const takeProfit = currentPrice - (config.atr_tp_multiplier * currentATR * 0.75);
       
       console.log('[SMA-CROSSOVER] 🔻 SHORT ENTRY (Death Cross)', {
         smaFast: currentSMAFast.toFixed(2),
@@ -476,7 +484,7 @@ export function evaluateSMACrossoverStrategy(
         bollinger_position: bollingerPosition,
         trend_strength: trendStrength,
         confidence: confidenceShort / 100,
-        time_to_expire: 240
+        time_to_expire: 180
       };
     }
     

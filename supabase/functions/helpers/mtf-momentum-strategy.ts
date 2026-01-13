@@ -178,21 +178,22 @@ export function evaluateMTFMomentum(
   config: MTFMomentumConfig,
   positionOpen: boolean
 ): MTFMomentumSignal {
-  // IMPROVED v2: Better R:R ratio (1:1.8) for profitable momentum trading
+  // IMPROVED v3: WIN RATE OPTIMIZATION - Stricter entries with better R:R
+  // Key insight: Require STRONG momentum, not just any momentum
   const cfg = {
     rsi_period: config.rsi_period ?? 14,
-    rsi_entry_threshold: config.rsi_entry_threshold ?? 50,  // NEUTRAL: RSI > 50 for LONG
+    rsi_entry_threshold: config.rsi_entry_threshold ?? 55,  // RAISED: Need stronger momentum for entry
     macd_fast: config.macd_fast ?? 8,
     macd_slow: config.macd_slow ?? 21,
     macd_signal: config.macd_signal ?? 5,
     supertrend_atr_period: config.supertrend_atr_period ?? 10,
     supertrend_multiplier: config.supertrend_multiplier ?? 3,
-    volume_multiplier: config.volume_multiplier ?? 0.8,      // VERY RELAXED: Accept low volume
-    atr_sl_multiplier: config.atr_sl_multiplier ?? 1.8,      // TIGHTER: Better R:R
-    atr_tp_multiplier: config.atr_tp_multiplier ?? 3.2,      // WIDER: Capture moves, 1:1.8 R:R
+    volume_multiplier: config.volume_multiplier ?? 1.0,      // RESTORED: Require average volume
+    atr_sl_multiplier: config.atr_sl_multiplier ?? 2.5,      // WIDER SL: Survive noise
+    atr_tp_multiplier: config.atr_tp_multiplier ?? 2.0,      // TIGHTER TP: Quick wins, 1:0.8 R:R
     trailing_stop_percent: config.trailing_stop_percent ?? 0.5,
-    max_position_time: config.max_position_time ?? 60,       // 1 hour to let momentum develop
-    min_profit_percent: config.min_profit_percent ?? 0.25    // Trailing at 0.25% profit
+    max_position_time: config.max_position_time ?? 30,       // SHORTER: Scalping, not swinging
+    min_profit_percent: config.min_profit_percent ?? 0.15    // Lower trailing activation
   };
 
   if (candles1m.length < 100 || candles5m.length < 100 || candles15m.length < 100) {
@@ -234,8 +235,15 @@ export function evaluateMTFMomentum(
   const currentMACD5 = last(macd5.histogram);
   const currentMACD15 = last(macd15.histogram);
   
-  // RELAXED: Block only if volatility extremely high
-  if (volatilityRatio > 2.5) {
+  // Calculate EMA 50 for trend filter
+  const ema50_1m = sma(c1, 50);
+  const currentEMA50 = ema50_1m[ema50_1m.length - 1];
+  const currentPrice = candles1m[candles1m.length - 1].close;
+  const globalTrendBullish = !isNaN(currentEMA50) && currentPrice > currentEMA50;
+  const globalTrendBearish = !isNaN(currentEMA50) && currentPrice < currentEMA50;
+  
+  // STRICT: Block if volatility high OR no clear trend
+  if (volatilityRatio > 2.0) {
     return { 
       signal_type: null, 
       reason: `Volatility too high: ${volatilityRatio.toFixed(2)}x average ATR`,
@@ -243,17 +251,23 @@ export function evaluateMTFMomentum(
     };
   }
   
-  // RELAXED: Volume is now a confidence modifier, not blocker
-  const volumeConfirmed = volOk;
+  // STRICT: Require volume confirmation
+  if (!volOk) {
+    return { 
+      signal_type: null, 
+      reason: `Low volume: ${volumeRatio.toFixed(2)}x (need ${cfg.volume_multiplier}x)`,
+      confidence: 0
+    };
+  }
 
-  // IMPROVED: Check RSI extremes to avoid entering at tops/bottoms
-  const rsiExtremeLong = currentRSI1 > 78 || currentRSI5 > 75 || currentRSI15 > 72;
-  const rsiExtremeShort = currentRSI1 < 22 || currentRSI5 < 25 || currentRSI15 < 28;
+  // STRICT: Check RSI extremes - avoid overextended moves
+  const rsiExtremeLong = currentRSI1 > 72 || currentRSI5 > 68 || currentRSI15 > 65;
+  const rsiExtremeShort = currentRSI1 < 28 || currentRSI5 < 32 || currentRSI15 < 35;
   
   if (rsiExtremeLong) {
     return { 
       signal_type: null, 
-      reason: `RSI extreme for LONG: 1m=${currentRSI1.toFixed(1)}, 5m=${currentRSI5.toFixed(1)}, 15m=${currentRSI15.toFixed(1)}`,
+      reason: `RSI overbought: 1m=${currentRSI1.toFixed(1)}, 5m=${currentRSI5.toFixed(1)}`,
       confidence: 0
     };
   }
@@ -261,15 +275,16 @@ export function evaluateMTFMomentum(
   if (rsiExtremeShort) {
     return { 
       signal_type: null, 
-      reason: `RSI extreme for SHORT: 1m=${currentRSI1.toFixed(1)}, 5m=${currentRSI5.toFixed(1)}, 15m=${currentRSI15.toFixed(1)}`,
+      reason: `RSI oversold: 1m=${currentRSI1.toFixed(1)}, 5m=${currentRSI5.toFixed(1)}`,
       confidence: 0
     };
   }
 
-  // IMPROVED: Require 2/3 timeframes instead of 3/3 for more trades
+  // IMPROVED v3: STRICT 3/3 alignment with global trend filter for higher win rate
+  // Key insight: Quality over quantity - fewer trades but higher win rate
   const rsi1Long = currentRSI1 > cfg.rsi_entry_threshold;
-  const rsi5Long = currentRSI5 > 48; // RELAXED from 50
-  const rsi15Long = currentRSI15 > 48; // RELAXED from 50
+  const rsi5Long = currentRSI5 > 52; // STRICTER: Need clear momentum
+  const rsi15Long = currentRSI15 > 50; // 15m neutral or bullish
   const macd1Long = currentMACD1 > 0;
   const macd5Long = currentMACD5 > 0;
   const macd15Long = currentMACD15 > 0;
@@ -278,13 +293,13 @@ export function evaluateMTFMomentum(
   const rsiLongCount = (rsi1Long ? 1 : 0) + (rsi5Long ? 1 : 0) + (rsi15Long ? 1 : 0);
   const macdLongCount = (macd1Long ? 1 : 0) + (macd5Long ? 1 : 0) + (macd15Long ? 1 : 0);
   
-  // IMPROVED: Require 2/3 RSI AND 2/3 MACD (was 3/3)
-  const mtfConvergenceLong = rsiLongCount >= 2 && macdLongCount >= 2 && rsi1Long; // 1m must align
+  // STRICT: Require 3/3 RSI AND 3/3 MACD AND global trend alignment
+  const mtfConvergenceLong = rsiLongCount === 3 && macdLongCount === 3 && globalTrendBullish;
 
-  // SHORT: Require 2/3 timeframes
+  // SHORT: Require 3/3 alignment
   const rsi1Short = currentRSI1 < (100 - cfg.rsi_entry_threshold);
-  const rsi5Short = currentRSI5 < 52; // RELAXED from 50
-  const rsi15Short = currentRSI15 < 52; // RELAXED from 50
+  const rsi5Short = currentRSI5 < 48; // STRICTER
+  const rsi15Short = currentRSI15 < 50; // 15m neutral or bearish
   const macd1Short = currentMACD1 < 0;
   const macd5Short = currentMACD5 < 0;
   const macd15Short = currentMACD15 < 0;
@@ -292,7 +307,8 @@ export function evaluateMTFMomentum(
   const rsiShortCount = (rsi1Short ? 1 : 0) + (rsi5Short ? 1 : 0) + (rsi15Short ? 1 : 0);
   const macdShortCount = (macd1Short ? 1 : 0) + (macd5Short ? 1 : 0) + (macd15Short ? 1 : 0);
   
-  const mtfConvergenceShort = rsiShortCount >= 2 && macdShortCount >= 2 && rsi1Short; // 1m must align
+  // STRICT: Require 3/3 alignment AND global trend
+  const mtfConvergenceShort = rsiShortCount === 3 && macdShortCount === 3 && globalTrendBearish;
 
   const condLong = !positionOpen && mtfConvergenceLong;
   const condShort = !positionOpen && mtfConvergenceShort;
@@ -301,7 +317,7 @@ export function evaluateMTFMomentum(
   if (!positionOpen && !mtfConvergenceLong && !mtfConvergenceShort) {
     return { 
       signal_type: null, 
-      reason: `MTF not aligned (RSI: ${rsiLongCount}/3 L, ${rsiShortCount}/3 S; MACD: ${macdLongCount}/3 L, ${macdShortCount}/3 S)`,
+      reason: `MTF not aligned (RSI: ${rsiLongCount}/3 L, ${rsiShortCount}/3 S; MACD: ${macdLongCount}/3 L, ${macdShortCount}/3 S; Trend: ${globalTrendBullish ? 'UP' : globalTrendBearish ? 'DOWN' : 'FLAT'})`,
       confidence: 0,
       time_to_expire: 5
     };
@@ -360,21 +376,21 @@ export function evaluateMTFMomentum(
   return { signal_type: null, reason: 'No MTF confluence' };
 }
 
-// IMPROVED v2: Optimized R:R for momentum trading - need 40%+ WR to be profitable
-// Key: Wider SL (survive noise) + Wider TP (capture momentum moves) = 1:1.8 R:R
+// IMPROVED v3: WIN RATE OPTIMIZATION - Strict entries, quick profits
+// Key: Strict 3/3 alignment + wider SL + tighter TP = 50%+ win rate
 export const defaultMTFMomentumConfig: MTFMomentumConfig = {
   rsi_period: 14,
-  rsi_entry_threshold: 50,        // NEUTRAL: RSI > 50 for LONG (was 52)
+  rsi_entry_threshold: 55,        // STRONGER momentum required
   macd_fast: 8,
   macd_slow: 21,
   macd_signal: 5,
   supertrend_atr_period: 10,
   supertrend_multiplier: 3,
-  volume_multiplier: 0.8,         // VERY RELAXED: Accept low volume
-  atr_sl_multiplier: 1.8,         // TIGHTER: Smaller SL for better R:R
-  atr_tp_multiplier: 3.2,         // WIDER: Capture momentum moves, 1:1.8 R:R
-  trailing_stop_percent: 0.5,     // Tighter trailing once in profit
-  max_position_time: 60,          // LONGER: 1 hour to let momentum play out
-  min_profit_percent: 0.25        // Activate trailing at 0.25% profit
+  volume_multiplier: 1.0,         // REQUIRE average volume
+  atr_sl_multiplier: 2.5,         // WIDER SL: Survive market noise
+  atr_tp_multiplier: 2.0,         // TIGHTER TP: Take quick wins
+  trailing_stop_percent: 0.5,     // Tight trailing
+  max_position_time: 30,          // SHORTER: Scalping timeframe
+  min_profit_percent: 0.15        // Lower trailing activation
 };
 

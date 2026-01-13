@@ -528,8 +528,8 @@ export function evaluateATHGuardStrategy(
     volatilityRatio: volatilityRatio.toFixed(2)
   });
   
-  // VOLATILITY FILTER: Skip if market too volatile (> 2x average ATR)
-  if (volatilityRatio > 2.0) {
+  // VOLATILITY FILTER: Skip if market too volatile (> 1.8x average ATR) - STRICTER
+  if (volatilityRatio > 1.8) {
     console.log(`[ATH-GUARD] ⚠️ Market too volatile: ${volatilityRatio.toFixed(2)}x average ATR`);
     return { signal_type: null, reason: `High volatility: ${volatilityRatio.toFixed(2)}x ATR` };
   }
@@ -549,76 +549,59 @@ export function evaluateATHGuardStrategy(
     return { signal_type: null, reason: 'No EMA alignment' };
   }
   
-  // STEP 2: RSI Direction Check - RELAXED for more trades
-  const rsiOk = bias === 'LONG' ? currentRSI < 75 : currentRSI > 25;
+  // CRITICAL: Require global trend alignment (not just confidence modifier)
+  const trendAligned = (bias === 'LONG' && globalTrend === 'UP') || (bias === 'SHORT' && globalTrend === 'DOWN');
+  if (!trendAligned) {
+    console.log(`[ATH-GUARD] ❌ BLOCKED: Counter-trend trade (bias=${bias}, globalTrend=${globalTrend})`);
+    return { signal_type: null, reason: `Counter-trend: ${bias} vs ${globalTrend}` };
+  }
+  
+  // STEP 2: RSI Direction Check - STRICT for win rate
+  const rsiOk = bias === 'LONG' 
+    ? (currentRSI > 40 && currentRSI < 65)  // LONG: RSI 40-65 (not oversold, not overbought)
+    : (currentRSI > 35 && currentRSI < 60); // SHORT: RSI 35-60 (similar logic)
   
   console.log(`[ATH-GUARD] 📊 Step 2 - RSI: ${currentRSI.toFixed(1)} ${rsiOk ? '✅' : '❌'}`);
   
   if (!rsiOk) {
-    return { signal_type: null, reason: `RSI extreme: ${currentRSI.toFixed(1)}` };
+    return { signal_type: null, reason: `RSI out of range: ${currentRSI.toFixed(1)}` };
   }
   
-  // RELAXED: Allow counter-trend trades with reduced confidence (not blocked)
-  const trendAligned = (bias === 'LONG' && globalTrend === 'UP') || (bias === 'SHORT' && globalTrend === 'DOWN');
+  // STRICT: ADX must show trend strength
+  const adxStrong = config.adx_threshold ? currentADX >= config.adx_threshold : currentADX >= 20;
+  if (!adxStrong) {
+    console.log(`[ATH-GUARD] ❌ BLOCKED: ADX weak ${currentADX.toFixed(1)} < 20`);
+    return { signal_type: null, reason: `ADX weak: ${currentADX.toFixed(1)}` };
+  }
   
-  // RELAXED: ADX is now a confidence modifier, not a blocker
-  const adxStrong = config.adx_threshold ? currentADX >= config.adx_threshold : currentADX >= 15;
-  
-  // RELAXED: Volume is now a confidence modifier, not a blocker (except very low)
-  if (volumeRatio < 0.5) {
-    console.log(`[ATH-GUARD] ❌ BLOCKED: Volume extremely low ${volumeRatio.toFixed(2)}x`);
+  // STRICT: Volume confirmation required
+  if (volumeRatio < 0.8) {
+    console.log(`[ATH-GUARD] ❌ BLOCKED: Volume low ${volumeRatio.toFixed(2)}x`);
     return { signal_type: null, reason: `Volume too low: ${volumeRatio.toFixed(2)}x` };
   }
   
-  // RELAXED RSI filter - only block at extremes
-  if (bias === 'LONG' && currentRSI > 72) {
-    console.log(`[ATH-GUARD] ❌ BLOCKED: RSI too high for LONG ${currentRSI.toFixed(1)} > 72`);
-    return { signal_type: null, reason: `RSI too high for LONG: ${currentRSI.toFixed(1)}` };
-  }
-  if (bias === 'SHORT' && currentRSI < 28) {
-    console.log(`[ATH-GUARD] ❌ BLOCKED: RSI too low for SHORT ${currentRSI.toFixed(1)} < 28`);
-    return { signal_type: null, reason: `RSI too low for SHORT: ${currentRSI.toFixed(1)}` };
-  }
-  
-  // Now calculate confidence for remaining modifiers
-  let confidence = 100;
-  
-  // Trend alignment modifier (not blocker anymore)
-  if (!trendAligned) {
-    console.log(`[ATH-GUARD] ⚠️ Counter-trend trade (-20 confidence)`);
-    confidence -= 20;
-  }
-  
-  // ADX modifier (not blocker anymore)
-  if (!adxStrong) {
-    console.log(`[ATH-GUARD] ⚠️ Weak ADX: ${currentADX.toFixed(1)} (-10 confidence)`);
-    confidence -= 10;
-  }
-  
-  // Volume modifier
-  if (volumeRatio < 1.0) {
-    confidence -= 10;
-  } else if (volumeRatio >= 1.5) {
-    confidence += 5; // Bonus for strong volume
-  }
-  
-  // MACD modifier (-10 if not aligned)
+  // MACD alignment required
   const macdAligned = bias === 'LONG' ? currentHistogram > 0 : currentHistogram < 0;
   if (!macdAligned) {
-    console.log(`[ATH-GUARD] ⚠️ MACD not aligned (-10 confidence)`);
-    confidence -= 10;
+    console.log(`[ATH-GUARD] ❌ BLOCKED: MACD not aligned`);
+    return { signal_type: null, reason: `MACD not aligned for ${bias}` };
   }
   
-  // Volatility modifier
-  if (volatilityRatio > 1.5) {
-    console.log(`[ATH-GUARD] ⚠️ Elevated volatility: ${volatilityRatio.toFixed(2)}x (-5 confidence)`);
-    confidence -= 5;
+  // Calculate confidence for remaining modifiers
+  let confidence = 80; // Start at 80 since we passed all filters
+  
+  // Volume bonus
+  if (volumeRatio >= 1.5) {
+    confidence += 10;
+  } else if (volumeRatio >= 1.2) {
+    confidence += 5;
   }
   
-  // Block only if confidence too low
-  if (confidence < 40) {
-    console.log(`[ATH-GUARD] ❌ BLOCKED: Confidence too low ${confidence}%`);
-    return { signal_type: null, reason: `Confidence too low: ${confidence}%` };
+  // ADX bonus
+  if (currentADX >= 30) {
+    confidence += 10;
+  } else if (currentADX >= 25) {
+    confidence += 5;
   }
   
   console.log(`[ATH-GUARD] ✅ Signal confidence: ${confidence}%`);
