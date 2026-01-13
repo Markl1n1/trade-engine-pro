@@ -240,62 +240,54 @@ export function evaluateEMACrossoverScalping(
     return { signal_type: null, reason: 'Position open, monitoring' };
   }
   
-  // Entry signals (only when no position is open)
+  // Entry signals (only when no position is open) - WIN RATE v3
   if (!positionOpen) {
     // LONG signal: Fast EMA crosses above Slow EMA
     const bullishCrossover = prevFastEMA <= prevSlowEMA && currentFastEMA > currentSlowEMA;
     const priceAboveSlow = currentPrice > currentSlowEMA;
     
     if (bullishCrossover && priceAboveSlow) {
-      let confidence = 90;
+      let confidence = 85;
       let reasons: string[] = [];
       
-      // RSI filter - CONFIDENCE REDUCTION (not blocking)
+      // STRICT RSI filter - must be in momentum zone (40-60)
       if (config.use_rsi_filter) {
-        if (rsiValue < config.rsi_long_threshold) {
-          confidence -= 15;
-          reasons.push(`RSI weak (${rsiValue.toFixed(1)} < ${config.rsi_long_threshold})`);
-          console.log(`[EMA-CROSSOVER] ⚠️ LONG confidence reduced: RSI ${rsiValue.toFixed(1)} < ${config.rsi_long_threshold}`);
-        } else if (rsiValue > 70) {
-          confidence -= 10;
-          reasons.push(`RSI overbought (${rsiValue.toFixed(1)})`);
-          console.log(`[EMA-CROSSOVER] ⚠️ LONG confidence reduced: RSI overbought ${rsiValue.toFixed(1)}`);
+        if (rsiValue < 40) {
+          console.log(`[EMA-CROSSOVER] ❌ LONG BLOCKED: RSI too weak ${rsiValue.toFixed(1)} < 40`);
+          return { signal_type: null, reason: `LONG blocked: RSI weak (${rsiValue.toFixed(1)})` };
+        }
+        if (rsiValue > 65) {
+          console.log(`[EMA-CROSSOVER] ❌ LONG BLOCKED: RSI too high ${rsiValue.toFixed(1)} > 65`);
+          return { signal_type: null, reason: `LONG blocked: RSI overbought (${rsiValue.toFixed(1)})` };
         }
       }
       
-      // Trend filter - CONFIDENCE REDUCTION (not blocking)
+      // STRICT Trend filter - must align with global trend
       if (config.use_trend_filter && !globalTrendBullish) {
-        confidence -= 20;
-        reasons.push('counter-trend');
-        console.log(`[EMA-CROSSOVER] ⚠️ LONG confidence reduced: Counter-trend (price below EMA 200)`);
+        console.log(`[EMA-CROSSOVER] ❌ LONG BLOCKED: Counter-trend (price below EMA 200)`);
+        return { signal_type: null, reason: `LONG blocked: Counter-trend` };
       }
       
-      // Volatility filter - CONFIDENCE REDUCTION (not blocking)
+      // Volatility filter - BLOCK if too high
       if (volatilityTooHigh) {
-        confidence -= 15;
-        reasons.push('high volatility');
-        console.log(`[EMA-CROSSOVER] ⚠️ LONG confidence reduced: High volatility ATR ${currentATR.toFixed(4)}`);
+        console.log(`[EMA-CROSSOVER] ❌ LONG BLOCKED: High volatility ATR ${currentATR.toFixed(4)}`);
+        return { signal_type: null, reason: `LONG blocked: High volatility` };
       }
       
       if (isLowLiquidityHour()) {
-        confidence -= 10;
+        confidence -= 15;
         reasons.push('low liquidity hour');
       }
       
-      // Only block if confidence drops below minimum threshold
-      if (confidence < 50) {
-        console.log(`[EMA-CROSSOVER] ❌ LONG BLOCKED: Confidence too low (${confidence}%): ${reasons.join(', ')}`);
-        return { signal_type: null, reason: `LONG blocked: Low confidence (${confidence}%)` };
-      }
-      
+      // Tighter TP for quick wins
       const stopLoss = currentPrice - (currentATR * config.atr_sl_multiplier);
-      const takeProfit = currentPrice + (currentATR * config.atr_tp_multiplier);
+      const takeProfit = currentPrice + (currentATR * config.atr_tp_multiplier * 0.8);
       
-      console.log(`[EMA-CROSSOVER] 🚀 LONG ENTRY: Fast(${currentFastEMA.toFixed(4)}) > Slow(${currentSlowEMA.toFixed(4)}), Global=${currentGlobalEMA.toFixed(4)}, RSI=${rsiValue.toFixed(1)}, Confidence=${confidence}%, SL=${stopLoss.toFixed(4)}, TP=${takeProfit.toFixed(4)}`);
+      console.log(`[EMA-CROSSOVER] 🚀 LONG ENTRY: Fast(${currentFastEMA.toFixed(4)}) > Slow(${currentSlowEMA.toFixed(4)}), RSI=${rsiValue.toFixed(1)}, Confidence=${confidence}%`);
       
       return {
         signal_type: 'BUY',
-        reason: `Bullish EMA crossover (conf: ${confidence}%, RSI: ${rsiValue.toFixed(1)}${reasons.length > 0 ? ', ' + reasons.join(', ') : ''})`,
+        reason: `Bullish EMA crossover (RSI: ${rsiValue.toFixed(1)}, conf: ${confidence}%${reasons.length > 0 ? ', ' + reasons.join(', ') : ''})`,
         stop_loss: stopLoss,
         take_profit: takeProfit,
         confidence: confidence,
@@ -308,55 +300,46 @@ export function evaluateEMACrossoverScalping(
     const priceBelowSlow = currentPrice < currentSlowEMA;
     
     if (bearishCrossover && priceBelowSlow) {
-      let confidence = 90;
+      let confidence = 85;
       let reasons: string[] = [];
       
-      // RSI filter - CONFIDENCE REDUCTION (not blocking)
+      // STRICT RSI filter - must be in weakness zone (40-60)
       if (config.use_rsi_filter) {
-        if (rsiValue > config.rsi_short_threshold) {
-          confidence -= 15;
-          reasons.push(`RSI strong (${rsiValue.toFixed(1)} > ${config.rsi_short_threshold})`);
-          console.log(`[EMA-CROSSOVER] ⚠️ SHORT confidence reduced: RSI ${rsiValue.toFixed(1)} > ${config.rsi_short_threshold}`);
-        } else if (rsiValue < 30) {
-          confidence -= 10;
-          reasons.push(`RSI oversold (${rsiValue.toFixed(1)})`);
-          console.log(`[EMA-CROSSOVER] ⚠️ SHORT confidence reduced: RSI oversold ${rsiValue.toFixed(1)}`);
+        if (rsiValue > 60) {
+          console.log(`[EMA-CROSSOVER] ❌ SHORT BLOCKED: RSI too strong ${rsiValue.toFixed(1)} > 60`);
+          return { signal_type: null, reason: `SHORT blocked: RSI strong (${rsiValue.toFixed(1)})` };
+        }
+        if (rsiValue < 35) {
+          console.log(`[EMA-CROSSOVER] ❌ SHORT BLOCKED: RSI too low ${rsiValue.toFixed(1)} < 35`);
+          return { signal_type: null, reason: `SHORT blocked: RSI oversold (${rsiValue.toFixed(1)})` };
         }
       }
       
-      // Trend filter - CONFIDENCE REDUCTION (not blocking)
+      // STRICT Trend filter
       if (config.use_trend_filter && !globalTrendBearish) {
-        confidence -= 20;
-        reasons.push('counter-trend');
-        console.log(`[EMA-CROSSOVER] ⚠️ SHORT confidence reduced: Counter-trend (price above EMA 200)`);
+        console.log(`[EMA-CROSSOVER] ❌ SHORT BLOCKED: Counter-trend (price above EMA 200)`);
+        return { signal_type: null, reason: `SHORT blocked: Counter-trend` };
       }
       
-      // Volatility filter - CONFIDENCE REDUCTION (not blocking)
+      // Volatility filter
       if (volatilityTooHigh) {
-        confidence -= 15;
-        reasons.push('high volatility');
-        console.log(`[EMA-CROSSOVER] ⚠️ SHORT confidence reduced: High volatility ATR ${currentATR.toFixed(4)}`);
+        console.log(`[EMA-CROSSOVER] ❌ SHORT BLOCKED: High volatility ATR ${currentATR.toFixed(4)}`);
+        return { signal_type: null, reason: `SHORT blocked: High volatility` };
       }
       
       if (isLowLiquidityHour()) {
-        confidence -= 10;
+        confidence -= 15;
         reasons.push('low liquidity hour');
       }
       
-      // Only block if confidence drops below minimum threshold
-      if (confidence < 50) {
-        console.log(`[EMA-CROSSOVER] ❌ SHORT BLOCKED: Confidence too low (${confidence}%): ${reasons.join(', ')}`);
-        return { signal_type: null, reason: `SHORT blocked: Low confidence (${confidence}%)` };
-      }
-      
       const stopLoss = currentPrice + (currentATR * config.atr_sl_multiplier);
-      const takeProfit = currentPrice - (currentATR * config.atr_tp_multiplier);
+      const takeProfit = currentPrice - (currentATR * config.atr_tp_multiplier * 0.8);
       
-      console.log(`[EMA-CROSSOVER] 🔻 SHORT ENTRY: Fast(${currentFastEMA.toFixed(4)}) < Slow(${currentSlowEMA.toFixed(4)}), Global=${currentGlobalEMA.toFixed(4)}, RSI=${rsiValue.toFixed(1)}, Confidence=${confidence}%, SL=${stopLoss.toFixed(4)}, TP=${takeProfit.toFixed(4)}`);
+      console.log(`[EMA-CROSSOVER] 🔻 SHORT ENTRY: Fast(${currentFastEMA.toFixed(4)}) < Slow(${currentSlowEMA.toFixed(4)}), RSI=${rsiValue.toFixed(1)}, Confidence=${confidence}%`);
       
       return {
         signal_type: 'SELL',
-        reason: `Bearish EMA crossover (conf: ${confidence}%, RSI: ${rsiValue.toFixed(1)}${reasons.length > 0 ? ', ' + reasons.join(', ') : ''})`,
+        reason: `Bearish EMA crossover (RSI: ${rsiValue.toFixed(1)}, conf: ${confidence}%${reasons.length > 0 ? ', ' + reasons.join(', ') : ''})`,
         stop_loss: stopLoss,
         take_profit: takeProfit,
         confidence: confidence,
