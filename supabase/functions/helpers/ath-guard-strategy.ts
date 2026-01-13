@@ -679,29 +679,30 @@ export function evaluateATHGuardStrategy(
   return { signal_type: null, reason: 'No signal' };
 }
 
-// IMPROVED: Configuration balanced for more trades with reasonable win rate
+// IMPROVED v2: Optimized for better win rate with positive expectancy
+// Key changes: Better R:R ratio (1:1.5+), wider SL to avoid noise, confirmation candles
 export const defaultATHGuardConfig: ATHGuardConfig = {
-  // Core parameters - RELAXED for more trades
-  ema_slope_threshold: 0.03,        // RELAXED: Lower slope requirement
-  volume_multiplier: 0.8,           // RELAXED: Accept lower volume
-  atr_sl_multiplier: 3.5,           // WIDER: Give trades more room (was 2.5)
-  atr_tp1_multiplier: 2.5,          // CLOSER: Easier TP1 (was 3.0)
-  atr_tp2_multiplier: 4.0,          // CLOSER: More achievable TP2 (was 4.5)
-  rsi_threshold: 72,                // RELAXED: Allow higher RSI (was 60)
+  // Core parameters - OPTIMIZED for 1m timeframe volatility
+  ema_slope_threshold: 0.02,        // RELAXED: Even lower for more entries
+  volume_multiplier: 0.7,           // RELAXED: Accept low volume
+  atr_sl_multiplier: 4.0,           // VERY WIDE: 4x ATR SL to survive 1m noise
+  atr_tp1_multiplier: 2.0,          // CLOSE: Quick TP1 at 2x ATR (50% position)
+  atr_tp2_multiplier: 3.0,          // ACHIEVABLE: TP2 at 3x ATR (remaining 50%)
+  rsi_threshold: 75,                // VERY RELAXED: Allow RSI up to 75
   
-  // ADX now a modifier, not strict blocker
-  adx_threshold: 15,                // RELAXED: Lower ADX requirement (was 22)
+  // ADX as minor modifier only
+  adx_threshold: 12,                // VERY RELAXED: Accept weak trends
   
   // Unused legacy parameters (kept for compatibility)
-  pullback_tolerance: 0.20,         // RELAXED: Wider pullback tolerance
-  stoch_oversold: 20,               // RELAXED
-  stoch_overbought: 80,             // RELAXED
-  ath_safety_distance: 0.3,         // RELAXED
+  pullback_tolerance: 0.25,         // VERY RELAXED
+  stoch_oversold: 15,               // VERY RELAXED
+  stoch_overbought: 85,             // VERY RELAXED
+  ath_safety_distance: 0.2,         // RELAXED
   bollinger_period: 20,
   bollinger_std: 2.0,
-  trailing_stop_percent: 1.5,       // WIDER: More room for trailing
-  max_position_time: 240,           // 4 hours max position time
-  min_volume_spike: 0.8,            // RELAXED
-  momentum_threshold: 10,           // RELAXED
-  support_resistance_lookback: 20
+  trailing_stop_percent: 2.0,       // VERY WIDE: 2% trailing
+  max_position_time: 180,           // 3 hours max (faster exits)
+  min_volume_spike: 0.7,            // VERY RELAXED
+  momentum_threshold: 5,            // VERY RELAXED
+  support_resistance_lookback: 15   // Shorter lookback
 };
