@@ -838,6 +838,8 @@ const Dashboard = () => {
               No exchange API credentials configured. Please add them in Settings.
             </div>}
       </Card>
+
+      <SignalVerificationCard />
     </div>;
 };
 export default Dashboard;
