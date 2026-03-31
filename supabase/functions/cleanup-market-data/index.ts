@@ -71,7 +71,7 @@ serve(async (_req) => {
     const result: CleanupResult = {
       success: true,
       deleted: totalDeleted,
-      cutoff_ms: ninetyDaysAgo.getTime(),
+      cutoff_ms: cutoffAgo.getTime(),
       batches,
     };
 
