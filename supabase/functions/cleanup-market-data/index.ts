@@ -18,13 +18,14 @@ serve(async (_req) => {
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   try {
-    // Define cutoff (90 days = ~3 months)
+    // Define cutoff (120 days = ~4 months)
     const now = new Date();
-    const ninetyDaysAgo = new Date(now);
-    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-    const cutoffDate = ninetyDaysAgo.toISOString();
+    const cutoffDays = 120;
+    const cutoffAgo = new Date(now);
+    cutoffAgo.setDate(cutoffAgo.getDate() - cutoffDays);
+    const cutoffDate = cutoffAgo.toISOString();
 
-    console.log(`[CLEANUP] Starting market_data cleanup. Cutoff date: ${cutoffDate}`);
+    console.log(`[CLEANUP] Starting market_data cleanup. Cutoff date: ${cutoffDate} (${cutoffDays} days)`);
 
     // Delete in batches to avoid long transactions; returns limited rows' ids/count per batch
     const BATCH_SIZE = 50000; // tune if needed
@@ -70,7 +71,7 @@ serve(async (_req) => {
     const result: CleanupResult = {
       success: true,
       deleted: totalDeleted,
-      cutoff_ms: ninetyDaysAgo.getTime(),
+      cutoff_ms: cutoffAgo.getTime(),
       batches,
     };
 

@@ -1,4 +1,5 @@
 import { Card } from "@/components/ui/card";
+import { SignalVerificationCard } from "@/components/SignalVerificationCard";
 import { ArrowDown, ArrowUp, TrendingUp, RefreshCw, Info, X, Trash2, Activity, Wifi, AlertTriangle, CheckCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -837,6 +838,8 @@ const Dashboard = () => {
               No exchange API credentials configured. Please add them in Settings.
             </div>}
       </Card>
+
+      <SignalVerificationCard />
     </div>;
 };
 export default Dashboard;

@@ -350,6 +350,114 @@ export type Database = {
           },
         ]
       }
+      signal_references: {
+        Row: {
+          created_at: string | null
+          id: string
+          price: number
+          signal_id: string
+          signal_type: string
+          strategy_id: string
+          symbol: string
+          timestamp: string
+          trading_mode: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          price: number
+          signal_id: string
+          signal_type: string
+          strategy_id: string
+          symbol: string
+          timestamp: string
+          trading_mode?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          price?: number
+          signal_id?: string
+          signal_type?: string
+          strategy_id?: string
+          symbol?: string
+          timestamp?: string
+          trading_mode?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      signal_verifications: {
+        Row: {
+          candles_checked: number | null
+          created_at: string | null
+          entry_price: number
+          exit_price: number | null
+          id: string
+          max_adverse: number | null
+          max_favorable: number | null
+          outcome: string
+          pnl_percent: number | null
+          signal_id: string
+          signal_time: string
+          signal_type: string
+          stop_loss: number | null
+          strategy_id: string
+          symbol: string
+          take_profit: number | null
+          time_to_exit_minutes: number | null
+          user_id: string
+          verification_period_hours: number | null
+          verified_at: string | null
+        }
+        Insert: {
+          candles_checked?: number | null
+          created_at?: string | null
+          entry_price: number
+          exit_price?: number | null
+          id?: string
+          max_adverse?: number | null
+          max_favorable?: number | null
+          outcome?: string
+          pnl_percent?: number | null
+          signal_id: string
+          signal_time: string
+          signal_type: string
+          stop_loss?: number | null
+          strategy_id: string
+          symbol: string
+          take_profit?: number | null
+          time_to_exit_minutes?: number | null
+          user_id: string
+          verification_period_hours?: number | null
+          verified_at?: string | null
+        }
+        Update: {
+          candles_checked?: number | null
+          created_at?: string | null
+          entry_price?: number
+          exit_price?: number | null
+          id?: string
+          max_adverse?: number | null
+          max_favorable?: number | null
+          outcome?: string
+          pnl_percent?: number | null
+          signal_id?: string
+          signal_time?: string
+          signal_type?: string
+          stop_loss?: number | null
+          strategy_id?: string
+          symbol?: string
+          take_profit?: number | null
+          time_to_exit_minutes?: number | null
+          user_id?: string
+          verification_period_hours?: number | null
+          verified_at?: string | null
+        }
+        Relationships: []
+      }
       strategies: {
         Row: {
           adx_threshold: number | null

@@ -48,3 +48,7 @@ verify_jwt = true
 # SCHEDULED BACKTEST RUNNER (daily at 13:30 UTC = 8:30 AM NY)
 [functions.scheduled-backtest-runner]
 verify_jwt = false
+
+# SIGNAL VERIFICATION (daily at 14:00 UTC)
+[functions.verify-signals]
+verify_jwt = false
