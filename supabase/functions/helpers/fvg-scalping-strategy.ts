@@ -515,12 +515,16 @@ export function evaluateFVGStrategy(
     confidence -= 20;
   }
   
-  // Trend alignment modifier (-15 if not aligned)
+  // HARD BLOCK: Trend gate — verification data shows 0% win rate on counter-trend FVG signals
   if (config.require_trend_alignment) {
     const trendAligned = checkTrendAlignment(candles, fvg.type);
     if (!trendAligned) {
-      console.log(`[FVG-TREND] Not aligned (-15 confidence)`);
-      confidence -= 15;
+      console.log(`[FVG-TREND] ❌ HARD-BLOCKED: ${fvg.type} FVG against trend — verification: 0% WR`);
+      return {
+        signal_type: null,
+        reason: `${fvg.type} FVG blocked: counter-trend (verified 0% WR)`,
+        confidence: 0
+      };
     }
   }
   

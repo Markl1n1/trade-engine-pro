@@ -333,7 +333,7 @@ export function evaluateEMACrossoverScalping(
       }
       
       const stopLoss = currentPrice + (currentATR * config.atr_sl_multiplier);
-      const takeProfit = currentPrice - (currentATR * config.atr_tp_multiplier * 0.8);
+      const takeProfit = currentPrice - (currentATR * config.atr_tp_multiplier * 0.6);
       
       console.log(`[EMA-CROSSOVER] 🔻 SHORT ENTRY: Fast(${currentFastEMA.toFixed(4)}) < Slow(${currentSlowEMA.toFixed(4)}), RSI=${rsiValue.toFixed(1)}, Confidence=${confidence}%`);
       

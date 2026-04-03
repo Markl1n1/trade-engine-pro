@@ -459,9 +459,9 @@ export function evaluateSMACrossoverStrategy(
         confidenceShort += 10;
       }
       
-      // Calculate stop loss and take profit with TIGHTER TP
+      // Reduced TP based on verification data
       const stopLoss = currentPrice + (config.atr_sl_multiplier * currentATR);
-      const takeProfit = currentPrice - (config.atr_tp_multiplier * currentATR * 0.75);
+      const takeProfit = currentPrice - (config.atr_tp_multiplier * currentATR * 0.5);
       
       console.log('[SMA-CROSSOVER] 🔻 SHORT ENTRY (Death Cross)', {
         smaFast: currentSMAFast.toFixed(2),
