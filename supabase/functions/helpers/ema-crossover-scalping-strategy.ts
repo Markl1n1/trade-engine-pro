@@ -315,10 +315,10 @@ export function evaluateEMACrossoverScalping(
         }
       }
       
-      // STRICT Trend filter
+      // HARD BLOCK: Trend gate - verification data shows 0% win rate on counter-trend
       if (config.use_trend_filter && !globalTrendBearish) {
-        console.log(`[EMA-CROSSOVER] ❌ SHORT BLOCKED: Counter-trend (price above EMA 200)`);
-        return { signal_type: null, reason: `SHORT blocked: Counter-trend` };
+        console.log(`[EMA-CROSSOVER] ❌ SHORT HARD-BLOCKED: Counter-trend (price above EMA 200) — verification: 0% WR`);
+        return { signal_type: null, reason: `SHORT blocked: Counter-trend (verified 0% WR)` };
       }
       
       // Volatility filter
