@@ -279,9 +279,9 @@ export function evaluateEMACrossoverScalping(
         reasons.push('low liquidity hour');
       }
       
-      // Tighter TP for quick wins
+      // Reduced TP based on verification data (max_favorable rarely exceeds 3%)
       const stopLoss = currentPrice - (currentATR * config.atr_sl_multiplier);
-      const takeProfit = currentPrice + (currentATR * config.atr_tp_multiplier * 0.8);
+      const takeProfit = currentPrice + (currentATR * config.atr_tp_multiplier * 0.6);
       
       console.log(`[EMA-CROSSOVER] 🚀 LONG ENTRY: Fast(${currentFastEMA.toFixed(4)}) > Slow(${currentSlowEMA.toFixed(4)}), RSI=${rsiValue.toFixed(1)}, Confidence=${confidence}%`);
       
