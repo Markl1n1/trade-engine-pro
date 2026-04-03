@@ -394,9 +394,9 @@ export function evaluateSMACrossoverStrategy(
         confidence += 10;
       }
       
-      // Calculate stop loss and take profit with TIGHTER TP for quick wins
+      // Reduced TP based on verification: avg max_favorable=2.61%, 3% TP would have hit on 4/5 signals
       const stopLoss = currentPrice - (config.atr_sl_multiplier * currentATR);
-      const takeProfit = currentPrice + (config.atr_tp_multiplier * currentATR * 0.75); // 75% of original TP
+      const takeProfit = currentPrice + (config.atr_tp_multiplier * currentATR * 0.5); // 50% of original TP (~3%)
       
       console.log('[SMA-CROSSOVER] 🚀 LONG ENTRY (Golden Cross)', {
         smaFast: currentSMAFast.toFixed(2),
@@ -459,9 +459,9 @@ export function evaluateSMACrossoverStrategy(
         confidenceShort += 10;
       }
       
-      // Calculate stop loss and take profit with TIGHTER TP
+      // Reduced TP based on verification data
       const stopLoss = currentPrice + (config.atr_sl_multiplier * currentATR);
-      const takeProfit = currentPrice - (config.atr_tp_multiplier * currentATR * 0.75);
+      const takeProfit = currentPrice - (config.atr_tp_multiplier * currentATR * 0.5);
       
       console.log('[SMA-CROSSOVER] 🔻 SHORT ENTRY (Death Cross)', {
         smaFast: currentSMAFast.toFixed(2),

@@ -124,6 +124,45 @@ export type Database = {
         }
         Relationships: []
       }
+      optimization_suggestions: {
+        Row: {
+          applied: boolean | null
+          based_on_signals: number | null
+          created_at: string | null
+          current_value: Json | null
+          id: string
+          reason: string | null
+          strategy_id: string
+          suggested_value: Json | null
+          suggestion_type: string
+          user_id: string
+        }
+        Insert: {
+          applied?: boolean | null
+          based_on_signals?: number | null
+          created_at?: string | null
+          current_value?: Json | null
+          id?: string
+          reason?: string | null
+          strategy_id: string
+          suggested_value?: Json | null
+          suggestion_type: string
+          user_id: string
+        }
+        Update: {
+          applied?: boolean | null
+          based_on_signals?: number | null
+          created_at?: string | null
+          current_value?: Json | null
+          id?: string
+          reason?: string | null
+          strategy_id?: string
+          suggested_value?: Json | null
+          suggestion_type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       order_executions: {
         Row: {
           close_reason: string | null
