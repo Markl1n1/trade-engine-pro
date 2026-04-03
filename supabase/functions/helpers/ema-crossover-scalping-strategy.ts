@@ -240,7 +240,7 @@ export function evaluateEMACrossoverScalping(
     return { signal_type: null, reason: 'Position open, monitoring' };
   }
   
-  // Entry signals (only when no position is open) - WIN RATE v3
+  // Entry signals (only when no position is open) - WIN RATE v4 (Verification-Driven)
   if (!positionOpen) {
     // LONG signal: Fast EMA crosses above Slow EMA
     const bullishCrossover = prevFastEMA <= prevSlowEMA && currentFastEMA > currentSlowEMA;
@@ -262,10 +262,10 @@ export function evaluateEMACrossoverScalping(
         }
       }
       
-      // STRICT Trend filter - must align with global trend
+      // HARD BLOCK: Trend gate - verification data shows 0% win rate on counter-trend
       if (config.use_trend_filter && !globalTrendBullish) {
-        console.log(`[EMA-CROSSOVER] ❌ LONG BLOCKED: Counter-trend (price below EMA 200)`);
-        return { signal_type: null, reason: `LONG blocked: Counter-trend` };
+        console.log(`[EMA-CROSSOVER] ❌ LONG HARD-BLOCKED: Counter-trend (price below EMA 200) — verification: 0% win rate`);
+        return { signal_type: null, reason: `LONG blocked: Counter-trend (verified 0% WR)` };
       }
       
       // Volatility filter - BLOCK if too high
