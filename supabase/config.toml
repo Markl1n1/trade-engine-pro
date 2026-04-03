@@ -52,3 +52,7 @@ verify_jwt = false
 # SIGNAL VERIFICATION (daily at 14:00 UTC)
 [functions.verify-signals]
 verify_jwt = false
+
+# STRATEGY OPTIMIZER (daily at 15:00 UTC)
+[functions.optimize-strategies]
+verify_jwt = false

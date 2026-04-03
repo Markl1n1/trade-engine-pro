@@ -841,6 +841,7 @@ const Dashboard = () => {
       </Card>
 
       <SignalVerificationCard />
+      <StrategyOptimizerCard />
     </div>;
 };
 export default Dashboard;
