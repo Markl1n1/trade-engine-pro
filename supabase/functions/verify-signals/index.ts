@@ -135,9 +135,20 @@ serve(async (req) => {
         let allCandles: UnifiedCandle[] = [];
 
         try {
-          const candles = await fetchPublicKlines('bybit', signal.symbol, '5m', 300, false);
+          // Fetch candles starting from signal time (not latest) to ensure full coverage
+          const candles = await fetchPublicKlines('bybit', signal.symbol, '5m', 300, false, signalTime);
           // Filter candles after signal time
           allCandles = candles.filter(c => c.timestamp >= signalTime).sort((a, b) => a.timestamp - b.timestamp);
+          
+          // If we got too few candles, also try without start param as fallback
+          if (allCandles.length < 10) {
+            console.log(`[VERIFY-SIGNALS] Few candles (${allCandles.length}) from start param, trying fallback...`);
+            const fallbackCandles = await fetchPublicKlines('bybit', signal.symbol, '5m', 300, false);
+            const fallbackFiltered = fallbackCandles.filter(c => c.timestamp >= signalTime).sort((a, b) => a.timestamp - b.timestamp);
+            if (fallbackFiltered.length > allCandles.length) {
+              allCandles = fallbackFiltered;
+            }
+          }
         } catch (fetchErr) {
           console.error(`[VERIFY-SIGNALS] Failed to fetch klines for ${signal.symbol}:`, fetchErr);
           continue;
