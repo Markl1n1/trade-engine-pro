@@ -482,7 +482,8 @@ export async function fetchPublicKlines(
   symbol: string,
   interval: string,
   limit: number = 500,
-  testnet: boolean = false
+  testnet: boolean = false,
+  startTime?: number
 ): Promise<UnifiedCandle[]> {
   const baseUrl = testnet 
     ? EXCHANGE_URLS[exchange].testnet 
@@ -491,7 +492,8 @@ export async function fetchPublicKlines(
   const mappedInterval = mapInterval(interval, exchange);
   
   if (exchange === 'binance') {
-    const url = `${baseUrl}/fapi/v1/klines?symbol=${symbol}&interval=${mappedInterval}&limit=${limit}`;
+    let url = `${baseUrl}/fapi/v1/klines?symbol=${symbol}&interval=${mappedInterval}&limit=${limit}`;
+    if (startTime) url += `&startTime=${startTime}`;
     const response = await fetch(url);
     
     if (!response.ok) {
@@ -501,8 +503,9 @@ export async function fetchPublicKlines(
     const data = await response.json();
     return parseKlines(data, 'binance');
   } else {
-    // Bybit
-    const url = `${baseUrl}/v5/market/kline?category=linear&symbol=${symbol}&interval=${mappedInterval}&limit=${limit}`;
+    // Bybit - uses 'start' param in milliseconds
+    let url = `${baseUrl}/v5/market/kline?category=linear&symbol=${symbol}&interval=${mappedInterval}&limit=${limit}`;
+    if (startTime) url += `&start=${startTime}`;
     const response = await fetch(url);
     
     if (!response.ok) {
