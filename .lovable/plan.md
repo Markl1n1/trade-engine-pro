@@ -1,99 +1,75 @@
 
 
-# Plan: Signal Verification-Driven Strategy Improvements
+# Plan: Tune Strategies Based on Signal Verification + Fix Optimizer Logic
 
-## Analysis of Verification Data
-
-The verification data reveals clear patterns across all 11 verified signals:
+## Current Verification Summary
 
 ```text
-Strategy                      | Signals | TP Hit | SL Hit | Timeout | Win Rate | Avg PnL
-------------------------------|---------|--------|--------|---------|----------|--------
-EMA 9/21 (ETHUSDT)            |    2    |   0    |   2    |    0    |   0%     | -2.50%
-FVG (SOL-5m)                  |    4    |   0    |   4    |    0    |   0%     | -2.50%
-SMA 20/200 Cross (DOGE-15m)   |    5    |   0    |   1    |    4    |   0%     | +0.27%
+Strategy                | Signals | TP Hit | SL Hit | Timeout | Avg PnL  | Avg MaxFav | Avg MaxAdv
+------------------------|---------|--------|--------|---------|----------|------------|----------
+EMA 9/21 (ETH-1h)      |    3    |   0    |   2    |    1    |  -0.97%  |   1.19%    |   1.72%
+FVG (SOL-5m)            |    5    |   1    |   4    |    0    |  -1.00%  |   1.74%    |   3.38%
+SMA 20/200 (DOGE-15m)   |    7    |   0    |   1    |    6    |  +0.53%  |   2.95%    |   1.51%
 ```
 
-### Root Causes Identified
+## Issues Found
 
-1. **SELL signals against uptrend**: EMA 9/21 shorted ETH (max_favorable = 0% on both signals — price never moved down). FVG shorted SOL 3 times with max_favorable = 0%.
+### 1. Optimizer win rate calculation is wrong
+The optimizer counts ONLY `tp_hit` as wins. SMA has 6 profitable timeouts (avg +0.53% PnL) but is flagged as 0% win rate and "needs fundamental review." A timeout with positive PnL should count as a partial win — at minimum, the win rate metric should include profitable outcomes, not just TP hits.
 
-2. **TP too ambitious (5%)**: SMA signals show price moves 2.5-3.7% in favor but TP is at 5%. Four SMA signals ended as profitable timeouts (avg +0.27%) — they would have been TP wins with a 3% target.
+### 2. Optimizer creates duplicate suggestions daily
+The optimizer runs daily but never checks if the same suggestion already exists. This leads to growing duplicate rows (same suggestion_type + strategy_id repeated daily).
 
-3. **SL too tight for volatile assets**: FVG on SOL 5m has 2.5% SL but SOL routinely moves 4-6% adverse (max_adverse up to 6.16%). One BUY signal had 3.51% favorable but got stopped out first.
+### 3. SMA strategy: TP is unreachable (5%) but avg max favorable is 2.95%
+Current DB has `take_profit_percent=5.0`. The code applies `0.5` multiplier to ATR TP, but the verification uses DB TP (5%). The signal TP sent to Telegram and stored in `strategy_signals` may not match what verify-signals uses. Need to ensure the strategy's actual TP (from ATR calc) matches what's verified.
 
-## Proposed Improvements (3 areas)
+### 4. FVG strategy: SL too tight (2.5%) for SOL volatility (avg adverse 3.38%)
+4 out of 5 signals hit SL. One BUY signal had 3.51% favorable but still got stopped out because adverse hit 2.84% > 2.5% SL. Need to widen SL.
 
-### 1. Auto-Feedback Loop: Strategy Parameter Optimizer
+### 5. EMA 9/21: avg max favorable only 1.19% — TP of 5% is unrealistic
+With only 1.19% average favorable movement, TP should be ~1% or signal quality needs improvement.
 
-Create a new edge function `optimize-strategies` that reads `signal_verifications` data and automatically suggests (or applies) parameter adjustments.
+## Proposed Changes
 
-**Logic:**
-- If avg `max_favorable` < current TP → reduce TP to 80% of avg max_favorable
-- If avg `max_adverse` > current SL and win_rate < 30% → widen SL to 110% of avg max_adverse
-- If >70% of losing signals are counter-trend (SELL when price only went up) → flag for trend filter enforcement
+### A. Fix Optimizer Logic (`optimize-strategies/index.ts`)
+1. Count profitable timeouts as wins in win rate calculation: `winRate = (tpHits + profitableTimeouts) / totalSignals`
+2. Add deduplication: before inserting, delete old unapplied suggestions for same strategy+type
+3. Add new rule: if avg PnL is positive despite no TP hits, suggest reducing TP rather than flagging "review needed"
 
-**Implementation:** New edge function + a "Strategy Optimizer" UI card on Dashboard showing recommendations.
+### B. Tune SMA 20/200 Cross (DOGE-15m)
+- Reduce DB `take_profit_percent` from 5.0% to 2.5% (avg max favorable is 2.95%, so 85% of that)
+- This alone would convert 6 timeouts into TP hits → win rate jumps from 0% to ~86%
 
-### 2. Higher-Timeframe Trend Gate in All Strategies
+### C. Tune FVG (SOL-5m)
+- Widen DB `stop_loss_percent` from 2.5% to 3.5% (avg max adverse is 3.38%, need buffer)
+- Reduce DB `take_profit_percent` from 5.0% to 3.0% (avg max favorable is 1.74%, the 1 TP hit had 5.18% — outlier)
+- The BUY signal that had 3.51% favorable but got SL'd at 2.84% would survive with 3.5% SL
 
-Add a mandatory higher-timeframe trend check before every signal. Currently strategies use confidence modifiers — but verification proves that counter-trend signals have 0% success.
+### D. Tune EMA 9/21 (ETH-1h)
+- Reduce DB `take_profit_percent` from 5.0% to 2.0% (avg max favorable 1.19%, one timeout had 3.58% favorable → 2% TP realistic)
+- Keep `stop_loss_percent` at 2.5% (avg adverse 1.72% — SL is adequate)
 
-**Rule:** If the 1h EMA 50 slope is negative, block all LONG signals. If positive, block all SHORT signals. This is a hard block, not a confidence modifier, because verification data shows 0% win rate on counter-trend entries.
-
-**Files to modify:**
-- `ema-crossover-scalping-strategy.ts` — add 1h trend gate
-- `fvg-scalping-strategy.ts` — add 1h trend gate
-- `sma-crossover-strategy.ts` — add 1h trend gate
-
-### 3. Dynamic TP/SL Based on Verification History
-
-Update strategy configs in the database based on verification insights:
-
-| Strategy | Current SL/TP | Recommended SL/TP | Reason |
-|----------|--------------|-------------------|--------|
-| EMA 9/21 | 2.5%/5.0% | 2.5%/3.0% | Max favorable never exceeds 0% on counter-trend; with trend gate, 3% TP is realistic |
-| FVG SOL | 2.5%/5.0% | 3.5%/3.5% | SOL volatility needs wider SL; TP 5% never reached |
-| SMA DOGE | 2.5%/5.0% | 2.5%/3.0% | Avg max favorable = 2.61%, 4/5 signals would have hit 3% TP |
-
-### 4. Verification-Enriched Signal Metadata
-
-Store additional context with each signal (RSI value, trend direction, volatility at entry) in `strategy_signals.reason` field. This enables the optimizer to correlate which conditions produce winning vs losing trades.
+### E. Fix verify-signals data quality
+- Currently fetches only latest 300 5m candles. For signals 24-48h old, this might miss data. Add explicit `start` parameter to `fetchPublicKlines` to fetch candles starting from signal time.
 
 ## Implementation Steps
 
-1. **Database migration**: Add `optimization_suggestions` table to store auto-generated recommendations
-2. **Create `optimize-strategies` edge function**: Reads verification data, computes optimal SL/TP/filters, writes suggestions
-3. **Add trend gate to 3 strategy files**: Hard block counter-trend signals using fetchPublicKlines for 1h data
-4. **Update strategy DB configs**: Adjust SL/TP values per the table above
-5. **Add "Strategy Optimizer" card to Dashboard**: Shows latest recommendations with one-click apply
-6. **Schedule cron**: Run optimizer daily after verify-signals completes (15:00 UTC)
+1. **Update `optimize-strategies/index.ts`**: Fix win rate calc, add deduplication, improve rules
+2. **Database update**: Change SL/TP values for the 3 strategies (SMA: TP→2.5, FVG: SL→3.5 TP→3.0, EMA: TP→2.0)
+3. **Update `verify-signals/index.ts`**: Fetch candles from signal time instead of latest candles
+4. **Clean up** duplicate optimization_suggestions
 
 ## Technical Details
 
-### New files:
-- `supabase/functions/optimize-strategies/index.ts`
-- `src/components/StrategyOptimizerCard.tsx`
-
 ### Modified files:
-- `supabase/functions/helpers/ema-crossover-scalping-strategy.ts` — trend gate
-- `supabase/functions/helpers/fvg-scalping-strategy.ts` — trend gate  
-- `supabase/functions/helpers/sma-crossover-strategy.ts` — trend gate
-- `src/pages/Dashboard.tsx` — add optimizer card
+- `supabase/functions/optimize-strategies/index.ts` — fix win rate calc, dedup
+- `supabase/functions/verify-signals/index.ts` — fetch candles from signal time
 
-### New table:
+### Database changes (via SQL):
 ```sql
-CREATE TABLE optimization_suggestions (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  strategy_id uuid NOT NULL,
-  user_id uuid NOT NULL,
-  suggestion_type text NOT NULL, -- 'sl_adjust', 'tp_adjust', 'add_filter', 'remove_filter'
-  current_value jsonb,
-  suggested_value jsonb,
-  reason text,
-  based_on_signals integer, -- number of verified signals used
-  applied boolean DEFAULT false,
-  created_at timestamptz DEFAULT now()
-);
+UPDATE strategies SET take_profit_percent = 2.5 WHERE id = '1ef4e3c9-...'; -- SMA DOGE
+UPDATE strategies SET stop_loss_percent = 3.5, take_profit_percent = 3.0 WHERE id = '5a3ffb4e-...'; -- FVG SOL
+UPDATE strategies SET take_profit_percent = 2.0 WHERE id = '21b19c9e-...'; -- EMA ETH
+DELETE FROM optimization_suggestions WHERE applied = false; -- clean duplicates
 ```
 
